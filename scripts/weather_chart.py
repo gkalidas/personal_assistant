@@ -36,11 +36,17 @@ SPRAY_UNSAFE_WIND_KMPH = 20
 def _location() -> tuple[float, float, str]:
     if PROFILE.exists():
         p = json.loads(PROFILE.read_text())
-        farm = p.get("farm", {})
-        lat, lon = farm.get("lat"), farm.get("lon")
-        name = farm.get("city") or farm.get("primary_location") or DEFAULT_NAME
-        if lat and lon:
-            return lat, lon, name
+        default_label = p.get("preferences", {}).get("default_farm", "farm_1")
+        farms = p.get("farms", [])
+        # pick default_farm label, fall back to first farm
+        farm = next((f for f in farms if f.get("label") == default_label), None)
+        if not farm and farms:
+            farm = farms[0]
+        if farm:
+            lat, lon = farm.get("lat"), farm.get("lon")
+            name = farm.get("city") or farm.get("primary_location") or DEFAULT_NAME
+            if lat and lon:
+                return lat, lon, name
     return DEFAULT_LAT, DEFAULT_LON, DEFAULT_NAME
 
 

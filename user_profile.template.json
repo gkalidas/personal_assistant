@@ -2,22 +2,55 @@
   "name": "",
   "alias": "",
 
-  "home": {
-    "location": "",
-    "city": "",
-    "state": "",
-    "lat": null,
-    "lon": null
-  },
+  "homes": [
+    {
+      "label": "primary",
+      "location": "",
+      "city": "",
+      "state": "",
+      "lat": null,
+      "lon": null
+    },
+    {
+      "label": "secondary",
+      "location": "",
+      "city": "",
+      "state": "",
+      "lat": null,
+      "lon": null
+    }
+  ],
 
-  "farm": {
-    "primary_location": "",
-    "city": "",
-    "district": "",
-    "state": "",
-    "lat": null,
-    "lon": null
-  },
+  "farms": [
+    {
+      "label": "farm_1",
+      "primary_location": "",
+      "city": "",
+      "district": "",
+      "state": "",
+      "lat": null,
+      "lon": null,
+      "area_acres": null,
+      "soil_type": "",
+      "irrigation_type": "",
+      "primary_crop": "",
+      "other_crops": []
+    },
+    {
+      "label": "farm_2",
+      "primary_location": "",
+      "city": "",
+      "district": "",
+      "state": "",
+      "lat": null,
+      "lon": null,
+      "area_acres": null,
+      "soil_type": "",
+      "irrigation_type": "",
+      "primary_crop": "",
+      "other_crops": []
+    }
+  ],
 
   "language": "English",
 
@@ -41,17 +74,11 @@
     "notes": ""
   },
 
-  "farming": {
-    "primary_crop": "",
-    "other_crops": [],
-    "total_land_acres": null,
-    "irrigation_type": "",
-    "notes": ""
-  },
-
   "preferences": {
     "units": "metric",
     "currency": "INR",
-    "reminder_time": "08:00"
+    "reminder_time": "08:00",
+    "default_farm": "farm_1",
+    "default_home": "primary"
   }
 }
