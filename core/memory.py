@@ -59,6 +59,15 @@ def init_db() -> None:
                 approved_at  TEXT
             );
         """)
+        # Schema migrations: add columns that may be missing in older DBs
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
+        if "latency_ms" not in existing:
+            conn.execute("ALTER TABLE events ADD COLUMN latency_ms INTEGER")
+        if "status" not in existing:
+            conn.execute(
+                "ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'ok' "
+                "CHECK(status IN ('ok','error','dropped'))"
+            )
 
 
 def log_query_start(query: str, module: str = "router") -> int:

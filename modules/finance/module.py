@@ -10,7 +10,7 @@ from core.base_module import BaseModule, ModuleResponse
 from modules.finance import db, tools
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-TEXT_MODEL = os.getenv("TEXT_MODEL", "llama3.2:3b")
+TEXT_MODEL = os.getenv("TEXT_MODEL", "qwen2.5:3b")
 
 _SYSTEM = """You are the finance advisor inside GK, a private personal assistant.
 The user is Ganesh — a farmer and entrepreneur tracking personal and farm finances.
@@ -61,7 +61,7 @@ def _call_llm(query: str, context: dict) -> dict:
         "stream": False,
         "format": "json",
     }
-    resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=60.0)
+    resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=120.0)
     resp.raise_for_status()
     content = resp.json()["message"]["content"]
     return json.loads(content)
