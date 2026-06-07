@@ -1,0 +1,22 @@
+# Core
+fastapi
+uvicorn[standard]
+python-dotenv
+
+# LLM / routing
+ollama
+
+# Input layer
+Pillow          # EXIF extraction (shared with farming)
+python-docx     # Document processing
+pypdf2          # PDF processing
+openai-whisper  # Local audio transcription
+
+# Knowledge graph / people
+# insightface   # Face recognition — uncomment when building people graph
+
+# Web search (privacy proxy)
+# searxng is self-hosted — no Python package needed
+
+# Storage
+# SQLite is stdlib — no extra package needed
