@@ -207,39 +207,99 @@ PII never leaves the machine. Generic anonymized queries go out: "what medicatio
 | Decision | Choice |
 |---|---|
 | Router blending | Yes — cross-module blended answers supported |
-| Module structure now | Keep farming as standalone; GK umbrella built later |
-| Memory system | Option C — `user_profile.json` (fast) + `events.db` (ground truth) |
-| Diary trigger | Both auto (silent) + explicit review at day end |
-| File inbox | Dedicated `~/gk/inbox/` only, not full filesystem watch |
+| Module structure | GK umbrella repo at `/home/ganesh/projects/personal_assistant`; farming was a prior standalone project |
+| Memory system | `user_profile.json` (fast cache) + `events.db` (ground truth log of every query) |
+| Diary trigger | Both auto-draft (silent, after every session) + explicit review at day end |
+| File inbox | Dedicated `~/personal_assistant/inbox/` only, not full filesystem watch |
 | Link suggestion | GK suggests, you confirm one tap — never auto-commit |
-| Web search | SearXNG (self-hosted), not DDG API |
-| Router model | Test `qwen2.5:3b` vs `llama3.2:3b` on 20 queries, pick winner |
-| UI first | Terminal chat, then web UI |
-| v1 modules | farming (done), finance (next), health (later), fashion (deferred) |
+| Web search | SearXNG (self-hosted) + LLM guardrails layer for prompt injection defense |
+| Router model | `qwen2.5:0.5b` — small, fast, sufficient for intent classification |
+| Text model | `qwen3:1.7b` — newer architecture, matches qwen2.5:3b quality at half the RAM |
+| UI first | Terminal chat (built), then web UI |
+| v1 modules | finance (built), farming+weather (next), health (later), fashion (deferred) |
+| Weather source | Open-Meteo — free, no API key, ECMWF-backed, covers India, returns soil/rain/humidity |
+| Query logging | Log before + after processing: raw query, module, response, latency → `events.db` |
+| Web response security | Strip HTML → prompt injection scan → source trust score → LLM summarises with guardrail instruction |
 
 ---
 
 ## What's Built vs What's Planned
 
-| Component | Status |
+### Done
+| Component | Notes |
 |---|---|
-| Farming module (crop advisor, disease detection, weather, soil, plots) | **Built and shipped** |
-| Linux deployment (setup.sh, start.sh, systemd service) | **Built** |
-| GK router + multi-module shell | **Planned, not started** |
-| Finance module | **Planned, not started** |
-| Diary layer | **Planned, not started** |
-| Knowledge graph + people ID (InsightFace) | **Planned, not started** |
-| OPSEC layer | **Planned, not started** |
-| Background intelligence loop | **Planned, not started** |
-| Privacy proxy (SearXNG) | **Planned, not started** |
-| Web UI (vis-network mind map) | **Planned, not started** |
+| `core/base_module.py` — BaseModule contract | `handle()`, `can_handle()`, `ModuleResponse` |
+| `core/router.py` — intent classifier | Routes via Ollama, supports blended multi-module answers |
+| `core/memory.py` — memory layer | `user_profile.json` (fast) + `events.db`; pre+post logging with latency |
+| `core/analysis.py` — weekly analysis + diary pipeline | Analyses events.db → auto-drafts diary entry via LLM |
+| `core/guardrails.py` — web response security | HTML strip → prompt injection scan → source trust scoring → sandboxed LLM summary |
+| `modules/finance/` — finance module | Expenses, income, budgets, savings goals, NL → LLM → SQLite |
+| `modules/farming/` — farming module | Plots, crops, spray logs, observations, season summary |
+| `modules/farming/weather.py` — full Open-Meteo integration | Current conditions (WMO codes) + 7-day forecast + spray-safe check + ERA5 crop history + rainfall history + 6h SQLite cache. **Live and tested.** |
+| `modules/farming/soil.py` — SoilGrids integration | pH, nitrogen, organic carbon, clay %, sand %, soil type estimate. Free, no API key. |
+| `modules/farming/geocode.py` — location resolver | Location name → lat/lon via Open-Meteo geocoding. In-memory cache. |
+| `modules/farming/knowledge.py` — disease knowledge base | Loads `crops/*.json`, provides disease lookup + LLM-ready KB context |
+| `modules/farming/farming_client.py` — farming server bridge | Delegates photo disease diagnosis to standalone farming FastAPI server (localhost:5002) |
+| `crops/pomegranate.json` — disease KB | Bacterial Blight, Anthracnose, Alternaria, Cercospora, Fruit Borer, Sunburn, Healthy — with exact dosages and spray timing rules |
+| `main.py` — terminal chat loop | Routes input, pre+post logs with latency, boots with "Welcome to the future, GK" |
+| venv + dependencies | `~/envs/evn_personal_assistant/`, httpx + python-dotenv installed |
+
+### In Progress
+| Component | Notes |
+|---|---|
+| Ollama setup | Installed v0.30.6; `llama-server` binary missing (known 0.30.x bug). Run `curl -fsSL https://ollama.com/install.sh \| sudo sh` in terminal to fix. |
+
+### Build Queue (sequenced — each depends on the previous)
+
+**Step 1 — Unblock inference**
+- [ ] Fix Ollama / pull `qwen2.5:0.5b` (router) + `qwen3:1.7b` (text)
+
+**Step 2 — First test run** *(farming + finance + weather all ready, just need Ollama)*
+- [ ] Test: `"spent 500 on seeds"`, `"will it rain this week?"`, `"add my north field, 3 acres"`
+
+**Step 3 — Query logging pipeline** *(three stages, built together)*
+- [ ] Stage 1: Log every query before + after processing (raw query, module, latency) → `events.db`
+- [ ] Stage 2: Weekly analysis job — patterns, category distribution, time-of-day, repeats
+- [ ] Stage 3: Diary auto-draft — turn weekly analysis into a readable diary entry for review
+
+**Step 4 — Web search** *(single feature: SearXNG + guardrails)*
+- [ ] Self-host SearXNG on local machine
+- [ ] Guardrails layer: strip HTML → prompt injection scan → source trust scoring → sandboxed LLM summary
+
+**Step 5 — Input layer**
+- [ ] Audio — Whisper (local, offline, Hindi/Marathi)
+- [ ] Photos — EXIF extraction (timestamp, GPS, device)
+- [ ] Documents — PDF (`pypdf2`), Word (`python-docx`)
+
+**Step 6 — Knowledge graph** *(strict sequence)*
+- [ ] SQLite graph schema — People, Places, Events, Media nodes + edges
+- [ ] Face clustering — InsightFace, scans `~/personal_assistant/inbox/`
+- [ ] "Who is this?" surfacing — GK surfaces unknown faces one at a time, you name them
+- [ ] Graph population — named people backdated to EXIF timestamps, linked to events
+
+**Step 7 — OPSEC layer**
+- [ ] Who-knows-what map — per-person `knows[]` list derived from knowledge graph
+- [ ] Vulnerability scoring — leverage, pattern exposure, association risk, digital footprint
+- [ ] What-if scenario generator — "if this person became adversarial, what do they already know?"
+
+**Step 8 — Security infrastructure** *(do together)*
+- [ ] Encrypt sensitive DBs at rest (diary, health, finance)
+- [ ] Local passphrase unlock on startup
+
+**Step 9 — Web UI**
+- [ ] vis-network interactive mind map — offline, zoomable, clickable nodes (People, Events, Places, Media)
+
+### Deferred
+- Health module
+- Fashion module
 
 ---
 
-## How to Resume This Conversation
+## How to Resume
 
-Paste this document into a new Claude session and say:
+Open `/home/ganesh/projects/personal_assistant/docs/design.md` in a new session and say:
 
-> "This is the GK personal assistant design we planned. I want to start building it. Let's begin with [component]."
+> "Read the design doc. Resume the build."
 
-Suggested starting point: **finance module** — simplest, no vision needed, text-only, directly tied to wealth goal, and best test case for cross-module blending with farming.
+Current active step: **Step 1 — fix Ollama, then pull qwen2.5:0.5b and qwen3:1.7b.**
+Next after that: **Step 2 — Farming module with weather (Open-Meteo).**

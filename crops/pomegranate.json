@@ -1,0 +1,137 @@
+{
+  "crop": "pomegranate",
+  "primary_region": "Maharashtra, India (Solapur, Nashik, Pune, Sangli, Osmanabad belts)",
+  "dominant_variety": "Bhagawa (>86% of Maharashtra area)",
+  "diseases": {
+    "Healthy": {
+      "visual_symptoms": "Firm bright red/green-red fruit with intact calyx. No spots, cracks, or water-soaked areas. Glossy blemish-free skin.",
+      "immediate_actions": ["Continue routine drip irrigation schedule", "Apply balanced NPK as per growth stage"],
+      "do_not": ["Overhead irrigation — wets foliage and promotes fungal spread", "Excess nitrogen — increases disease susceptibility"],
+      "watch_for": ["Early water-soaked spots near calyx", "Any cracking which creates entry points for Alternaria"],
+      "timeline": "No intervention needed. Monitor weekly during monsoon season."
+    },
+    "Bacterial Blight": {
+      "causal_agent": "Xanthomonas axonopodis pv. punicae",
+      "visual_symptoms": "Water-soaked irregular spots on leaves with yellow halo turning necrotic brown/black. Fruit shows water-soaked lesions with L/Y/star-shaped cracks. Stems show dark water-soaked streaks with oozing in humid conditions.",
+      "favourable_conditions": "25–33°C, RH >60%, monsoon rainfall June–September. Wind-driven rain splash spreads pathogen. Most destructive in Solapur belt.",
+      "severity_note": "Most economically destructive pomegranate disease in Maharashtra. Unmanaged orchards see 60–80% losses.",
+      "immediate_actions": [
+        "Spray Streptocyclin 500 ppm + Copper Oxychloride 0.3% immediately",
+        "Repeat spray every 10–15 days for 2–3 rounds",
+        "Apply Bordeaux paste on all cut/pruned ends",
+        "Apply bleaching powder 20–25 kg/ha at plant base",
+        "Remove and burn all infected plant material"
+      ],
+      "do_not": [
+        "Overhead irrigation — spreads bacteria via water splash",
+        "Reuse pruning tools without disinfecting with bleach or Dettol",
+        "Leave infected debris on soil"
+      ],
+      "watch_for": ["New water-soaked spots appearing within 5–7 days of treatment", "Stem cankers spreading toward crown", "Fruit cracking worsening"],
+      "preventive_measures": ["Pre-monsoon preventive Bordeaux spray", "Disease-free certified planting material only", "Ensure good drainage", "Copper-based spray at bud break"],
+      "timeline": "With treatment, new infections halt in 10–14 days. Existing lesions do not reverse. Expect 3–4 spray cycles through monsoon."
+    },
+    "Anthracnose": {
+      "causal_agent": "Colletotrichum gloeosporioides",
+      "visual_symptoms": "Small dark brown water-soaked lesions near calyx → depressed dark brown/black sunken spots with grey-orange spore masses. Leaves show dull violet-black dots with yellow patches and drop. Twig cankers with sunken tissue.",
+      "favourable_conditions": "25–30°C, RH 50–80%, frequent rainfall. Peak: August–September kharif season. Fungus inactive in dry weather.",
+      "severity_note": "Up to 50% losses in Maharashtra (2020–21). Bhagawa cultivar highly susceptible.",
+      "immediate_actions": [
+        "Spray Carbendazim 0.1% or Thiophanate methyl 0.1% at 15-day intervals for 2–3 rounds",
+        "Apply Copper Oxychloride 0.3% post-pruning",
+        "Prune all affected twigs and apply copper paste on cuts"
+      ],
+      "do_not": ["Water-logging", "Delay in removing infected fruits — they become spore sources"],
+      "watch_for": ["Spore masses (orange tinge on lesions)", "Twig die-back extending toward main branches"],
+      "preventive_measures": ["First preventive spray at flowering onset", "Rotate fungicide MOA classes (DMI, MBC, strobilurin) to prevent resistance"],
+      "timeline": "Active sporulation stops within 7–10 days of correct fungicide. Full recovery of affected twigs: 3–4 weeks."
+    },
+    "Cercospora Fruit Spot": {
+      "causal_agent": "Pseudocercospora punicae (formerly Cercospora punicae)",
+      "visual_symptoms": "Small yellowish spots with halo on sepals and fruit surface → blackish patches with dull white fungal crust, corky texture. Leaves: circular dark reddish-brown to black spots (0.5–5 mm) with yellow margins → yellowing and drop. Twig black elliptical depressed spots → die-back.",
+      "favourable_conditions": "High humidity, rainy conditions, water-saturated soil. Wind-borne spore spread. Warm humid summers.",
+      "immediate_actions": [
+        "Spray Hexaconazole (Contaf) 0.1% or Carbendazim 0.1% at 15-day intervals for 2–3 rounds",
+        "Remove and destroy all diseased fruits and twigs",
+        "Rake and remove fallen leaves"
+      ],
+      "do_not": ["Delay removal of diseased material — wind spreads spores to healthy fruit", "Overhead irrigation"],
+      "watch_for": ["Corky black patches spreading to larger fruit surface area", "Defoliation accelerating"],
+      "preventive_measures": ["Regular scouting during flowering", "Proper field drainage", "Certified disease-free planting material"],
+      "timeline": "Lesions do not heal. New infection stops in 10–14 days with treatment. Cosmetic damage remains — affects market value."
+    },
+    "Fruit Borer": {
+      "causal_agent": "Ectomyelois ceratoniae (carob moth / pomegranate butterfly)",
+      "visual_symptoms": "Entry hole near calyx or equator (1–3 mm, sometimes with frass/webbing). Internal tunnelling with dark frass. Premature fruit colouring and drop. No external lesions early — fruit looks healthy until cut open.",
+      "favourable_conditions": "Dry hot summers (April–June). Female lays eggs near calyx. Larvae bore in and complete development inside fruit. Warm nights (>22°C) accelerate egg hatching.",
+      "severity_note": "Single larva destroys entire fruit. 15–40% losses in unprotected orchards. Cannot be detected by external inspection in early stages.",
+      "immediate_actions": [
+        "Install pheromone traps (1 per 15 trees) to monitor adult moth population",
+        "Spray Chlorpyriphos 0.05% or Spinosad 0.01% at calyx formation and repeat every 15 days",
+        "Collect and destroy all fallen and infested fruits immediately — do not compost",
+        "Bag developing fruits with paper bags if infestation is severe",
+        "Apply Neem-based spray (Azadirachtin 0.03%) as preventive during egg-laying period"
+      ],
+      "preventive_measures": [
+        "Set pheromone traps before flowering (March–April)",
+        "Destroy crop debris and old fruit after harvest — eliminates overwintering pupae",
+        "Avoid planting near carob or other host trees"
+      ],
+      "do_not": [
+        "Do NOT use fungicides — this is an insect pest, not a fungal disease",
+        "Do NOT leave fallen fruit on ground — each fruit can harbour 1–3 larvae",
+        "Do NOT spray insecticide inside open flowers — kills pollinators"
+      ],
+      "watch_for": [
+        "Entry holes with sticky webbing near calyx",
+        "Premature fruit colour change (red before season)",
+        "Fruit drop increasing — check each fallen fruit for larval tunnels"
+      ],
+      "timeline": "Active infestation: remove all affected fruit immediately. Pheromone traps reduce population over 2–3 generations (6–8 weeks). Full season management with 4–5 sprays from calyx stage."
+    },
+    "Sunburn": {
+      "causal_agent": "Abiotic — excessive direct solar radiation, high temperature (>42°C), low humidity",
+      "visual_symptoms": "Bleached yellow-white to tan papery patches on sun-exposed fruit surface (typically south/west-facing side). Sharp boundary between affected and healthy skin. No fungal growth, no water-soaking. Affected tissue dries and turns brown-grey, papery and sunken.",
+      "favourable_conditions": "Peak summer (April–June), temperatures >40°C, low humidity (<30%), sudden defoliation exposing previously shaded fruit. West-facing orchards most vulnerable in afternoon.",
+      "severity_note": "Purely cosmetic in mild cases but sunburned patches become entry points for secondary fungal infections (Alternaria, Aspergillus). Reduces market value significantly.",
+      "immediate_actions": [
+        "Apply kaolin clay spray (5–6%) on fruit to reflect radiation — safe, non-toxic, wash off at harvest",
+        "Provide shade netting (30–50% shade cloth) over most exposed rows",
+        "Increase irrigation frequency during heat waves — well-hydrated fruit resists sunburn",
+        "Do not prune foliage during summer — leaves provide natural shade"
+      ],
+      "preventive_measures": [
+        "Orient rows north-south to reduce afternoon sun exposure on fruit",
+        "Maintain adequate canopy cover — do not over-prune in summer",
+        "Apply reflective mulch on soil to reduce ground-reflected heat",
+        "Whitewash exposed main branches to reduce bark temperature"
+      ],
+      "do_not": [
+        "Do NOT spray fungicide — this is heat damage, not a pathogen",
+        "Do NOT remove sun-damaged fruit unless secondary infection is present — fruit may still develop",
+        "Do NOT prune in summer heat — increases fruit exposure"
+      ],
+      "watch_for": [
+        "Secondary Alternaria or Aspergillus infection starting on sunburned patches (black spots developing on bleached area)",
+        "Fruit cracking at sunburn boundary — creates entry for pathogens",
+        "Increasing defoliation exposing more fruit"
+      ],
+      "timeline": "Sunburn damage is irreversible. Prevent further damage within 24–48h. If kaolin applied early, new fruit exposure is protected. Monitor for secondary fungal infection over 7–14 days."
+    },
+    "Alternaria Fruit Spot": {
+      "causal_agent": "Alternaria alternata and related Alternaria spp.",
+      "visual_symptoms": "Black Spot form: small reddish-brown/black spots (1–3 mm) with yellow halo → expand and merge, can cover >50% of surface. Heart Rot form: exterior looks normal but internal arils show brown rot — hollow sound when knocked. Leaves: chlorotic spots → premature drop.",
+      "favourable_conditions": "20–35°C, RH >85%, post-monsoon. Fruit cracking from irregular irrigation is the primary entry point.",
+      "severity_note": "Heart Rot form is visually silent until harvest — impossible to detect externally. Bhagawa cultivar severely affected in Solapur belt.",
+      "immediate_actions": [
+        "Spray Azoxystrobin or Propiconazole fungicide immediately",
+        "Mancozeb 0.3% (Dithane M-45) at 15-day intervals",
+        "Ensure strict uniform drip irrigation to prevent fruit cracking"
+      ],
+      "do_not": ["Irregular irrigation — fruit cracking is the main entry point for the pathogen", "Excess nitrogen fertilization"],
+      "watch_for": ["New black spots appearing on fruit surface within 7 days", "Any fruit cracking — treat immediately as entry point", "For Heart Rot: soft or hollow-sounding fruits at harvest"],
+      "preventive_measures": ["Uniform drip irrigation schedule — most important prevention", "Balanced fertilization", "Remove old plant debris"],
+      "timeline": "Surface spots stop spreading in 7–10 days with treatment. Heart Rot is undetectable until harvest — prevention via irrigation management is the only control."
+    }
+  }
+}

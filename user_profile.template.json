@@ -1,0 +1,57 @@
+{
+  "name": "",
+  "alias": "",
+
+  "home": {
+    "location": "",
+    "city": "",
+    "state": "",
+    "lat": null,
+    "lon": null
+  },
+
+  "farm": {
+    "primary_location": "",
+    "city": "",
+    "district": "",
+    "state": "",
+    "lat": null,
+    "lon": null
+  },
+
+  "language": "English",
+
+  "goals": {
+    "primary": ["health", "wealth"],
+    "notes": ""
+  },
+
+  "health": {
+    "age": null,
+    "conditions": [],
+    "medications": [],
+    "notes": ""
+  },
+
+  "financial": {
+    "primary_income_source": "",
+    "monthly_income_approx": null,
+    "monthly_expense_approx": null,
+    "active_loans": [],
+    "notes": ""
+  },
+
+  "farming": {
+    "primary_crop": "",
+    "other_crops": [],
+    "total_land_acres": null,
+    "irrigation_type": "",
+    "notes": ""
+  },
+
+  "preferences": {
+    "units": "metric",
+    "currency": "INR",
+    "reminder_time": "08:00"
+  }
+}
