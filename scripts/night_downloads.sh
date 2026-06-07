@@ -30,8 +30,15 @@ pull_model() {
     fi
 }
 
+# Small model first — ~394MB, completes in one night even on slow internet.
+# Large model only starts after small one is confirmed done.
 pull_model "qwen2.5:0.5b"
-pull_model "qwen3:1.7b"
+
+if ollama list 2>/dev/null | grep -q "^qwen2.5:0.5b"; then
+    pull_model "qwen3:1.7b"
+else
+    log "SKIP  qwen3:1.7b — waiting for qwen2.5:0.5b to finish first"
+fi
 
 # ── 2. Docker ─────────────────────────────────────────────────────────────────
 if command -v docker &>/dev/null; then

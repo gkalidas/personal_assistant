@@ -5,26 +5,34 @@ from core.base_module import BaseModule, ModuleResponse
 
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-ROUTER_MODEL = os.getenv("ROUTER_MODEL", "qwen2.5:3b")
+ROUTER_MODEL = os.getenv("ROUTER_MODEL", "qwen2.5:0.5b")
 
-_SYSTEM_PROMPT = """You are a routing classifier for a personal assistant. Given a user message, decide which module(s) should handle it.
+_SYSTEM_PROMPT = """Route the user message to the correct module. Reply ONLY with JSON.
 
-Available modules:
-{module_descriptions}
+Modules:
+{module_list}
 
-Rules:
-- Respond ONLY with valid JSON.
-- If one module fits, return: {{"modules": ["module_name"]}}
-- If the query spans multiple modules (e.g. "adjust farming budget because of monsoon"), return both: {{"modules": ["finance", "farming"]}}
-- If no module fits, return: {{"modules": ["general"]}}
-- Do not explain. JSON only."""
+Examples:
+"spent 500 on seeds" -> {{"modules": ["finance"]}}
+"when to spray pomegranate" -> {{"modules": ["farming"]}}
+"weather today" -> {{"modules": ["farming"]}}
+"monsoon affecting my budget" -> {{"modules": ["finance", "farming"]}}
+"hello" -> {{"modules": ["general"]}}
+
+Reply format: {{"modules": ["name"]}}"""
 
 
 def _build_system_prompt(modules: dict[str, BaseModule]) -> str:
-    descriptions = "\n".join(
-        f"- {name}: {mod.description}" for name, mod in modules.items()
-    )
-    return _SYSTEM_PROMPT.format(module_descriptions=descriptions)
+    # Short keyword list — easier for a 0.5b model than long descriptions
+    keywords = {
+        "finance": "money, expenses, income, budget, savings, loans, spent, earned",
+        "farming": "crops, weather, spray, soil, disease, farm, harvest, rain, plot",
+    }
+    lines = []
+    for name in modules:
+        hint = keywords.get(name, name)
+        lines.append(f"- {name}: {hint}")
+    return _SYSTEM_PROMPT.format(module_list="\n".join(lines))
 
 
 def route(query: str, modules: dict[str, BaseModule]) -> list[str]:
@@ -49,10 +57,10 @@ def route(query: str, modules: dict[str, BaseModule]) -> list[str]:
         resp.raise_for_status()
         content = resp.json()["message"]["content"]
         result = json.loads(content)
-        chosen = result.get("modules", ["general"])
-        # validate — only return modules that actually exist
+        chosen = result.get("modules", [])
         valid = [m for m in chosen if m in modules]
-        return valid if valid else ["general"]
+        # "general" or unknown → try all modules
+        return valid if valid else list(modules.keys())
     except Exception as e:
         # fallback: let all modules try to handle it
         print(f"[router error] {e}")
