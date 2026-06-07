@@ -8,6 +8,7 @@ load_dotenv()
 
 from core import memory
 from core.router import dispatch
+from core.sanitizer import sanitize_input, redact_pii
 from modules.finance.module import FinanceModule
 from modules.farming.module import FarmingModule
 
@@ -64,8 +65,15 @@ def main():
             print("GK: Goodbye.")
             break
 
+        # ── Sanitize input ────────────────────────────────────────────────────
+        san = sanitize_input(query)
+        if san.warnings:
+            for w in san.warnings:
+                print(f"  [input] {w}")
+        query = san.query   # use cleaned version for LLM
+
         context = _build_context(profile)
-        event_id = memory.log_query_start(query)
+        event_id = memory.log_query_start(redact_pii(query))
         t0 = time.monotonic()
 
         try:
@@ -83,7 +91,7 @@ def main():
             memory.log_query_done(
                 event_id=event_id,
                 module=r.module,
-                response=r.text,
+                response=redact_pii(r.text),
                 latency_ms=latency_ms,
                 metadata=r.data,
             )

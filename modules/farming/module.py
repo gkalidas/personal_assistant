@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 
 from core.base_module import BaseModule, ModuleResponse
+from core.sanitizer import validate_action
 from modules.farming import db, tools
 from modules.farming import weather as wx
 from modules.farming.soil import get_soil, format_soil
@@ -378,6 +379,15 @@ class FarmingModule(BaseModule):
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
         action = _call_llm(query, context)
-        text, data = _execute(action, context)
-        follow_up = _FOLLOW_UPS.get(action.get("action"))
+        v = validate_action("farming", action)
+        if not v.valid:
+            return ModuleResponse(
+                text=f"Action blocked by validator: {'; '.join(v.errors)}",
+                module=self.name,
+            )
+        if v.warnings:
+            for w in v.warnings:
+                print(f"  [validator] {w}")
+        text, data = _execute(v.action, context)
+        follow_up = _FOLLOW_UPS.get(v.action.get("action"))
         return ModuleResponse(text=text, module=self.name, data=data, follow_up=follow_up)

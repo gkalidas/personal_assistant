@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from core.base_module import BaseModule, ModuleResponse
+from core.sanitizer import validate_action
 from modules.finance import db, tools
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
@@ -162,8 +163,17 @@ class FinanceModule(BaseModule):
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
         action = _call_llm(query, context)
-        text, data = _execute_action(action)
-        follow_up = _FOLLOW_UPS.get(action.get("action"))
+        v = validate_action("finance", action)
+        if not v.valid:
+            return ModuleResponse(
+                text=f"Action blocked by validator: {'; '.join(v.errors)}",
+                module=self.name,
+            )
+        if v.warnings:
+            for w in v.warnings:
+                print(f"  [validator] {w}")
+        text, data = _execute_action(v.action)
+        follow_up = _FOLLOW_UPS.get(v.action.get("action"))
         return ModuleResponse(
             text=text,
             module=self.name,
