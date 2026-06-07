@@ -117,6 +117,22 @@ def _fmt_forecast(days: list[dict]) -> str:
     return "\n".join(lines)
 
 
+_PERSONAL_REFS = {
+    "farm", "my farm", "our farm", "the farm",
+    "here", "home", "my home", "my place",
+    "field", "my field", "plot", "my plot",
+    "location", "my location", "current location",
+    "barloni farm", "gk farm",
+}
+
+
+def _loc(raw: str | None, _lat, _lon) -> tuple[str | None, float | None, float | None]:
+    """If location is a personal reference, use profile coords instead."""
+    if not raw or raw.lower().strip() in _PERSONAL_REFS:
+        return None, _lat, _lon
+    return raw, None, None
+
+
 def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | None]:
     a = action.get("action")
     farm = (context or {}).get("default_farm", {})
@@ -237,8 +253,8 @@ def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | Non
 
     # ── Weather ────────────────────────────────────────────────────────────────
     if a == "weather_now":
-        loc = action.get("location")
-        data = wx.current_conditions(location=loc, lat=None if loc else _lat, lon=None if loc else _lon)
+        loc, lat, lon = _loc(action.get("location"), _lat, _lon)
+        data = wx.current_conditions(location=loc, lat=lat, lon=lon)
         return (
             f"Current weather at {data['location']}:\n"
             f"  {data['description']}, {data['temperature_c']}°C\n"
@@ -246,9 +262,9 @@ def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | Non
         ), data
 
     if a == "weather_forecast":
-        loc = action.get("location")
+        loc, lat, lon = _loc(action.get("location"), _lat, _lon)
         days = action.get("days", 7)
-        fc = wx.forecast(location=loc, lat=None if loc else _lat, lon=None if loc else _lon, days=days)
+        fc = wx.forecast(location=loc, lat=lat, lon=lon, days=days)
         lines = [f"Weather forecast — {fc['location']} ({days} days):"]
         lines.append(_fmt_forecast(fc["days"]))
         if fc.get("soil_moisture_now") is not None:
@@ -256,8 +272,8 @@ def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | Non
         return "\n".join(lines), fc
 
     if a == "spray_safe_tomorrow":
-        loc = action.get("location")
-        result = wx.spray_safe_tomorrow(location=loc, lat=None if loc else _lat, lon=None if loc else _lon)
+        loc, lat, lon = _loc(action.get("location"), _lat, _lon)
+        result = wx.spray_safe_tomorrow(location=loc, lat=lat, lon=lon)
         status = "SAFE to spray" if result["safe_to_spray"] else "NOT safe to spray"
         reasons = "\n  ".join(result["reasons"])
         lines = [f"Tomorrow ({result['date']}): {status}", f"  {reasons}"]
@@ -290,8 +306,8 @@ def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | Non
         return "\n".join(lines), result
 
     if a == "rainfall_history":
-        loc = action.get("location")
-        r = wx.historical_rainfall(location=loc, lat=None if loc else _lat, lon=None if loc else _lon,
+        loc, lat, lon = _loc(action.get("location"), _lat, _lon)
+        r = wx.historical_rainfall(location=loc, lat=lat, lon=lon,
                                    start=action.get("start"), end=action.get("end"))
         lines = [f"Rainfall — {r['location']} ({r['start']} to {r['end']}) — total: {r['total_mm']}mm"]
         for month, mm in r["monthly_mm"].items():
