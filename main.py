@@ -6,17 +6,41 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import httpx
 from core import memory
-from core.router import dispatch
+from core.router import dispatch, ROUTER_MODEL, OLLAMA_URL
 from core.sanitizer import sanitize_input, redact_pii
-from modules.finance.module import FinanceModule
-from modules.farming.module import FarmingModule
+from modules.finance.module import FinanceModule, TEXT_MODEL as FINANCE_MODEL
+from modules.farming.module import FarmingModule, TEXT_MODEL as FARMING_MODEL
 
 
 MODULES = {
     "finance": FinanceModule(),
     "farming": FarmingModule(),
 }
+
+
+def _warmup_models() -> None:
+    """Load each model into Ollama memory sequentially at startup."""
+    # Deduplicate — router and text model may be the same
+    models = list(dict.fromkeys([ROUTER_MODEL, FINANCE_MODEL, FARMING_MODEL]))
+    for model in models:
+        print(f"  Loading {model}...", end=" ", flush=True)
+        t0 = time.monotonic()
+        try:
+            httpx.post(
+                f"{OLLAMA_URL}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "stream": False,
+                    "keep_alive": "10m",
+                },
+                timeout=120.0,
+            )
+            print(f"ready ({int((time.monotonic()-t0)*1000)}ms)")
+        except Exception as e:
+            print(f"failed ({e})")
 
 
 def _build_context(profile: dict) -> dict:
@@ -50,7 +74,9 @@ def main():
     profile = memory.load_profile()
 
     print("Welcome to the future, GK.")
-    print('Type your query. "exit" to quit.\n')
+    print("Warming up models...")
+    _warmup_models()
+    print('Ready. Type your query. "exit" to quit.\n')
 
     while True:
         try:
