@@ -150,11 +150,11 @@ def build_chart(lat: float, lon: float, name: str) -> None:
     ]
 
     # ── Figure layout ─────────────────────────────────────────────────────────
-    fig = plt.figure(figsize=(14, 8), facecolor="#0d1117")
+    fig = plt.figure(figsize=(14, 9), facecolor="#0d1117")
     gs  = gridspec.GridSpec(
         3, 1, figure=fig,
-        height_ratios=[0.12, 0.52, 0.36],
-        hspace=0.45,
+        height_ratios=[0.14, 0.50, 0.36],
+        hspace=0.50,
     )
 
     header_ax = fig.add_subplot(gs[0])
@@ -175,35 +175,36 @@ def build_chart(lat: float, lon: float, name: str) -> None:
         for spine in ax.spines.values():
             spine.set_edgecolor("#30363d")
 
-    # ── Header ────────────────────────────────────────────────────────────────
+    # ── Header (two rows, no overlapping) ─────────────────────────────────────
     header_ax.set_xlim(0, 1)
     header_ax.set_ylim(0, 1)
     header_ax.axis("off")
 
-    updated = datetime.now().strftime("%d %b %Y, %H:%M IST")
+    updated    = datetime.now().strftime("%d %b %Y, %H:%M IST")
     conf_color = "#2ecc71" if confidence >= 70 else "#f39c12" if confidence >= 50 else "#e74c3c"
+    conf_label = "High" if confidence >= 70 else "Medium" if confidence >= 50 else "Low"
 
-    header_ax.text(0.0, 0.75, f"Farm Weather — {name}",
+    # Row 1 — left: title | right: model confidence (well separated)
+    header_ax.text(0.0, 0.80, f"Farm Weather — {name}",
                    color=text_color, fontsize=13, fontweight="bold", va="center")
-    header_ax.text(0.0, 0.2, f"Updated {updated}",
-                   color=muted, fontsize=9, va="center")
+    header_ax.text(1.0, 0.80, f"Model confidence: {conf_label} ({confidence}%)",
+                   color=conf_color, fontsize=10, fontweight="bold",
+                   va="center", ha="right")
 
+    # Row 2 — left: current conditions | right: legend hint
     if now.get("temp_c") is not None:
-        summary = (
-            f"Now:  {now['temp_c']}°C   "
-            f"Humidity {now.get('humidity', '--')}%   "
-            f"Wind {now.get('wind_kmh', '--')} km/h   "
-            f"Rain {now.get('rain_mm', 0)} mm"
-        )
-        header_ax.text(0.5, 0.75, summary,
-                       color=text_color, fontsize=10, va="center")
+        header_ax.text(0.0, 0.15,
+                       f"Now:  {now['temp_c']}°C    Humidity {now.get('humidity','--')}%"
+                       f"    Wind {now.get('wind_kmh','--')} km/h"
+                       f"    Updated {updated}",
+                       color=muted, fontsize=9, va="center")
+    else:
+        header_ax.text(0.0, 0.15, f"Updated {updated}",
+                       color=muted, fontsize=9, va="center")
 
-    header_ax.text(0.72, 0.75,
-                   f"Model agreement: {confidence}%",
-                   color=conf_color, fontsize=10, fontweight="bold", va="center")
-    header_ax.text(0.72, 0.2,
-                   "Green bar = safe to spray   Red bar = avoid",
-                   color=muted, fontsize=8, va="center")
+    header_ax.text(1.0, 0.15,
+                   "Green strip = safe to spray    Red strip = avoid spray",
+                   color=muted, fontsize=8, va="center", ha="right")
 
     # ── Rain + Probability ─────────────────────────────────────────────────────
     ec_bars  = rain_ax.bar(x - bar_w/2, ec["rain_mm"],  bar_w,
@@ -211,10 +212,10 @@ def build_chart(lat: float, lon: float, name: str) -> None:
     gfs_bars = rain_ax.bar(x + bar_w/2, gfs["rain_mm"], bar_w,
                            color=[gfs_col]*len(x),   alpha=0.85, label="GFS (rain mm)")
 
-    # Spray safety overlay (colored bottom strip)
+    # Spray safety overlay (coloured strip at bottom of each day column)
     for i, col in enumerate(spray_colors):
-        rain_ax.axvspan(i - 0.5, i + 0.5, ymin=0, ymax=0.04,
-                        color=col, alpha=0.6, zorder=0)
+        rain_ax.axvspan(i - 0.5, i + 0.5, ymin=0, ymax=0.07,
+                        color=col, alpha=0.75, zorder=0)
 
     prob_ax2 = rain_ax.twinx()
     prob_ax2.set_facecolor(card_bg)
@@ -229,13 +230,14 @@ def build_chart(lat: float, lon: float, name: str) -> None:
     for spine in prob_ax2.spines.values():
         spine.set_edgecolor("#30363d")
 
-    # Disagreement markers
+    # Disagreement markers — use "!" instead of emoji (emoji needs special font)
     for i in range(len(dates)):
         diff_mm   = abs((ec["rain_mm"][i]   or 0) - (gfs["rain_mm"][i]   or 0))
         diff_prob = abs((ec["rain_prob"][i]  or 0) - (gfs["rain_prob"][i]  or 0))
         if diff_mm > 2.0 or diff_prob > 20:
-            rain_ax.text(i, max((ec["rain_mm"][i] or 0), (gfs["rain_mm"][i] or 0)) + 0.2,
-                         "⚠", ha="center", fontsize=10, color="#f39c12")
+            y_pos = max((ec["rain_mm"][i] or 0), (gfs["rain_mm"][i] or 0)) + 0.5
+            rain_ax.text(i, y_pos, "!", ha="center", fontsize=14,
+                         fontweight="bold", color="#f39c12")
 
     rain_ax.set_xticks(x)
     rain_ax.set_xticklabels(labels, color=text_color, fontsize=9)
