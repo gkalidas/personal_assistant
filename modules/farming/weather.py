@@ -177,25 +177,65 @@ def forecast(
     return result
 
 
+def _hourly_rain(rlat: float, rlon: float, target_date: str) -> list[dict]:
+    """Fetch hourly precipitation for a specific date. Returns list of {hour, rain_mm, prob_pct}."""
+    cache_key = f"hourly_rain:{rlat:.4f},{rlon:.4f}:{target_date}"
+    _ensure_cache_table()
+    cached = _get_cached(cache_key)
+    if cached:
+        return cached
+
+    data = _get(FORECAST_URL, {
+        "latitude": rlat, "longitude": rlon,
+        "hourly": "precipitation,precipitation_probability",
+        "timezone": "Asia/Kolkata",
+        "forecast_days": 3,
+    })
+
+    hourly = data.get("hourly", {})
+    times = hourly.get("time", [])
+    rain_vals = hourly.get("precipitation", [])
+    prob_vals = hourly.get("precipitation_probability", [])
+
+    result = []
+    for i, t in enumerate(times):
+        if t.startswith(target_date):
+            hour = t[11:16]  # "HH:MM"
+            result.append({
+                "hour": hour,
+                "rain_mm": rain_vals[i] if i < len(rain_vals) else 0,
+                "prob_pct": prob_vals[i] if i < len(prob_vals) else 0,
+            })
+
+    _save_cache(cache_key, result)
+    return result
+
+
 def spray_safe_tomorrow(
     location: str | None = None,
     lat: float | None = None,
     lon: float | None = None,
 ) -> dict[str, Any]:
-    """Is tomorrow safe to spray? Checks rain, rain probability, wind."""
+    """Is tomorrow safe to spray? Checks rain, rain probability, wind, with hourly breakdown."""
+    rlat, rlon, name = _coords(location, lat, lon)
     fc = forecast(location=location, lat=lat, lon=lon, days=2)
     tomorrow = fc["days"][1] if len(fc["days"]) > 1 else fc["days"][0]
     curr = current_conditions(location=location, lat=lat, lon=lon)
 
-    rain_mm  = tomorrow.get("rain_mm") or 0
+    rain_mm   = tomorrow.get("rain_mm") or 0
     rain_prob = tomorrow.get("rain_probability_pct") or 0
-    wind     = tomorrow.get("wind_max_kmh") or 0
-    humidity = curr.get("humidity_pct") or 0
-    temp_max = tomorrow.get("temp_max_c") or 0
+    wind      = tomorrow.get("wind_max_kmh") or 0
+    humidity  = curr.get("humidity_pct") or 0
+    temp_max  = tomorrow.get("temp_max_c") or 0
+
+    # Hourly breakdown for tomorrow
+    hourly = _hourly_rain(rlat, rlon, tomorrow["date"])
+    rainy_hours = [h for h in hourly if (h["rain_mm"] or 0) >= 0.1 or (h["prob_pct"] or 0) >= 40]
+    dry_windows = [h["hour"] for h in hourly if (h["rain_mm"] or 0) < 0.1 and (h["prob_pct"] or 0) < 40]
 
     reasons = []
     if rain_mm >= 2.0:
-        reasons.append(f"rain expected {rain_mm}mm (washes off contact sprays)")
+        reasons.append(f"rain expected {rain_mm}mm total (washes off contact sprays)")
     if rain_prob >= 30:
         reasons.append(f"rain probability {rain_prob}%")
     if wind >= 20:
@@ -215,6 +255,9 @@ def spray_safe_tomorrow(
         "wind_kmh": wind,
         "humidity_pct": humidity,
         "temp_max_c": temp_max,
+        "hourly_rain": hourly,
+        "rainy_hours": [h["hour"] for h in rainy_hours],
+        "dry_windows": dry_windows,
     }
 
 

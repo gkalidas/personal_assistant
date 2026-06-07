@@ -238,8 +238,35 @@ def _execute(action: dict) -> tuple[str, dict | None]:
         loc = action.get("location")
         result = wx.spray_safe_tomorrow(location=loc)
         status = "SAFE to spray" if result["safe_to_spray"] else "NOT safe to spray"
-        reasons = ", ".join(result["reasons"])
-        return f"Tomorrow ({result['date']}): {status}\n  {reasons}", result
+        reasons = "\n  ".join(result["reasons"])
+        lines = [f"Tomorrow ({result['date']}): {status}", f"  {reasons}"]
+        lines.append(f"\n  Total rain expected: {result['rain_mm']}mm")
+
+        rainy = result.get("rainy_hours", [])
+        dry = result.get("dry_windows", [])
+        hourly = result.get("hourly_rain", [])
+
+        if rainy:
+            lines.append(f"  Rain expected: {', '.join(rainy)}")
+        if dry:
+            morning = [h for h in dry if h < "12:00"]
+            afternoon = [h for h in dry if "12:00" <= h < "17:00"]
+            evening = [h for h in dry if h >= "17:00"]
+            windows = []
+            if morning:
+                windows.append(f"morning ({morning[0]}–{morning[-1]})")
+            if afternoon:
+                windows.append(f"afternoon ({afternoon[0]}–{afternoon[-1]})")
+            if evening:
+                windows.append(f"evening ({evening[0]}–{evening[-1]})")
+            lines.append(f"  Dry windows: {', '.join(windows) if windows else 'none'}")
+
+        if hourly:
+            peak = max(hourly, key=lambda h: h.get("rain_mm") or 0)
+            if (peak.get("rain_mm") or 0) > 0:
+                lines.append(f"  Peak rain: {peak['rain_mm']}mm at {peak['hour']}")
+
+        return "\n".join(lines), result
 
     if a == "rainfall_history":
         loc = action.get("location")

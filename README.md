@@ -4,6 +4,12 @@ A local, private, multi-module personal assistant. Runs 100% on your machine.
 
 **"Welcome to the future, GK."**
 
+## Farm Weather Dashboard
+
+![Weather Dashboard](dashboard/weather.png)
+
+> ECMWF vs GFS cross-check · Green = safe to spray · Red = avoid · ⚠ = models disagree · Updates every 6 hours
+
 ## What is GK?
 
 GK is a router-based personal assistant where each domain (farming, finance, health) is a self-contained module with its own model, memory, and tools. You ask in natural language — GK routes to the right module, blends answers across modules when needed, and never sends your data outside your machine.

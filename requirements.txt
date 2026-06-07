@@ -18,5 +18,9 @@ openai-whisper  # Local audio transcription
 # Web search (privacy proxy)
 # searxng is self-hosted — no Python package needed
 
+# Dashboard
+matplotlib      # Weather chart generation
+numpy           # Array ops for chart data
+
 # Storage
 # SQLite is stdlib — no extra package needed
