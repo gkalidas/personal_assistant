@@ -5,6 +5,7 @@ __pycache__/
 user_profile.json
 *.db
 *.log
+logs/
 inbox/
 models/
 .DS_Store
