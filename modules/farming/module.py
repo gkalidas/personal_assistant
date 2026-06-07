@@ -60,11 +60,27 @@ Conversational / advice:
   {"action": "chat", "reply": "<your response>"}"""
 
 
-def _call_llm(query: str, context: dict) -> dict:
+def _profile_summary(context: dict) -> str:
+    farm = context.get("default_farm", {})
     profile = context.get("profile", {})
-    extras = ""
-    if profile:
-        extras += f"\nUser profile: {json.dumps(profile, ensure_ascii=False)}"
+    name = profile.get("name") or profile.get("alias") or "Ganesh"
+    lines = [f"Farmer: {name}"]
+    if farm:
+        lines.append(
+            f"Default farm: {farm.get('primary_location', '')}, {farm.get('district', '')}, "
+            f"{farm.get('state', '')} — {farm.get('area_acres', '?')} acres, "
+            f"{farm.get('soil_type', '')} soil, {farm.get('irrigation_type', '')} irrigation"
+        )
+        crops = [farm.get("primary_crop")] + (farm.get("other_crops") or [])
+        lines.append(f"Crops: {', '.join(c for c in crops if c)}")
+    farms = profile.get("farms", [])
+    if len(farms) > 1:
+        lines.append(f"Other farms: {', '.join(f['label'] for f in farms[1:])}")
+    return "\n".join(lines)
+
+
+def _call_llm(query: str, context: dict) -> dict:
+    extras = "\n" + _profile_summary(context)
 
     try:
         plot_list = tools.list_plots()
@@ -100,8 +116,12 @@ def _fmt_forecast(days: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _execute(action: dict) -> tuple[str, dict | None]:
+def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | None]:
     a = action.get("action")
+    farm = (context or {}).get("default_farm", {})
+    _lat  = farm.get("lat")  or None
+    _lon  = farm.get("lon")  or None
+    _name = farm.get("city") or farm.get("primary_location") or None
 
     # ── Plot management ────────────────────────────────────────────────────────
     if a == "add_plot":
@@ -217,7 +237,7 @@ def _execute(action: dict) -> tuple[str, dict | None]:
     # ── Weather ────────────────────────────────────────────────────────────────
     if a == "weather_now":
         loc = action.get("location")
-        data = wx.current_conditions(location=loc)
+        data = wx.current_conditions(location=loc, lat=None if loc else _lat, lon=None if loc else _lon)
         return (
             f"Current weather at {data['location']}:\n"
             f"  {data['description']}, {data['temperature_c']}°C\n"
@@ -227,7 +247,7 @@ def _execute(action: dict) -> tuple[str, dict | None]:
     if a == "weather_forecast":
         loc = action.get("location")
         days = action.get("days", 7)
-        fc = wx.forecast(location=loc, days=days)
+        fc = wx.forecast(location=loc, lat=None if loc else _lat, lon=None if loc else _lon, days=days)
         lines = [f"Weather forecast — {fc['location']} ({days} days):"]
         lines.append(_fmt_forecast(fc["days"]))
         if fc.get("soil_moisture_now") is not None:
@@ -236,7 +256,7 @@ def _execute(action: dict) -> tuple[str, dict | None]:
 
     if a == "spray_safe_tomorrow":
         loc = action.get("location")
-        result = wx.spray_safe_tomorrow(location=loc)
+        result = wx.spray_safe_tomorrow(location=loc, lat=None if loc else _lat, lon=None if loc else _lon)
         status = "SAFE to spray" if result["safe_to_spray"] else "NOT safe to spray"
         reasons = "\n  ".join(result["reasons"])
         lines = [f"Tomorrow ({result['date']}): {status}", f"  {reasons}"]
@@ -270,7 +290,8 @@ def _execute(action: dict) -> tuple[str, dict | None]:
 
     if a == "rainfall_history":
         loc = action.get("location")
-        r = wx.historical_rainfall(location=loc, start=action.get("start"), end=action.get("end"))
+        r = wx.historical_rainfall(location=loc, lat=None if loc else _lat, lon=None if loc else _lon,
+                                   start=action.get("start"), end=action.get("end"))
         lines = [f"Rainfall — {r['location']} ({r['start']} to {r['end']}) — total: {r['total_mm']}mm"]
         for month, mm in r["monthly_mm"].items():
             lines.append(f"  {month}: {mm}mm")
@@ -308,6 +329,9 @@ def _execute(action: dict) -> tuple[str, dict | None]:
             if plot and plot.get("lat"):
                 lat, lon = plot["lat"], plot["lon"]
                 loc = plot_name
+        if not loc and not lat:
+            lat, lon = _lat, _lon
+            loc = _name
         data = get_soil(location=loc, lat=lat, lon=lon)
         return format_soil(data), data
 
@@ -354,6 +378,6 @@ class FarmingModule(BaseModule):
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
         action = _call_llm(query, context)
-        text, data = _execute(action)
+        text, data = _execute(action, context)
         follow_up = _FOLLOW_UPS.get(action.get("action"))
         return ModuleResponse(text=text, module=self.name, data=data, follow_up=follow_up)

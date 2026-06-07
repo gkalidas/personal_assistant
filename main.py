@@ -17,6 +17,23 @@ MODULES = {
     "farming": FarmingModule(),
 }
 
+
+def _build_context(profile: dict) -> dict:
+    ctx = {"profile": profile}
+    farms = profile.get("farms", [])
+    default_label = profile.get("preferences", {}).get("default_farm")
+    farm = next((f for f in farms if f.get("label") == default_label), None) or (farms[0] if farms else None)
+    if farm:
+        ctx["default_farm"] = farm
+
+    homes = profile.get("homes", [])
+    default_home_label = profile.get("preferences", {}).get("default_home")
+    home = next((h for h in homes if h.get("label") == default_home_label), None) or (homes[0] if homes else None)
+    if home:
+        ctx["default_home"] = home
+
+    return ctx
+
 GOODBYE = {"exit", "quit", "bye", "/exit", "/quit"}
 
 
@@ -47,7 +64,7 @@ def main():
             print("GK: Goodbye.")
             break
 
-        context = {"profile": profile}
+        context = _build_context(profile)
         event_id = memory.log_query_start(query)
         t0 = time.monotonic()
 
