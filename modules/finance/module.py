@@ -46,11 +46,29 @@ If the query is ambiguous or conversational (not a clear finance action), respon
   {"action": "chat", "reply": "<your response>"}"""
 
 
+def _lean_profile(context: dict) -> str:
+    """One-line profile summary for the LLM — avoids dumping full JSON (tokens + privacy)."""
+    p = context.get("profile", {})
+    if not p:
+        return ""
+    name = p.get("name") or p.get("alias") or "Ganesh"
+    farms = p.get("farms", [])
+    crops = []
+    for f in farms:
+        if f.get("primary_crop"):
+            crops.append(f["primary_crop"])
+        crops.extend(f.get("other_crops") or [])
+    crop_str = ", ".join(dict.fromkeys(crops))  # deduplicate, preserve order
+    parts = [f"User: {name}"]
+    if crop_str:
+        parts.append(f"Crops: {crop_str}")
+    if farms:
+        parts.append(f"Location: {farms[0].get('district', '')}, {farms[0].get('state', 'Maharashtra')}")
+    return "\n" + " | ".join(parts)
+
+
 def _call_llm(query: str, context: dict) -> dict:
-    profile = context.get("profile", {})
-    profile_note = ""
-    if profile:
-        profile_note = f"\nUser profile context: {json.dumps(profile, ensure_ascii=False)}"
+    profile_note = _lean_profile(context)
 
     messages = [
         {"role": "system", "content": _SYSTEM + profile_note},

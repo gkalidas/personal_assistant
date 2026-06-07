@@ -16,10 +16,12 @@ MAX_QUERY_LEN = 1000
 # Same injection patterns as guardrails.py (applied to user input too)
 _INJECTION_PATTERNS = [
     r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?",
+    r"ignore\s+prior",                                            # "ignore prior and ..."
     r"forget\s+(everything|all)\s+(you|i)\s+(know|said|told)",
-    r"you\s+are\s+now\s+a?\s*(different|new|another)?\s*(assistant|ai|model|bot|system)",
+    r"you\s+are\s+now\s+a?\s*(different|new|another)?\s*(assistant|ai|model|bot|system|dan)",
+    r"\byou\s+are\s+now\s+a?\s*DAN\b",                           # DAN jailbreak
     r"new\s+(system\s+)?instructions?\s*:",
-    r"disregard\s+(all\s+)?(prior|previous|above)",
+    r"disregard\s+(?:all\s+|the\s+)?(prior|previous|above)",     # covers "disregard the above"
     r"override\s+(previous\s+)?instructions?",
     r"act\s+as\s+if\s+you\s+(have\s+no|don'?t\s+have)",
     r"from\s+now\s+on\s+you\s+(must|will|should)",
@@ -30,19 +32,23 @@ _INJECTION_PATTERNS = [
 ]
 _INJECTION_RE = re.compile("|".join(_INJECTION_PATTERNS), re.IGNORECASE)
 
-# PII patterns for India
+# PII patterns for India.
+# Order matters: more-specific patterns first to prevent overlap.
+# Aadhaar requires a space between each group (xxxx xxxx xxxx) to avoid
+# colliding with 12-digit bank account numbers (no spaces).
 _PII_PATTERNS = [
-    (re.compile(r"\b[6-9]\d{9}\b"),          "[PHONE]"),        # mobile
-    (re.compile(r"\b\d{4}\s?\d{4}\s?\d{4}\b"), "[AADHAAR]"),    # Aadhaar
-    (re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b"),   "[PAN]"),         # PAN card
-    (re.compile(r"\b\d{9,18}\b"),              "[ACCOUNT_NO]"),  # bank account
+    (re.compile(r"\b[6-9]\d{9}\b"),              "[PHONE]"),       # 10-digit mobile (starts 6-9)
+    (re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b"),      "[PAN]"),         # PAN card AAAAA0000A
+    (re.compile(r"\b\d{4}\s\d{4}\s\d{4}\b"),     "[AADHAAR]"),     # Aadhaar WITH spaces only
+    (re.compile(r"\b\d{9,18}\b"),                 "[ACCOUNT_NO]"),  # bank account 9–18 digits
 ]
 
 # Expected field types per action (module → action → {field: allowed_types})
+# Fields listed here are REQUIRED — None is only valid if type(None) is in allowed_types.
 _ACTION_SCHEMA: dict[str, dict[str, dict[str, tuple]]] = {
     "finance": {
         "log":          {"amount": (int, float), "type": (str,),
-                         "category": (str,),     "description": (str,)},
+                         "category": (str,),     "description": (str, type(None))},
         "summary":      {"month": (str, type(None))},
         "set_budget":   {"category": (str,), "monthly_cap": (int, float)},
         "add_goal":     {"name": (str,), "target": (int, float)},
@@ -72,6 +78,11 @@ _ACTION_SCHEMA: dict[str, dict[str, dict[str, tuple]]] = {
         "chat":           {"reply": (str,)},
     },
 }
+
+# Fields that are REQUIRED (cannot be None). All fields in the schema above
+# are required unless type(None) is explicitly listed in their allowed_types.
+def _is_required(allowed_types: tuple) -> bool:
+    return type(None) not in allowed_types
 
 
 # ── Input sanitizer ───────────────────────────────────────────────────────────
@@ -157,7 +168,17 @@ def validate_action(module: str, action: dict) -> ValidationResult:
     for fname, allowed_types in field_schema.items():
         val = action.get(fname)
         if val is None:
-            continue  # optional fields are fine
+            # None is only acceptable if type(None) is listed in allowed_types
+            if _is_required(allowed_types):
+                errors.append(f"required field '{fname}' is missing or null")
+            continue
+
+        # bool is a subclass of int in Python — reject it explicitly for numeric fields
+        if isinstance(val, bool) and (int in allowed_types or float in allowed_types):
+            errors.append(
+                f"field '{fname}' must be a number, got bool={repr(val)}"
+            )
+            continue
 
         if not isinstance(val, allowed_types):
             # Try to coerce numbers

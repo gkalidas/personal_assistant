@@ -7,7 +7,7 @@ Cache: 6-hour SQLite cache in farming.db to avoid hammering the API.
 import json
 import os
 import sqlite3
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -80,10 +80,16 @@ def _get(url: str, params: dict) -> dict:
 
 # ── Coords resolver ───────────────────────────────────────────────────────────
 
-def _coords(location: str | None, lat: float | None, lon: float | None) -> tuple[float, float, str]:
-    """Return (lat, lon, name). Geocodes if location string given, falls back to default."""
+def _coords(
+    location: str | None,
+    lat: float | None,
+    lon: float | None,
+    name: str | None = None,
+) -> tuple[float, float, str]:
+    """Return (lat, lon, display_name). Geocodes if location string given, falls back to default."""
     if lat is not None and lon is not None:
-        return lat, lon, f"{lat:.2f},{lon:.2f}"
+        # Use explicit name if provided (e.g. from user profile), else geocode back or use coords
+        return lat, lon, name or location or f"{lat:.2f},{lon:.2f}"
     if location:
         result = resolve(location)
         if result:
@@ -97,13 +103,17 @@ def current_conditions(
     location: str | None = None,
     lat: float | None = None,
     lon: float | None = None,
+    name: str | None = None,
 ) -> dict[str, Any]:
     """Current weather: temp, humidity, wind, rain, sky description."""
     _ensure_cache_table()
-    rlat, rlon, name = _coords(location, lat, lon)
+    rlat, rlon, name = _coords(location, lat, lon, name)
     cache_key = f"current:{rlat:.4f},{rlon:.4f}"
     cached = _get_cached(cache_key)
     if cached:
+        # Override stale coordinate-string location with real name if available
+        if name:
+            return {**cached, "location": name}
         return cached
 
     data = _get(FORECAST_URL, {
@@ -130,13 +140,16 @@ def forecast(
     lat: float | None = None,
     lon: float | None = None,
     days: int = 7,
+    name: str | None = None,
 ) -> dict[str, Any]:
     """Daily forecast: rain, temp, soil moisture, evapotranspiration."""
     _ensure_cache_table()
-    rlat, rlon, name = _coords(location, lat, lon)
+    rlat, rlon, name = _coords(location, lat, lon, name)
     cache_key = f"forecast:{rlat:.4f},{rlon:.4f}:{days}"
     cached = _get_cached(cache_key)
     if cached:
+        if name:
+            return {**cached, "location": name}
         return cached
 
     data = _get(FORECAST_URL, {
@@ -215,12 +228,13 @@ def spray_safe_tomorrow(
     location: str | None = None,
     lat: float | None = None,
     lon: float | None = None,
+    name: str | None = None,
 ) -> dict[str, Any]:
     """Is tomorrow safe to spray? Checks rain, rain probability, wind, with hourly breakdown."""
-    rlat, rlon, name = _coords(location, lat, lon)
-    fc = forecast(location=location, lat=lat, lon=lon, days=2)
+    rlat, rlon, name = _coords(location, lat, lon, name)
+    fc = forecast(lat=rlat, lon=rlon, days=2, name=name)
     tomorrow = fc["days"][1] if len(fc["days"]) > 1 else fc["days"][0]
-    curr = current_conditions(location=location, lat=lat, lon=lon)
+    curr = current_conditions(lat=rlat, lon=rlon, name=name)
 
     rain_mm   = tomorrow.get("rain_mm") or 0
     rain_prob = tomorrow.get("rain_probability_pct") or 0
@@ -324,12 +338,23 @@ def historical_rainfall(
     lon: float | None = None,
     start: str | None = None,
     end: str | None = None,
+    name: str | None = None,
 ) -> dict[str, Any]:
-    """Monthly rainfall totals for a date range. Default: current year."""
+    """Monthly rainfall totals for a date range. Default: current year to 5 days ago.
+    ERA5 archive has a ~5-day lag — requesting recent dates causes a 400 error."""
     today = date.today()
+    # ERA5 archive data lags ~5 days; cap end_date to avoid 400 errors
+    safe_end = today - timedelta(days=5)
     start = start or f"{today.year}-01-01"
-    end   = end   or today.isoformat()
-    rlat, rlon, name = _coords(location, lat, lon)
+    end   = end   or safe_end.isoformat()
+    # If caller passed an end date that's too recent, cap it
+    if end > safe_end.isoformat():
+        end = safe_end.isoformat()
+    # If start > end (e.g. querying first week of January), return empty
+    if start > end:
+        return {"location": "", "start": start, "end": end,
+                "monthly_mm": {}, "total_mm": 0.0}
+    rlat, rlon, name = _coords(location, lat, lon, name)
 
     data = _get(ARCHIVE_URL, {
         "latitude": rlat, "longitude": rlon,

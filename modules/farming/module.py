@@ -123,20 +123,27 @@ _PERSONAL_REFS = {
     "field", "my field", "plot", "my plot",
     "location", "my location", "current location",
     "barloni farm", "gk farm",
+    "mugdha farm", "mugdha's farm", "mugdhas farm",
 }
 
 
-def _loc(raw: str | None, _lat, _lon) -> tuple[str | None, float | None, float | None]:
-    """Resolve location to (loc_str, lat, lon).
-    Personal references and failed geocodes fall back to profile coords."""
+def _loc(
+    raw: str | None,
+    _lat: float | None,
+    _lon: float | None,
+    _name: str | None = None,
+) -> tuple[str | None, float | None, float | None]:
+    """Resolve location to (display_name, lat, lon).
+    Personal references and failed geocodes fall back to profile coords.
+    Returns profile name instead of None so weather output shows 'Barloni' not coordinates."""
     if not raw or raw.lower().strip() in _PERSONAL_REFS:
-        return None, _lat, _lon
+        return _name, _lat, _lon
     result = resolve(raw)
     if result is None:
         # Geocoding failed — use profile coords silently
-        return None, _lat, _lon
-    lat, lon, _ = result
-    return None, lat, lon  # pass resolved coords directly
+        return _name, _lat, _lon
+    lat, lon, canon = result
+    return canon, lat, lon
 
 
 def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | None]:
@@ -259,8 +266,8 @@ def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | Non
 
     # ── Weather ────────────────────────────────────────────────────────────────
     if a == "weather_now":
-        loc, lat, lon = _loc(action.get("location"), _lat, _lon)
-        data = wx.current_conditions(location=loc, lat=lat, lon=lon)
+        loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
+        data = wx.current_conditions(lat=lat, lon=lon, name=loc)
         return (
             f"Current weather at {data['location']}:\n"
             f"  {data['description']}, {data['temperature_c']}°C\n"
@@ -268,9 +275,9 @@ def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | Non
         ), data
 
     if a == "weather_forecast":
-        loc, lat, lon = _loc(action.get("location"), _lat, _lon)
+        loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
         days = action.get("days", 7)
-        fc = wx.forecast(location=loc, lat=lat, lon=lon, days=days)
+        fc = wx.forecast(lat=lat, lon=lon, days=days, name=loc)
         lines = [f"Weather forecast — {fc['location']} ({days} days):"]
         lines.append(_fmt_forecast(fc["days"]))
         if fc.get("soil_moisture_now") is not None:
@@ -278,8 +285,8 @@ def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | Non
         return "\n".join(lines), fc
 
     if a == "spray_safe_tomorrow":
-        loc, lat, lon = _loc(action.get("location"), _lat, _lon)
-        result = wx.spray_safe_tomorrow(location=loc, lat=lat, lon=lon)
+        loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
+        result = wx.spray_safe_tomorrow(lat=lat, lon=lon, name=loc)
         status = "SAFE to spray" if result["safe_to_spray"] else "NOT safe to spray"
         reasons = "\n  ".join(result["reasons"])
         lines = [f"Tomorrow ({result['date']}): {status}", f"  {reasons}"]
@@ -312,8 +319,8 @@ def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | Non
         return "\n".join(lines), result
 
     if a == "rainfall_history":
-        loc, lat, lon = _loc(action.get("location"), _lat, _lon)
-        r = wx.historical_rainfall(location=loc, lat=lat, lon=lon,
+        loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
+        r = wx.historical_rainfall(lat=lat, lon=lon, name=loc,
                                    start=action.get("start"), end=action.get("end"))
         lines = [f"Rainfall — {r['location']} ({r['start']} to {r['end']}) — total: {r['total_mm']}mm"]
         for month, mm in r["monthly_mm"].items():
@@ -344,22 +351,21 @@ def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | Non
 
     # ── Soil ───────────────────────────────────────────────────────────────────
     if a == "soil_data":
-        loc = action.get("location")
         plot_name = action.get("plot")
-        lat = lon = None
         if plot_name:
+            # Named plot has explicit coords
             plot = tools.get_plot(plot_name)
             if plot and plot.get("lat"):
-                lat, lon = plot["lat"], plot["lon"]
-                loc = plot_name
-        if not loc and not lat:
-            lat, lon = _lat, _lon
-            loc = _name
-        data = get_soil(location=loc, lat=lat, lon=lon)
+                data = get_soil(lat=plot["lat"], lon=plot["lon"],
+                                location=plot.get("name", plot_name))
+                return format_soil(data), data
+        # Fall back to location resolution (handles personal refs + geocoding)
+        loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
+        data = get_soil(lat=lat, lon=lon, location=loc)
         return format_soil(data), data
 
     # ── Summary ────────────────────────────────────────────────────────────────
-    if a == "season_summary":
+    if a in ("season_summary", "summary"):
         s = tools.season_summary()
         return (
             f"Season summary:\n"
@@ -382,6 +388,7 @@ _FOLLOW_UPS = {
     "log_observation": "Want to log what treatment you applied?",
     "spray_history": "Noticed any missed sprays in the schedule?",
     "season_summary": "Want to see crop history or rainfall since planting?",
+    "summary": "Want to see crop history or rainfall since planting?",
     "plant_crop": "Want to pull weather history since planting date?",
     "soil_data": "Want disease risk advice based on this soil type?",
     "disease_info": "Want to log a treatment or observation?",

@@ -10,7 +10,8 @@ from modules.farming.geocode import resolve
 
 _URL        = "https://rest.isric.org/soilgrids/v2.0/properties/query"
 _PROPERTIES = ["phh2o", "nitrogen", "ocd", "clay", "sand"]
-_DEPTH      = "0-30cm"
+# SoilGrids valid depth labels for 0–30cm surface layer
+_DEPTHS     = ["0-5cm", "5-15cm", "15-30cm"]
 
 
 def get_soil(
@@ -31,41 +32,46 @@ def get_soil(
         name = location or f"{lat:.2f},{lon:.2f}"
 
     try:
-        resp = httpx.get(
-            _URL,
-            params={
-                "lon": lon, "lat": lat,
-                "property": _PROPERTIES,
-                "depth": _DEPTH,
-                "value": "mean",
-            },
-            timeout=15.0,
-        )
+        # SoilGrids requires repeated params for multiple properties/depths;
+        # use list-of-tuples so httpx sends property=x&property=y (not property[]=x).
+        params = [("lon", lon), ("lat", lat), ("value", "mean")]
+        for p in _PROPERTIES:
+            params.append(("property", p))
+        for d in _DEPTHS:
+            params.append(("depth", d))
+
+        resp = httpx.get(_URL, params=params, timeout=20.0)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
         return {"error": f"SoilGrids API error: {e}"}
 
     props = data.get("properties", {}).get("layers", [])
-    detail: dict[str, Any] = {"location": name, "depth": _DEPTH}
-
+    # Aggregate mean values across the three 0–30cm sub-layers
+    accum: dict[str, list[float]] = {}
     for layer in props:
         prop_name = layer.get("name", "")
         for d in layer.get("depths", []):
-            if d.get("label") == _DEPTH:
+            if d.get("label") in _DEPTHS:
                 val = d.get("values", {}).get("mean")
-                if val is None:
-                    continue
-                if prop_name == "phh2o":
-                    detail["ph"] = round(val / 10, 1)
-                elif prop_name == "nitrogen":
-                    detail["nitrogen_g_kg"] = round(val / 100, 2)
-                elif prop_name == "ocd":
-                    detail["organic_carbon_g_kg"] = round(val / 10, 2)
-                elif prop_name == "clay":
-                    detail["clay_pct"] = round(val / 10, 1)
-                elif prop_name == "sand":
-                    detail["sand_pct"] = round(val / 10, 1)
+                if val is not None:
+                    accum.setdefault(prop_name, []).append(val)
+
+    detail: dict[str, Any] = {"location": name, "depth": "0-30cm"}
+
+    def _avg(vals: list[float]) -> float:
+        return sum(vals) / len(vals) if vals else 0.0
+
+    if "phh2o" in accum:
+        detail["ph"] = round(_avg(accum["phh2o"]) / 10, 1)
+    if "nitrogen" in accum:
+        detail["nitrogen_g_kg"] = round(_avg(accum["nitrogen"]) / 100, 2)
+    if "ocd" in accum:
+        detail["organic_carbon_g_kg"] = round(_avg(accum["ocd"]) / 10, 2)
+    if "clay" in accum:
+        detail["clay_pct"] = round(_avg(accum["clay"]) / 10, 1)
+    if "sand" in accum:
+        detail["sand_pct"] = round(_avg(accum["sand"]) / 10, 1)
 
     if len(detail) <= 2:
         return {"error": "No soil data returned for this location", "location": name}
