@@ -61,6 +61,25 @@ def _build_context(profile: dict) -> dict:
 
 GOODBYE = {"exit", "quit", "bye", "/exit", "/quit"}
 
+# Words that mean "yes, do what you just offered"
+_CONFIRMATIONS = {"sure", "yes", "yeah", "yep", "ok", "okay", "go ahead", "do it", "haan", "ha"}
+
+# Maps each follow-up prompt to the query GK should run when user confirms
+_FOLLOW_UP_ACTIONS = {
+    "Want the 7-day forecast or spray safety check?":        "7 day weather forecast",
+    "Want me to check if it's safe to spray tomorrow?":      "is it safe to spray tomorrow",
+    "Want to check how this affects your monthly budget?":   "show my monthly budget status",
+    "Would you like to see where you can cut back this month?": "show spending breakdown this month",
+    "Want me to suggest which categories to trim?":          "suggest which budget categories to cut",
+    "Want to set a monthly savings amount toward this goal?":"how should I save for my goal",
+    "Want to log what treatment you applied?":               "log a spray treatment",
+    "Noticed any missed sprays in the schedule?":            "show spray history",
+    "Want to see crop history or rainfall since planting?":  "show crop weather history",
+    "Want to pull weather history since planting date?":     "show weather history since planting",
+    "Want disease risk advice based on this soil type?":     "what disease risk does this soil have",
+    "Want to log a treatment or observation?":               "log a field observation",
+}
+
 
 def print_response(responses):
     for r in responses:
@@ -78,6 +97,8 @@ def main():
     _warmup_models()
     print('Ready. Type your query. "exit" to quit.\n')
 
+    pending_follow_up: str | None = None   # last follow-up prompt shown
+
     while True:
         try:
             query = input("You: ").strip()
@@ -90,6 +111,14 @@ def main():
         if query.lower() in GOODBYE:
             print("GK: Goodbye.")
             break
+
+        # ── Follow-up confirmation ─────────────────────────────────────────────
+        if query.lower() in _CONFIRMATIONS and pending_follow_up:
+            mapped = _FOLLOW_UP_ACTIONS.get(pending_follow_up)
+            if mapped:
+                print(f"  (following up: {mapped})")
+                query = mapped
+            pending_follow_up = None
 
         # ── Sanitize input ────────────────────────────────────────────────────
         san = sanitize_input(query)
@@ -113,7 +142,11 @@ def main():
         latency_ms = int((time.monotonic() - t0) * 1000)
         print_response(responses)
 
+        # Track last follow-up so user can confirm with "sure/yes"
+        pending_follow_up = None
         for r in responses:
+            if r.follow_up:
+                pending_follow_up = r.follow_up
             memory.log_query_done(
                 event_id=event_id,
                 module=r.module,
