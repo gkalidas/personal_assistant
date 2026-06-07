@@ -15,14 +15,14 @@ See [docs/design.md](docs/design.md) for the full system design, confirmed decis
 ## Setup
 
 ```bash
-source ~/envs/evn_gov_schemes/bin/activate
+source ~/envs/evn_personal_assistant/bin/activate
 pip install -r requirements.txt
 ```
 
 ## Project Structure
 
 ```
-gk/
+personal_assistant/
 ├── docs/           # Design documents
 ├── modules/        # Individual assistant modules (farming, finance, health, ...)
 ├── core/           # Router, memory, input layer, diary, knowledge graph
