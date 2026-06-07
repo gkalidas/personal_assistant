@@ -127,10 +127,16 @@ _PERSONAL_REFS = {
 
 
 def _loc(raw: str | None, _lat, _lon) -> tuple[str | None, float | None, float | None]:
-    """If location is a personal reference, use profile coords instead."""
+    """Resolve location to (loc_str, lat, lon).
+    Personal references and failed geocodes fall back to profile coords."""
     if not raw or raw.lower().strip() in _PERSONAL_REFS:
         return None, _lat, _lon
-    return raw, None, None
+    result = resolve(raw)
+    if result is None:
+        # Geocoding failed — use profile coords silently
+        return None, _lat, _lon
+    lat, lon, _ = result
+    return None, lat, lon  # pass resolved coords directly
 
 
 def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | None]:
