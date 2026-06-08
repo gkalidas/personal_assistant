@@ -35,7 +35,7 @@ def _deg_dir(deg: float) -> str:
 class WeatherCache:
     TTL = 300   # 5 minutes
 
-    def __init__(self, lat: float = 17.6667, lon: float = 75.8000,
+    def __init__(self, lat: float = 18.1617, lon: float = 75.4218,
                  location: str = "Barloni, Solapur"):
         self.lat = lat
         self.lon = lon
