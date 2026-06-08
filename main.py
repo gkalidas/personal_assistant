@@ -14,11 +14,12 @@ log = logging.getLogger("gk.main")
 
 import httpx
 from core import memory
-from core.router import dispatch, ROUTER_MODEL, OLLAMA_URL
+from core.config import OLLAMA_URL, TEXT_MODEL
+from core.router import dispatch, ROUTER_MODEL
 from core.sanitizer import sanitize_input, redact_pii
-from modules.finance.module import FinanceModule, TEXT_MODEL as FINANCE_MODEL
-from modules.farming.module import FarmingModule, TEXT_MODEL as FARMING_MODEL
-from modules.health.module import HealthModule, TEXT_MODEL as HEALTH_MODEL
+from modules.finance.module import FinanceModule
+from modules.farming.module import FarmingModule
+from modules.health.module import HealthModule
 from modules.system.module import SystemModule
 from modules.diary.module import DiaryModule
 
@@ -34,7 +35,7 @@ MODULES = {
 
 def _warmup_models() -> None:
     """Load each model into Ollama memory sequentially at startup."""
-    models = list(dict.fromkeys([ROUTER_MODEL, FINANCE_MODEL, FARMING_MODEL, HEALTH_MODEL]))
+    models = list(dict.fromkeys([ROUTER_MODEL, TEXT_MODEL]))
     for model in models:
         print(f"  Loading {model}...", end=" ", flush=True)
         t0 = time.monotonic()
@@ -92,6 +93,7 @@ _FOLLOW_UP_ACTIONS = {
     "Want to pull weather history since planting date?":     "show weather history since planting",
     "Want disease risk advice based on this soil type?":     "what disease risk does this soil have",
     "Want to log a treatment or observation?":               "log a field observation",
+    "Want to compare prices across more markets or check a different district?": "show pomegranate prices in all Maharashtra markets",
 }
 
 

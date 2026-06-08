@@ -152,7 +152,8 @@ def _execute_action(action: dict) -> tuple[str, dict | None]:
             lines.append("\nBy category:")
             for cat, types in s["breakdown"].items():
                 for t, amt in types.items():
-                    lines.append(f"  {cat} ({t}): ₹{amt:,.0f}")
+                    if amt:
+                        lines.append(f"  {cat} ({t}): ₹{amt:,.0f}")
         return "\n".join(lines), s
 
     if a == "budget_status":
