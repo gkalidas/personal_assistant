@@ -15,6 +15,7 @@ from modules.farming import db, tools
 from modules.farming import weather as wx
 from modules.farming.soil import get_soil, format_soil
 from modules.farming.knowledge import kb_context_for_llm, list_crops_with_kb, format_disease_summary
+from modules.farming.mandi import get_prices, format_prices
 from modules.farming.farming_client import analyse_photo, format_diagnosis, is_running as farming_server_running
 from modules.farming.geocode import resolve
 
@@ -51,6 +52,7 @@ Actions:
   {"action": "open_observations"}
   {"action": "disease_info", "crop": "<crop name or null if not specified>", "condition": "<disease name or null>"}
   {"action": "crop_history", "plot": "<plot_name>"}
+  {"action": "mandi_price", "commodity": "<crop name>", "district": "<district or null>"}
   {"action": "chat", "reply": "<response for conversational or ambiguous queries>"}
 
 Examples (follow this format exactly):
@@ -65,6 +67,12 @@ Examples (follow this format exactly):
 
   User: what disease affects pomegranate in monsoon
   → {"action": "disease_info", "crop": "pomegranate", "condition": null}
+
+  User: what is today's pomegranate price at mandi
+  → {"action": "mandi_price", "commodity": "pomegranate", "district": null}
+
+  User: onion rates in Solapur
+  → {"action": "mandi_price", "commodity": "onion", "district": "Solapur"}
 
   User: my plants have yellow spots, what disease is it?
   → {"action": "disease_info", "crop": null, "condition": "yellow spots"}
@@ -277,6 +285,19 @@ def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | Non
             lines.append(f"  {o['date']} | {o['plot_name']} | {o['type']}{sev}: {o['description'][:80]}")
         return "\n".join(lines), obs
 
+    # ── Mandi (APMC) prices ────────────────────────────────────────────────────
+    if a == "mandi_price":
+        crop = action.get("commodity") or action.get("crop")
+        if not crop:
+            known = list_crops_with_kb()
+            return (
+                f"Which crop price do you want? e.g. pomegranate, onion, sugarcane.\n"
+                f"Crops I know: {', '.join(known)}"
+            ), None
+        district = action.get("district") or None
+        data = get_prices(crop, district=district)
+        return format_prices(data), data
+
     # ── Disease knowledge base ─────────────────────────────────────────────────
     if a == "disease_info":
         crop = action.get("crop") or None
@@ -430,6 +451,7 @@ def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | Non
 
 
 _FOLLOW_UPS = {
+    "mandi_price": "Want to compare prices across more markets or check a different district?",
     "weather_forecast": "Want me to check if it's safe to spray tomorrow?",
     "weather_now": "Want the 7-day forecast or spray safety check?",
     "log_observation": "Want to log what treatment you applied?",
