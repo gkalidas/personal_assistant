@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from core.base_module import BaseModule, ModuleResponse
+from core.memory import recent_events
 from core.sanitizer import validate_action
 from modules.finance import db, tools
 
@@ -17,33 +18,32 @@ _SYSTEM = """You are the finance advisor inside GK, a private personal assistant
 The user is Ganesh — a farmer and entrepreneur tracking personal and farm finances.
 Every answer should move him toward wealth.
 
-You have these capabilities:
-- Log an expense or income
-- Show monthly summary (income, expenses, net, by category)
-- Set or check budgets per category
-- Track savings goals
+Respond ONLY with one JSON action object. No markdown, no explanation.
 
-When the user wants to log a transaction, extract:
-  {"action": "log", "amount": <number>, "type": "expense"|"income", "category": "<string>", "description": "<string>"}
-
-When they want a summary:
+Actions:
+  {"action": "log", "amount": <number>, "type": "expense"|"income", "category": "<string>", "description": "<string or null>"}
   {"action": "summary", "month": "<YYYY-MM or null>"}
-
-When they want budget status:
   {"action": "budget_status", "month": "<YYYY-MM or null>"}
-
-When they want to set a budget:
   {"action": "set_budget", "category": "<string>", "monthly_cap": <number>}
-
-When they want to add a savings goal:
   {"action": "add_goal", "name": "<string>", "target": <number>, "deadline": "<YYYY-MM-DD or null>"}
-
-When they want to see goals:
   {"action": "list_goals"}
+  {"action": "chat", "reply": "<response for conversational or ambiguous queries>"}
 
-Respond ONLY with a JSON action object (no markdown, no explanation).
-If the query is ambiguous or conversational (not a clear finance action), respond:
-  {"action": "chat", "reply": "<your response>"}"""
+Examples (follow this format exactly):
+  User: spent 800 on drip repair
+  → {"action": "log", "amount": 800, "type": "expense", "category": "Farm Maintenance", "description": "Drip repair"}
+
+  User: earned 25000 from pomegranate sale
+  → {"action": "log", "amount": 25000, "type": "income", "category": "Crop Sale", "description": "Pomegranate"}
+
+  User: show this month's summary
+  → {"action": "summary", "month": null}
+
+  User: set budget 10000 for seeds per month
+  → {"action": "set_budget", "category": "Seeds", "monthly_cap": 10000}
+
+  User: add goal buy pump target 50000
+  → {"action": "add_goal", "name": "Buy Water Pump", "target": 50000, "deadline": null}"""
 
 
 def _lean_profile(context: dict) -> str:
@@ -67,15 +67,33 @@ def _lean_profile(context: dict) -> str:
     return "\n" + " | ".join(parts)
 
 
+def _recent_history(limit: int = 4) -> list[dict]:
+    """Fetch last N finance query/response pairs for conversation context."""
+    try:
+        evts = recent_events(module="finance", limit=limit * 2)
+        pairs = []
+        for e in reversed(evts):
+            q = e.get("query", "").strip()
+            r = e.get("response", "").strip()
+            if q and r and len(pairs) < limit:
+                pairs.append({"role": "user", "content": q})
+                pairs.append({"role": "assistant", "content": r})
+        return pairs
+    except Exception:
+        return []
+
+
 def _call_llm(query: str, context: dict) -> dict:
     profile_note = _lean_profile(context)
     today = date.today().isoformat()
     profile_note += f"\nToday: {today} (use this as current date)"
 
-    messages = [
-        {"role": "system", "content": _SYSTEM + profile_note},
-        {"role": "user", "content": query},
-    ]
+    history = _recent_history(limit=4)
+    messages = (
+        [{"role": "system", "content": _SYSTEM + profile_note}]
+        + history
+        + [{"role": "user", "content": query}]
+    )
     payload = {
         "model": TEXT_MODEL,
         "messages": messages,

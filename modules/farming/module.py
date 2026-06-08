@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 
 from core.base_module import BaseModule, ModuleResponse
+from core.memory import recent_events
 from core.sanitizer import validate_action
 from modules.farming import db, tools
 from modules.farming import weather as wx
@@ -19,46 +20,43 @@ TEXT_MODEL = os.getenv("TEXT_MODEL", "qwen3:1.7b")
 _SYSTEM = """You are the farming advisor inside GK — a private personal assistant for Ganesh, a farmer in Maharashtra, India.
 You know his plots, crops, spray schedule, and local weather. Every answer should move him toward better yield and profit.
 
-Capabilities (respond ONLY with one JSON action object):
+Respond ONLY with one JSON action object. No markdown, no explanation.
 
-Plot management:
-  {"action": "add_plot", "name": "<string>", "area_acres": <number>, "soil_type": "<string>", "location": "<village/city>"}
-  {"action": "list_plots"}
-
-Crop tracking:
-  {"action": "plant_crop", "plot": "<plot_name>", "crop": "<string>", "variety": "<string>", "planted_date": "<YYYY-MM-DD>", "expected_harvest": "<YYYY-MM-DD>"}
-  {"action": "list_crops", "plot": "<plot_name or null>"}
-  {"action": "harvest_crop", "crop_id": <number>, "yield_kg": <number>}
-
-Spray logs:
-  {"action": "log_spray", "plot": "<plot_name>", "chemical": "<string>", "quantity": "<string>", "reason": "<string>"}
-  {"action": "spray_history", "plot": "<plot_name>"}
-
-Observations / disease / pest:
-  {"action": "log_observation", "plot": "<plot_name>", "type": "disease|pest|weather_damage|growth|soil|other", "description": "<string>", "severity": "low|medium|high"}
-  {"action": "open_observations"}
-
-Disease knowledge base:
-  {"action": "disease_info", "crop": "<string>", "condition": "<disease name or empty for all>"}
-
-Disease diagnosis from photo:
-  {"action": "diagnose_photo", "image_path": "<path>", "crop": "<string>", "plot": "<plot_name>"}
-
-Weather:
+Actions:
   {"action": "weather_now", "location": "<village/city or null>"}
   {"action": "weather_forecast", "location": "<village/city or null>", "days": <1-7>}
   {"action": "spray_safe_tomorrow", "location": "<village/city or null>"}
-  {"action": "rainfall_history", "location": "<village/city or null>", "start": "<YYYY-MM-DD>", "end": "<YYYY-MM-DD>"}
-  {"action": "crop_history", "plot": "<plot_name>"}
-
-Soil analysis:
+  {"action": "rainfall_history", "location": "<village/city or null>", "start": "<YYYY-MM-DD or null>", "end": "<YYYY-MM-DD or null>"}
   {"action": "soil_data", "location": "<village/city or null>", "plot": "<plot_name or null>"}
-
-Summary:
   {"action": "season_summary"}
+  {"action": "list_plots"}
+  {"action": "add_plot", "name": "<string>", "area_acres": <number>, "soil_type": "<string>", "location": "<village/city>"}
+  {"action": "plant_crop", "plot": "<plot_name>", "crop": "<string>", "variety": "<string or null>", "planted_date": "<YYYY-MM-DD or null>"}
+  {"action": "list_crops", "plot": "<plot_name or null>"}
+  {"action": "harvest_crop", "crop_id": <number>, "yield_kg": <number>}
+  {"action": "log_spray", "plot": "<plot_name>", "chemical": "<string>", "quantity": "<string or null>", "reason": "<string or null>"}
+  {"action": "spray_history", "plot": "<plot_name>"}
+  {"action": "log_observation", "plot": "<plot_name>", "type": "disease|pest|weather_damage|growth|soil|other", "description": "<string>", "severity": "low|medium|high"}
+  {"action": "open_observations"}
+  {"action": "disease_info", "crop": "<string>", "condition": "<disease name or null>"}
+  {"action": "crop_history", "plot": "<plot_name>"}
+  {"action": "chat", "reply": "<response for conversational or ambiguous queries>"}
 
-Conversational / advice:
-  {"action": "chat", "reply": "<your response>"}"""
+Examples (follow this format exactly):
+  User: weather today at my farm
+  → {"action": "weather_now", "location": null}
+
+  User: will it rain tomorrow — is it safe to spray?
+  → {"action": "spray_safe_tomorrow", "location": null}
+
+  User: 7 day forecast for Solapur
+  → {"action": "weather_forecast", "location": "Solapur", "days": 7}
+
+  User: what disease affects pomegranate in monsoon
+  → {"action": "disease_info", "crop": "pomegranate", "condition": null}
+
+  User: log copper spray on gk_north plot, 250g per 15L
+  → {"action": "log_spray", "plot": "gk_north", "chemical": "Copper Oxychloride", "quantity": "250g/15L", "reason": null}"""
 
 
 def _profile_summary(context: dict) -> str:
@@ -80,6 +78,22 @@ def _profile_summary(context: dict) -> str:
     return "\n".join(lines)
 
 
+def _recent_history(limit: int = 4) -> list[dict]:
+    """Fetch last N farming query/response pairs for conversation context."""
+    try:
+        evts = recent_events(module="farming", limit=limit * 2)
+        pairs = []
+        for e in reversed(evts):
+            q = e.get("query", "").strip()
+            r = e.get("response", "").strip()
+            if q and r and len(pairs) < limit:
+                pairs.append({"role": "user", "content": q})
+                pairs.append({"role": "assistant", "content": r})
+        return pairs
+    except Exception:
+        return []
+
+
 def _call_llm(query: str, context: dict) -> dict:
     from datetime import date as _date
     extras = "\n" + _profile_summary(context)
@@ -94,12 +108,14 @@ def _call_llm(query: str, context: dict) -> dict:
 
     extras += f"\nCrops with disease KB: {', '.join(list_crops_with_kb())}"
 
+    history = _recent_history(limit=4)
     payload = {
         "model": TEXT_MODEL,
-        "messages": [
-            {"role": "system", "content": _SYSTEM + extras},
-            {"role": "user", "content": query},
-        ],
+        "messages": (
+            [{"role": "system", "content": _SYSTEM + extras}]
+            + history
+            + [{"role": "user", "content": query}]
+        ),
         "stream": False,
         "format": "json",
         "think": False,  # disable qwen3 extended thinking for faster JSON output
