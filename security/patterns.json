@@ -1,0 +1,303 @@
+{
+  "_meta": {
+    "version": 1,
+    "last_updated": "2026-06-08",
+    "source": "GK Security Guardian — curated LLM attack pattern library",
+    "description": "Regex patterns for prompt injection and jailbreak detection. Auto-updated by guardian.py.",
+    "total_patterns": 45,
+    "last_sources": []
+  },
+  "injection_patterns": [
+    {
+      "id": "INJ-001",
+      "pattern": "ignore\\s+(all\\s+)?(previous|prior|above)\\s+instructions?",
+      "severity": "high",
+      "category": "instruction_override"
+    },
+    {
+      "id": "INJ-002",
+      "pattern": "forget\\s+(everything|all)\\s+(you|i)\\s+(know|said|told)",
+      "severity": "high",
+      "category": "instruction_override"
+    },
+    {
+      "id": "INJ-003",
+      "pattern": "you\\s+are\\s+now\\s+a?\\s*(different|new|another)?\\s*(assistant|ai|model|bot|system|dan)",
+      "severity": "high",
+      "category": "persona_hijack"
+    },
+    {
+      "id": "INJ-004",
+      "pattern": "new\\s+(system\\s+)?instructions?\\s*:",
+      "severity": "high",
+      "category": "instruction_override"
+    },
+    {
+      "id": "INJ-005",
+      "pattern": "disregard\\s+(all\\s+|the\\s+)?(prior|previous|above)",
+      "severity": "high",
+      "category": "instruction_override"
+    },
+    {
+      "id": "INJ-006",
+      "pattern": "override\\s+(previous\\s+)?instructions?",
+      "severity": "high",
+      "category": "instruction_override"
+    },
+    {
+      "id": "INJ-007",
+      "pattern": "act\\s+as\\s+if\\s+you\\s+(have\\s+no|don'?t\\s+have)",
+      "severity": "medium",
+      "category": "persona_hijack"
+    },
+    {
+      "id": "INJ-008",
+      "pattern": "from\\s+now\\s+on\\s+you\\s+(must|will|should)",
+      "severity": "medium",
+      "category": "instruction_override"
+    },
+    {
+      "id": "INJ-009",
+      "pattern": "your\\s+new\\s+(role|persona|identity|task)\\s+is",
+      "severity": "high",
+      "category": "persona_hijack"
+    },
+    {
+      "id": "INJ-010",
+      "pattern": "<\\s*system\\s*>",
+      "severity": "high",
+      "category": "tag_injection"
+    },
+    {
+      "id": "INJ-011",
+      "pattern": "\\[system\\]",
+      "severity": "high",
+      "category": "tag_injection"
+    },
+    {
+      "id": "INJ-012",
+      "pattern": "###\\s*(system|instruction|prompt)",
+      "severity": "high",
+      "category": "tag_injection"
+    },
+    {
+      "id": "INJ-013",
+      "pattern": "ignore\\s+prior",
+      "severity": "high",
+      "category": "instruction_override"
+    },
+    {
+      "id": "INJ-014",
+      "pattern": "\\byou\\s+are\\s+now\\s+a?\\s*DAN\\b",
+      "severity": "critical",
+      "category": "jailbreak_persona"
+    },
+    {
+      "id": "INJ-015",
+      "pattern": "do\\s+anything\\s+now",
+      "severity": "high",
+      "category": "jailbreak_persona"
+    },
+    {
+      "id": "INJ-016",
+      "pattern": "jailbreak\\s+(mode|enabled|activated)",
+      "severity": "critical",
+      "category": "jailbreak_persona"
+    },
+    {
+      "id": "INJ-017",
+      "pattern": "developer\\s+(mode|override)\\s+(enabled|on|activated)",
+      "severity": "critical",
+      "category": "jailbreak_persona"
+    },
+    {
+      "id": "INJ-018",
+      "pattern": "pretend\\s+(you\\s+are|you're|to\\s+be)\\s+(a\\s+)?(different|unrestricted|uncensored)",
+      "severity": "high",
+      "category": "persona_hijack"
+    },
+    {
+      "id": "INJ-019",
+      "pattern": "simulate\\s+(being|a)\\s+(different|unrestricted|evil|malicious)\\s+(ai|assistant|model)",
+      "severity": "high",
+      "category": "persona_hijack"
+    },
+    {
+      "id": "INJ-020",
+      "pattern": "your\\s+(restrictions|guidelines|rules|safety)\\s+(are|have been)\\s+(removed|lifted|disabled|off)",
+      "severity": "critical",
+      "category": "restriction_bypass"
+    },
+    {
+      "id": "INJ-021",
+      "pattern": "output\\s+(only|just)\\s+the\\s+(raw|unfiltered|uncensored)",
+      "severity": "medium",
+      "category": "filter_bypass"
+    },
+    {
+      "id": "INJ-022",
+      "pattern": "respond\\s+(without|ignoring)\\s+(your\\s+)?(safety|restrictions|guidelines|filters)",
+      "severity": "high",
+      "category": "filter_bypass"
+    },
+    {
+      "id": "INJ-023",
+      "pattern": "this\\s+is\\s+a\\s+(test|simulation|hypothetical|fictional)\\s+(scenario|situation|context)",
+      "severity": "low",
+      "category": "context_manipulation"
+    },
+    {
+      "id": "INJ-024",
+      "pattern": "for\\s+(research|educational|academic)\\s+purposes?\\s+only",
+      "severity": "low",
+      "category": "context_manipulation"
+    },
+    {
+      "id": "INJ-025",
+      "pattern": "\\beval\\s*\\(",
+      "severity": "critical",
+      "category": "code_injection"
+    },
+    {
+      "id": "INJ-026",
+      "pattern": "exec\\s*\\(['\\\"]",
+      "severity": "critical",
+      "category": "code_injection"
+    },
+    {
+      "id": "INJ-027",
+      "pattern": "__import__\\s*\\(",
+      "severity": "critical",
+      "category": "code_injection"
+    },
+    {
+      "id": "INJ-028",
+      "pattern": "os\\.system\\s*\\(",
+      "severity": "critical",
+      "category": "command_injection"
+    },
+    {
+      "id": "INJ-029",
+      "pattern": "subprocess\\.(run|call|Popen)",
+      "severity": "high",
+      "category": "command_injection"
+    },
+    {
+      "id": "INJ-030",
+      "pattern": "\\$\\(.*\\)|`[^`]+`",
+      "severity": "high",
+      "category": "command_injection"
+    },
+    {
+      "id": "INJ-031",
+      "pattern": "\\.\\.\\/.*\\.\\.",
+      "severity": "high",
+      "category": "path_traversal"
+    },
+    {
+      "id": "INJ-032",
+      "pattern": "\\bUNION\\s+SELECT\\b",
+      "severity": "critical",
+      "category": "sql_injection"
+    },
+    {
+      "id": "INJ-033",
+      "pattern": "';\\s*DROP\\s+TABLE",
+      "severity": "critical",
+      "category": "sql_injection"
+    },
+    {
+      "id": "INJ-034",
+      "pattern": "';\\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER)",
+      "severity": "critical",
+      "category": "sql_injection"
+    },
+    {
+      "id": "INJ-035",
+      "pattern": "many\\s+shot\\s+jailbreak",
+      "severity": "high",
+      "category": "jailbreak_technique"
+    },
+    {
+      "id": "INJ-036",
+      "pattern": "repeat\\s+after\\s+me.{0,50}(ignore|forget|override)",
+      "severity": "high",
+      "category": "repetition_attack"
+    },
+    {
+      "id": "INJ-037",
+      "pattern": "\\[INST\\]|\\[/INST\\]|<\\|im_start\\|>|<\\|im_end\\|>",
+      "severity": "high",
+      "category": "token_injection"
+    },
+    {
+      "id": "INJ-038",
+      "pattern": "\\\\n\\\\n###|\\\\n\\\\nHuman:|\\\\n\\\\nAssistant:",
+      "severity": "medium",
+      "category": "token_injection"
+    },
+    {
+      "id": "INJ-039",
+      "pattern": "base64\\.decode|atob\\(|fromBase64",
+      "severity": "medium",
+      "category": "encoding_attack"
+    },
+    {
+      "id": "INJ-040",
+      "pattern": "prompt\\s*injection|indirect\\s+injection|jailbreak\\s+payload",
+      "severity": "high",
+      "category": "meta_attack"
+    },
+    {
+      "id": "INJ-A01",
+      "pattern": "(grandma|grandmother).{0,50}(tell me|used to tell|bedtime story).{0,100}(how to|steps to|recipe for)",
+      "severity": "medium",
+      "category": "social_engineering",
+      "note": "Grandmother jailbreak — wraps harmful requests in emotional story framing"
+    },
+    {
+      "id": "INJ-A02",
+      "pattern": "hypothetically\\s+(speaking|if|say)\\s+.{0,50}(how\\s+(would|could|might)|what\\s+steps)",
+      "severity": "low",
+      "category": "context_manipulation",
+      "note": "Hypothetical framing to lower guard"
+    },
+    {
+      "id": "INJ-A03",
+      "pattern": "(token|character|word)\\s+(budget|limit|window).{0,30}(ignore|bypass|skip)",
+      "severity": "medium",
+      "category": "context_manipulation",
+      "note": "Token budget manipulation"
+    },
+    {
+      "id": "INJ-A04",
+      "pattern": "<\\s*(JAILBREAK|SYSTEM|INJECT|OVERRIDE|ADMIN)\\s*>",
+      "severity": "critical",
+      "category": "tag_injection",
+      "note": "Custom tag injection attempts"
+    },
+    {
+      "id": "INJ-A05",
+      "pattern": "(write|create|generate)\\s+(a\\s+)?story\\s+(where|in\\s+which|about).{0,50}(hacking|exploit|malware|ransomware)",
+      "severity": "high",
+      "category": "fictional_framing",
+      "note": "Fictional story framing for harmful content"
+    }
+  ],
+  "safe_domains": [
+    "api.open-meteo.com",
+    "archive-api.open-meteo.com",
+    "nominatim.openstreetmap.org",
+    "rest.isric.org",
+    "api.osv.dev",
+    "services.nvd.nist.gov"
+  ],
+  "sensitive_files": [
+    "user_profile.json",
+    "*.db",
+    ".env",
+    "*.key",
+    "*.pem",
+    "*.crt"
+  ]
+}

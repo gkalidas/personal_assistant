@@ -4,24 +4,29 @@ Input sanitizer and PII redactor.
 sanitize_input()  — cleans user query before it reaches the LLM.
 redact_pii()      — strips personal identifiers before writing to logs/DB.
 validate_action() — checks LLM JSON output has safe, expected field types.
+
+Injection patterns are loaded from security/patterns.json (auto-updated by
+the security guardian). Falls back to the built-in base set if not present.
 """
 
+import json
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 MAX_QUERY_LEN = 1000
 
-# Same injection patterns as guardrails.py (applied to user input too)
-_INJECTION_PATTERNS = [
+# Built-in base patterns — always active even if patterns.json is missing
+_BASE_INJECTION_PATTERNS = [
     r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?",
-    r"ignore\s+prior",                                            # "ignore prior and ..."
+    r"ignore\s+prior",
     r"forget\s+(everything|all)\s+(you|i)\s+(know|said|told)",
     r"you\s+are\s+now\s+a?\s*(different|new|another)?\s*(assistant|ai|model|bot|system|dan)",
-    r"\byou\s+are\s+now\s+a?\s*DAN\b",                           # DAN jailbreak
+    r"\byou\s+are\s+now\s+a?\s*DAN\b",
     r"new\s+(system\s+)?instructions?\s*:",
-    r"disregard\s+(?:all\s+|the\s+)?(prior|previous|above)",     # covers "disregard the above"
+    r"disregard\s+(?:all\s+|the\s+)?(prior|previous|above)",
     r"override\s+(previous\s+)?instructions?",
     r"act\s+as\s+if\s+you\s+(have\s+no|don'?t\s+have)",
     r"from\s+now\s+on\s+you\s+(must|will|should)",
@@ -30,7 +35,34 @@ _INJECTION_PATTERNS = [
     r"\[system\]",
     r"###\s*(system|instruction|prompt)",
 ]
-_INJECTION_RE = re.compile("|".join(_INJECTION_PATTERNS), re.IGNORECASE)
+
+_PATTERNS_FILE = Path(__file__).parent.parent / "security" / "patterns.json"
+
+
+def _load_injection_re() -> re.Pattern:
+    """Load all patterns: base set + any additions from security/patterns.json."""
+    patterns = list(_BASE_INJECTION_PATTERNS)
+    try:
+        if _PATTERNS_FILE.exists():
+            data = json.loads(_PATTERNS_FILE.read_text())
+            for p in data.get("injection_patterns", []):
+                pat = p.get("pattern", "")
+                if pat and pat not in patterns:
+                    patterns.append(pat)
+    except Exception:
+        pass  # silently use base set if file malformed
+    return re.compile("|".join(patterns), re.IGNORECASE)
+
+
+_INJECTION_RE: re.Pattern = _load_injection_re()
+
+
+def reload_patterns() -> int:
+    """Hot-reload injection patterns from security/patterns.json. Returns count."""
+    global _INJECTION_RE
+    _INJECTION_RE = _load_injection_re()
+    # Count active patterns by splitting alternatives
+    return len(_INJECTION_RE.pattern.split("|"))
 
 # PII patterns for India.
 # Order matters: more-specific patterns first to prevent overlap.

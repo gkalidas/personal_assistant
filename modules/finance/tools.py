@@ -38,12 +38,13 @@ def get_transactions(
     if type_:
         clauses.append("type = ?")
         params.append(type_)
-    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     params.append(limit)
+    base = "SELECT * FROM transactions"
+    if clauses:
+        base = base + " WHERE " + " AND ".join(clauses)
+    base = base + " ORDER BY ts DESC LIMIT ?"
     with conn() as c:
-        rows = c.execute(
-            f"SELECT * FROM transactions {where} ORDER BY ts DESC LIMIT ?", params
-        ).fetchall()
+        rows = c.execute(base, params).fetchall()
     return [dict(r) for r in rows]
 
 
