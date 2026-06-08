@@ -120,6 +120,7 @@ _ACTION_SCHEMA: dict[str, dict[str, dict[str, tuple]]] = {
         "summary":    {},
         "trend":      {"type": (str,), "days": (int, float, type(None))},
         "set_goal":   {"type": (str,), "target": (int, float)},
+        "nutrition":  {"topic": (str,)},
         "chat":       {"reply": (str,)},
     },
 }

@@ -44,14 +44,8 @@ sys.path.insert(0, str(PROJECT))
 LOG_DIR = PROJECT / "logs" / "security"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_DIR / "guardian.log"),
-        logging.StreamHandler(sys.stdout),
-    ],
-)
+from core.log import setup_security_logging
+setup_security_logging()
 log = logging.getLogger("guardian")
 
 # ── Scan schedules (seconds) ──────────────────────────────────────────────────

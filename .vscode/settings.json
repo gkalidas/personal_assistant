@@ -1,0 +1,4 @@
+{
+  "python.defaultInterpreterPath": "${env:HOME}/envs/evn_personal_assistant/bin/python",
+  "python.terminal.activateEnvironment": true
+}

@@ -1,6 +1,8 @@
 import json
+import logging
 import os
 import re
+import time
 from datetime import date
 from typing import Any
 
@@ -10,6 +12,8 @@ from core.base_module import BaseModule, ModuleResponse
 from core.memory import recent_events
 from core.sanitizer import validate_action
 from modules.finance import db, tools
+
+log = logging.getLogger(__name__)
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 TEXT_MODEL = os.getenv("TEXT_MODEL", "qwen3:1.7b")
@@ -108,10 +112,15 @@ def _call_llm(query: str, context: dict) -> dict:
         "format": "json",
         "think": False,  # disable qwen3 extended thinking for faster JSON output
     }
+    t0 = time.monotonic()
     resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=120.0)
     resp.raise_for_status()
-    content = resp.json()["message"]["content"]
-    return json.loads(content)
+    result = json.loads(resp.json()["message"]["content"])
+    ms = int((time.monotonic() - t0) * 1000)
+    log.debug("LLM %dms → action=%s", ms, result.get("action"))
+    if ms > 30_000:
+        log.warning("slow LLM response: %dms for query=%r", ms, query[:60])
+    return result
 
 
 def _execute_action(action: dict) -> tuple[str, dict | None]:
@@ -208,18 +217,31 @@ class FinanceModule(BaseModule):
         db.init()
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
-        action = _call_llm(query, context)
+        t0 = time.monotonic()
+        try:
+            action = _call_llm(query, context)
+        except Exception as e:
+            log.error("LLM call failed: %s", e, exc_info=True)
+            return ModuleResponse(
+                text="I couldn't process that — please try again.",
+                module=self.name,
+            )
+
         v = validate_action("finance", action)
+        action_name = v.action.get("action", "unknown")
+
         if not v.valid:
+            log.warning("action blocked action=%s errors=%s", action_name, v.errors)
             return ModuleResponse(
                 text=f"Action blocked by validator: {'; '.join(v.errors)}",
                 module=self.name,
             )
-        if v.warnings:
-            for w in v.warnings:
-                print(f"  [validator] {w}")
+        for w in v.warnings:
+            log.warning("validator: %s", w)
+
+        log.info("action=%s latency=%dms", action_name, int((time.monotonic() - t0) * 1000))
         text, data = _execute_action(v.action)
-        follow_up = _FOLLOW_UPS.get(v.action.get("action"))
+        follow_up = _FOLLOW_UPS.get(action_name)
         return ModuleResponse(
             text=text,
             module=self.name,

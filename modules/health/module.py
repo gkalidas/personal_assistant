@@ -1,5 +1,7 @@
 import json
+import logging
 import os
+import time
 from datetime import date
 from typing import Any
 
@@ -9,6 +11,8 @@ from core.base_module import BaseModule, ModuleResponse
 from core.memory import recent_events
 from core.sanitizer import validate_action
 from modules.health import db, tools
+
+log = logging.getLogger(__name__)
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 TEXT_MODEL = os.getenv("TEXT_MODEL", "qwen3:1.7b")
@@ -35,6 +39,7 @@ Actions:
   {"action": "summary"}
   {"action": "trend", "type": "bp|steps|weight|sleep|sugar", "days": <int>}
   {"action": "set_goal", "type": "steps|weight|sleep", "target": <float>}
+  {"action": "nutrition", "topic": "<general topic, e.g. protein intake, diabetes diet, iron deficiency>"}
   {"action": "chat", "reply": "<safe response or clarifying question>"}
 
 Examples (follow this format exactly):
@@ -61,6 +66,12 @@ Examples (follow this format exactly):
 
   User: today's health summary
   → {"action": "summary"}
+
+  User: what foods are good for a diabetic?
+  → {"action": "nutrition", "topic": "diabetes diet"}
+
+  User: how much protein do I need daily?
+  → {"action": "nutrition", "topic": "protein intake"}
 
   User: my sugar was high today
   → {"action": "chat", "reply": "What was the reading (mg/dL)? And was it fasting or after a meal?"}"""
@@ -116,9 +127,15 @@ def _call_llm(query: str, context: dict) -> dict:
         "format": "json",
         "think": False,
     }
+    t0 = time.monotonic()
     resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=120.0)
     resp.raise_for_status()
-    return json.loads(resp.json()["message"]["content"])
+    result = json.loads(resp.json()["message"]["content"])
+    ms = int((time.monotonic() - t0) * 1000)
+    log.debug("LLM %dms → action=%s", ms, result.get("action"))
+    if ms > 30_000:
+        log.warning("slow LLM response: %dms for query=%r", ms, query[:60])
+    return result
 
 
 # ── Format helpers ────────────────────────────────────────────────────────────
@@ -274,6 +291,77 @@ def _execute(action: dict) -> tuple[str, dict | None]:
         r = tools.set_goal(type_, target, unit)
         return f"Goal set: {type_} = {target} {unit}", r
 
+    if a == "nutrition":
+        topic = action.get("topic", "general nutrition")
+        lines = [
+            f"General nutrition guidance — {topic}:",
+            "  This is general information, not medical advice. Consult a registered dietitian",
+            "  or your doctor for personalised nutrition plans, especially with any health conditions.",
+            "",
+        ]
+        topic_lc = topic.lower()
+        if any(t in topic_lc for t in ("diabet", "sugar", "glucose")):
+            lines += [
+                "  Diabetes-friendly eating principles:",
+                "  • Choose low-glycaemic-index foods: lentils, legumes, oats, brown rice, vegetables",
+                "  • Limit refined carbs: white rice, maida, sugary drinks, sweets",
+                "  • Eat regular small meals — avoid long gaps to keep blood sugar stable",
+                "  • Fibre helps: include 4–5 servings of vegetables, whole grains daily",
+                "  • Protein at every meal (dal, curd, eggs, fish) slows glucose absorption",
+                "  • Check blood sugar before and 2h after meals to understand your body's response",
+            ]
+        elif any(t in topic_lc for t in ("protein", "muscle", "strength")):
+            lines += [
+                "  Protein guidance (general):",
+                "  • Typical intake: 0.8–1.2 g per kg body weight for sedentary to active adults",
+                "  • Good Indian sources: dal, rajma, chole, paneer, curd (dahi), eggs, fish, chicken",
+                "  • Spread protein across 3–4 meals for better absorption",
+                "  • Whey or plant protein supplements: not necessary if dal+curd+eggs are in daily diet",
+            ]
+        elif any(t in topic_lc for t in ("iron", "anaemia", "anemia", "hemoglobin")):
+            lines += [
+                "  Iron and anaemia (general):",
+                "  • Iron-rich foods: green leafy vegetables (palak, methi), jaggery, sesame, lentils,",
+                "    liver, red meat, fortified cereals",
+                "  • Pair iron-rich foods with Vitamin C (lemon juice, amla) to improve absorption",
+                "  • Avoid tea/coffee immediately after meals — tannins reduce iron absorption",
+                "  • If haemoglobin is low, see a doctor to confirm iron-deficiency (vs other causes)",
+            ]
+        elif any(t in topic_lc for t in ("weight loss", "lose weight", "obesity", "fat")):
+            lines += [
+                "  Weight management (general principles):",
+                "  • Sustainable deficit: reduce portion size, not eliminate food groups",
+                "  • Prioritise vegetables, dal, salad — high volume, low calories",
+                "  • Limit oil, ghee, fried foods, processed snacks, sugary drinks",
+                "  • Physical activity: 30–45 min brisk walking most days is evidence-backed",
+                "  • Avoid extreme diets (crash dieting slows metabolism over time)",
+            ]
+        elif any(t in topic_lc for t in ("bp", "blood pressure", "hypertension", "heart")):
+            lines += [
+                "  Heart-healthy / low-sodium eating (general):",
+                "  • Reduce salt: cook without added salt where possible, avoid papad, pickles, chips",
+                "  • DASH-pattern: more vegetables, fruits, low-fat dairy, whole grains; less red meat",
+                "  • Potassium helps (banana, sweet potato, spinach) — but ask doctor if on BP meds",
+                "  • Limit saturated fats: choose olive oil or small amounts of groundnut oil over ghee",
+                "  • Alcohol and smoking significantly worsen blood pressure — avoid/minimise",
+            ]
+        else:
+            lines += [
+                "  General balanced diet principles (Indian context):",
+                "  • Half plate: vegetables and salad at every main meal",
+                "  • Quarter plate: complex carbs (jowar, bajra, brown rice, whole wheat roti)",
+                "  • Quarter plate: protein (dal, legumes, curd, eggs, fish, lean meat)",
+                "  • Healthy fats: a small amount of cold-pressed oil, nuts, or seeds daily",
+                "  • Hydration: 2–3 litres water; limit packaged juices and sweetened drinks",
+                "  • Local seasonal produce is cheaper, fresher, and culturally appropriate",
+            ]
+        lines += [
+            "",
+            "  For a personalised plan (diabetes, kidney disease, heart conditions etc.),",
+            "  please consult a registered dietitian or your doctor.",
+        ]
+        return "\n".join(lines), None
+
     if a == "chat":
         return action.get("reply", ""), None
 
@@ -287,6 +375,7 @@ _FOLLOW_UPS = {
     "log_sleep":  "Want to see your sleep pattern this week?",
     "log_sugar":  "Want to see your blood sugar history?",
     "summary":    "Want to see trends for any specific metric?",
+    "nutrition":  "Want nutrition guidance for another topic (e.g. diabetes diet, iron, protein)?",
 }
 
 
@@ -302,16 +391,29 @@ class HealthModule(BaseModule):
         db.init()
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
-        action = _call_llm(query, context)
+        t0 = time.monotonic()
+        try:
+            action = _call_llm(query, context)
+        except Exception as e:
+            log.error("LLM call failed: %s", e, exc_info=True)
+            return ModuleResponse(
+                text="I couldn't process that — please try again.",
+                module=self.name,
+            )
+
         v = validate_action("health", action)
+        action_name = v.action.get("action", "unknown")
+
         if not v.valid:
+            log.warning("action blocked action=%s errors=%s", action_name, v.errors)
             return ModuleResponse(
                 text=f"Action blocked: {'; '.join(v.errors)}",
                 module=self.name,
             )
-        if v.warnings:
-            for w in v.warnings:
-                print(f"  [health validator] {w}")
+        for w in v.warnings:
+            log.warning("validator: %s", w)
+
+        log.info("action=%s latency=%dms", action_name, int((time.monotonic() - t0) * 1000))
         text, data = _execute(v.action)
-        follow_up = _FOLLOW_UPS.get(v.action.get("action"))
+        follow_up = _FOLLOW_UPS.get(action_name)
         return ModuleResponse(text=text, module=self.name, data=data, follow_up=follow_up)

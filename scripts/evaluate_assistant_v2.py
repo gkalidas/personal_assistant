@@ -154,10 +154,10 @@ def _general_llm_response(query: str) -> str:
         ],
         "stream": False,
         "think": False,
-        "options": {"num_predict": 250},
+        "options": {"num_predict": 350},
     }
     try:
-        resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=45.0)
+        resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=120.0)
         resp.raise_for_status()
         return resp.json()["message"]["content"].strip()
     except Exception as e:
@@ -225,18 +225,28 @@ Scoring guide:
 - FAIL (0-39): invents facts, dangerous advice, ignores missing context, wrong calculations"""
 
 
+def _escape_braces(s: str) -> str:
+    """Escape { and } so they survive str.format() as literal characters."""
+    return s.replace("{", "{{").replace("}", "}}")
+
+
 def _call_evaluator_llm(test_case: dict, response: str) -> dict:
-    """First-principles LLM judge. Returns parsed verdict dict or {} on failure."""
-    prompt = _EVALUATOR_TEMPLATE.format(
-        category=test_case.get("category", ""),
-        topic=test_case.get("topic", ""),
-        difficulty=test_case.get("difficulty", ""),
-        input=test_case.get("input", "")[:300],
-        expected_behavior=test_case.get("expected_behavior", ""),
-        hallucination_trap=test_case.get("hallucination_trap", ""),
-        pass_criteria="; ".join(test_case.get("pass_criteria", [])),
-        response=response[:600],
-    )
+    """First-principles LLM judge. Returns parsed verdict dict or {} on failure.
+    Retries once on failure to handle transient Ollama load issues."""
+    try:
+        prompt = _EVALUATOR_TEMPLATE.format(
+            category=_escape_braces(test_case.get("category", "")),
+            topic=_escape_braces(test_case.get("topic", "")),
+            difficulty=_escape_braces(test_case.get("difficulty", "")),
+            input=_escape_braces(test_case.get("input", "")[:300]),
+            expected_behavior=_escape_braces(test_case.get("expected_behavior", "")),
+            hallucination_trap=_escape_braces(test_case.get("hallucination_trap", "")),
+            pass_criteria=_escape_braces("; ".join(test_case.get("pass_criteria", []))),
+            response=_escape_braces(response[:600]),
+        )
+    except Exception as e:
+        return {}
+
     payload = {
         "model": TEXT_MODEL,
         "messages": [
@@ -246,14 +256,23 @@ def _call_evaluator_llm(test_case: dict, response: str) -> dict:
         "stream": False,
         "format": "json",
         "think": False,
-        "options": {"num_predict": 300},
+        "options": {"num_predict": 350},
     }
-    try:
-        resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=60.0)
-        resp.raise_for_status()
-        return json.loads(resp.json()["message"]["content"])
-    except Exception:
-        return {}
+
+    for attempt in range(2):
+        try:
+            resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=90.0)
+            resp.raise_for_status()
+            parsed = json.loads(resp.json()["message"]["content"])
+            # Validate we got usable verdict and score
+            if parsed.get("verdict") in ("PASS", "PARTIAL_PASS", "FAIL") and isinstance(parsed.get("score"), (int, float)):
+                return parsed
+        except Exception:
+            pass
+        if attempt == 0:
+            time.sleep(3)   # brief pause before retry
+
+    return {}
 
 
 # ── Regex pre-filters (fast, catch clear-cut cases) ──────────────────────────

@@ -1,7 +1,11 @@
 import json
+import logging
 import os
+import time
 import httpx
 from core.base_module import BaseModule, ModuleResponse
+
+log = logging.getLogger(__name__)
 
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
@@ -27,6 +31,11 @@ Examples:
 "security scan results" -> {{"modules": ["system"]}}
 "when does guardian run?" -> {{"modules": ["system"]}}
 "is system idle?" -> {{"modules": ["system"]}}
+"write diary from my photos" -> {{"modules": ["diary"]}}
+"show my diary draft" -> {{"modules": ["diary"]}}
+"approve diary" -> {{"modules": ["diary"]}}
+"list diary drafts" -> {{"modules": ["diary"]}}
+"diary for 2025-08-03" -> {{"modules": ["diary"]}}
 
 Reply format: {{"modules": ["name"]}}"""
 
@@ -38,6 +47,7 @@ def _build_system_prompt(modules: dict[str, BaseModule]) -> str:
         "farming": "crops, weather, spray, soil, disease, farm, harvest, rain, plot, fertilizer",
         "health":  "BP, blood pressure, steps, weight, sleep, sugar, glucose, health, walked, kg, hours slept",
         "system":  "system load, CPU, RAM, busy, idle, load pattern, heatmap, security guardian, CVE scan, threat intel, anomaly, audit, background tasks, task schedule",
+        "diary":   "diary, photos, journal, write diary, photo diary, show diary, approve diary, draft, daily log",
     }
     lines = []
     for name in modules:
@@ -59,6 +69,7 @@ def route(query: str, modules: dict[str, BaseModule]) -> list[str]:
         "format": "json",
     }
 
+    t0 = time.monotonic()
     try:
         resp = httpx.post(
             f"{OLLAMA_URL}/api/chat",
@@ -70,11 +81,12 @@ def route(query: str, modules: dict[str, BaseModule]) -> list[str]:
         result = json.loads(content)
         chosen = result.get("modules", [])
         valid = [m for m in chosen if m in modules]
-        # "general" or unknown → try all modules
-        return valid if valid else list(modules.keys())
+        routed = valid if valid else list(modules.keys())
+        log.info("route → %s  (%dms)  q=%r",
+                 routed, int((time.monotonic() - t0) * 1000), query[:80])
+        return routed
     except Exception as e:
-        # fallback: let all modules try to handle it
-        print(f"[router error] {e}")
+        log.error("router LLM failed (%dms): %s", int((time.monotonic() - t0) * 1000), e)
         return list(modules.keys())
 
 

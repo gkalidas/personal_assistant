@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GK · SYSTEM DASHBOARD</title>
+<style>
+/* ── Variables ────────────────────────────────────────────────────────────── */
+:root {
+  --cyan:    #00e5ff;
+  --green:   #00ff88;
+  --amber:   #ffaa00;
+  --red:     #ff2255;
+  --bg:      #030b10;
+  --panel:   #060e18;
+  --border:  #0c2535;
+  --dim:     #1a4a5e;
+  --glow-c:  rgba(0, 229, 255, 0.18);
+  --glow-g:  rgba(0, 255, 136, 0.25);
+}
+
+/* ── Reset ────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  background: var(--bg);
+  color: var(--cyan);
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+  user-select: none;
+}
+
+/* ── Scanline overlay ─────────────────────────────────────────────────────── */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px, transparent 2px,
+    rgba(0, 229, 255, 0.012) 2px, rgba(0, 229, 255, 0.012) 4px
+  );
+  pointer-events: none;
+  z-index: 9000;
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+#header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  height: 48px;
+}
+
+.h-title {
+  font-size: 15px;
+  letter-spacing: 5px;
+  color: var(--cyan);
+  text-shadow: 0 0 14px var(--glow-c);
+}
+
+.h-title span {
+  color: var(--dim);
+  margin-right: 8px;
+}
+
+.h-right {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+#clock {
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: var(--dim);
+}
+
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  animation: pulse-dot 2.5s infinite;
+}
+
+/* ── Grid ─────────────────────────────────────────────────────────────────── */
+#grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  padding: 12px;
+  height: calc(100vh - 48px);
+}
+
+/* ── Panel ────────────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 18px 20px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+.panel:hover {
+  border-color: var(--cyan);
+  box-shadow: inset 0 0 30px rgba(0,229,255,0.04), 0 0 16px var(--glow-c);
+}
+
+/* corner brackets */
+.panel::before {
+  content: '';
+  position: absolute;
+  top: 5px; left: 5px;
+  width: 14px; height: 14px;
+  border-top: 1px solid var(--cyan);
+  border-left: 1px solid var(--cyan);
+  opacity: 0.6;
+}
+.panel::after {
+  content: '';
+  position: absolute;
+  bottom: 5px; right: 5px;
+  width: 14px; height: 14px;
+  border-bottom: 1px solid var(--cyan);
+  border-right: 1px solid var(--cyan);
+  opacity: 0.6;
+}
+
+.panel-label {
+  font-size: 10px;
+  letter-spacing: 4px;
+  color: var(--dim);
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-label::before {
+  content: '';
+  display: inline-block;
+  width: 4px; height: 4px;
+  border: 1px solid var(--dim);
+  transform: rotate(45deg);
+}
+
+/* click hint */
+.click-hint {
+  position: absolute;
+  bottom: 10px; right: 14px;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: #0a2535;
+  transition: color 0.2s;
+}
+.panel:hover .click-hint { color: var(--dim); }
+
+/* ── Network panel ────────────────────────────────────────────────────────── */
+.iface-row {
+  display: grid;
+  grid-template-columns: 12px 60px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot.online  { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse-dot 2s infinite; }
+.dot.noinet  { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+.dot.down    { background: #1a2530; border: 1px solid var(--border); }
+
+.iface-type { color: #6ab0c0; font-size: 11px; letter-spacing: 1px; }
+.iface-name { color: var(--dim); font-size: 11px; }
+.iface-ip   { color: #0c2535; font-size: 10px; margin-top: 2px; }
+
+.badge {
+  font-size: 9px;
+  letter-spacing: 1px;
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+.badge.ok   { background: rgba(0,255,136,0.1); color: var(--green); border: 1px solid rgba(0,255,136,0.25); }
+.badge.warn { background: rgba(255,170,0,0.1); color: var(--amber); border: 1px solid rgba(255,170,0,0.25); }
+.badge.err  { background: rgba(255,34,85,0.1);  color: var(--red);  border: 1px solid rgba(255,34,85,0.25); }
+
+.speed-block {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  display: flex;
+  gap: 24px;
+}
+
+.speed-item { display: flex; flex-direction: column; gap: 4px; }
+.speed-lbl  { font-size: 9px; letter-spacing: 2px; color: var(--dim); }
+.speed-val  { font-size: 20px; color: var(--cyan); text-shadow: 0 0 10px var(--glow-c); }
+.speed-unit { font-size: 10px; color: var(--dim); margin-left: 2px; }
+
+.failover-alert {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(255,34,85,0.08);
+  border: 1px solid rgba(255,34,85,0.35);
+  border-radius: 2px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--red);
+  animation: blink-alert 1.2s infinite;
+}
+
+/* ── System panel ─────────────────────────────────────────────────────────── */
+.metric { margin-bottom: 18px; }
+
+.metric-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+
+.metric-name { color: var(--dim); letter-spacing: 2px; }
+.metric-val  { color: var(--cyan); }
+
+.bar-track {
+  height: 3px;
+  background: #060e18;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  overflow: visible;
+  position: relative;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.6s ease;
+  position: relative;
+}
+
+.bar-fill.normal  { background: linear-gradient(90deg, #003344, var(--cyan)); box-shadow: 2px 0 8px var(--glow-c); }
+.bar-fill.warn    { background: linear-gradient(90deg, #442200, var(--amber)); box-shadow: 2px 0 8px rgba(255,170,0,0.35); }
+.bar-fill.danger  { background: linear-gradient(90deg, #440010, var(--red));   box-shadow: 2px 0 8px rgba(255,34,85,0.35); }
+
+/* ── Weather panel ────────────────────────────────────────────────────────── */
+.wx-temp {
+  font-size: 52px;
+  line-height: 1;
+  color: var(--cyan);
+  text-shadow: 0 0 20px var(--glow-c);
+  margin: 8px 0 6px;
+  letter-spacing: -1px;
+}
+.wx-temp sup { font-size: 22px; color: var(--dim); vertical-align: super; }
+
+.wx-desc {
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--dim);
+  margin-bottom: 18px;
+}
+
+.wx-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 24px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.wx-item { display: flex; flex-direction: column; gap: 3px; }
+.wx-lbl  { font-size: 9px; letter-spacing: 2px; color: #0c2535; }
+.wx-data { font-size: 14px; color: #6ab0c0; }
+
+.wx-age  { font-size: 9px; letter-spacing: 1px; color: #0c2535; margin-top: 12px; }
+
+/* ── Modal ────────────────────────────────────────────────────────────────── */
+#overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(2px);
+  z-index: 200;
+}
+#overlay.open { display: block; }
+
+.modal {
+  display: none;
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--panel);
+  border: 1px solid var(--cyan);
+  box-shadow: 0 0 40px var(--glow-c);
+  border-radius: 3px;
+  padding: 24px 28px;
+  min-width: 380px;
+  max-width: 90vw;
+  z-index: 300;
+}
+.modal.open { display: block; }
+
+.modal::before {
+  content: '';
+  position: absolute;
+  top: 6px; left: 6px;
+  width: 16px; height: 16px;
+  border-top: 1px solid var(--cyan);
+  border-left: 1px solid var(--cyan);
+}
+.modal::after {
+  content: '';
+  position: absolute;
+  bottom: 6px; right: 6px;
+  width: 16px; height: 16px;
+  border-bottom: 1px solid var(--cyan);
+  border-right: 1px solid var(--cyan);
+}
+
+.modal-title {
+  font-size: 10px;
+  letter-spacing: 4px;
+  color: var(--cyan);
+  text-shadow: 0 0 10px var(--glow-c);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+  margin-bottom: 18px;
+}
+
+.modal-close {
+  position: absolute;
+  top: 14px; right: 18px;
+  font-size: 16px;
+  color: var(--dim);
+  cursor: pointer;
+  line-height: 1;
+}
+.modal-close:hover { color: var(--red); }
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 0;
+  border-bottom: 1px solid #060e18;
+  font-size: 12px;
+}
+.detail-key { color: var(--dim); letter-spacing: 1px; }
+.detail-val { color: var(--cyan); }
+
+.detail-section {
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: #0c2535;
+  margin: 14px 0 6px;
+}
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+@keyframes blink-alert {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────────────── -->
+<div id="header">
+  <div class="h-title"><span>◈</span> GK PERSONAL ASSISTANT</div>
+  <div class="h-right">
+    <div id="clock">--:--:-- --/--/----</div>
+    <div class="status-dot" title="Live"></div>
+  </div>
+</div>
+
+<!-- ── Dashboard grid ─────────────────────────────────────────────────────── -->
+<div id="grid">
+
+  <!-- NETWORK -->
+  <div class="panel" id="p-network" onclick="openModal('network')">
+    <div class="panel-label">NETWORK</div>
+    <div id="iface-list"></div>
+    <div class="speed-block">
+      <div class="speed-item">
+        <span class="speed-lbl">DOWNLOAD</span>
+        <span><span class="speed-val" id="dl">--</span><span class="speed-unit">Mbps</span></span>
+      </div>
+      <div class="speed-item">
+        <span class="speed-lbl">UPLOAD</span>
+        <span><span class="speed-val" id="ul">--</span><span class="speed-unit">Mbps</span></span>
+      </div>
+    </div>
+    <div class="failover-alert" id="failover-alert" style="display:none">
+      ⚠ PRIMARY DOWN — CHECKING BACKUP
+    </div>
+    <span class="click-hint">CLICK FOR DETAILS</span>
+  </div>
+
+  <!-- SYSTEM -->
+  <div class="panel" id="p-system" onclick="openModal('system')">
+    <div class="panel-label">SYSTEM</div>
+    <div class="metric">
+      <div class="metric-header">
+        <span class="metric-name">CPU</span>
+        <span class="metric-val" id="cpu-val">--%</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill normal" id="cpu-bar" style="width:0%"></div></div>
+    </div>
+    <div class="metric">
+      <div class="metric-header">
+        <span class="metric-name">RAM</span>
+        <span class="metric-val" id="ram-val">--%</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill normal" id="ram-bar" style="width:0%"></div></div>
+    </div>
+    <div class="metric">
+      <div class="metric-header">
+        <span class="metric-name">DISK</span>
+        <span class="metric-val" id="disk-val">--%</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill normal" id="disk-bar" style="width:0%"></div></div>
+    </div>
+    <span class="click-hint">CLICK FOR DETAILS</span>
+  </div>
+
+  <!-- WEATHER -->
+  <div class="panel" id="p-weather" onclick="openModal('weather')">
+    <div class="panel-label">WEATHER · BARLONI</div>
+    <div class="wx-temp" id="wx-temp">--<sup>°C</sup></div>
+    <div class="wx-desc" id="wx-desc">-- --</div>
+    <div class="wx-grid">
+      <div class="wx-item">
+        <span class="wx-lbl">HUMIDITY</span>
+        <span class="wx-data" id="wx-hum">--%</span>
+      </div>
+      <div class="wx-item">
+        <span class="wx-lbl">WIND</span>
+        <span class="wx-data" id="wx-wind">-- km/h</span>
+      </div>
+      <div class="wx-item">
+        <span class="wx-lbl">FEELS LIKE</span>
+        <span class="wx-data" id="wx-feel">--°C</span>
+      </div>
+      <div class="wx-item">
+        <span class="wx-lbl">VISIBILITY</span>
+        <span class="wx-data" id="wx-vis">-- km</span>
+      </div>
+    </div>
+    <div class="wx-age" id="wx-age">UPDATED --</div>
+    <span class="click-hint">CLICK FOR DETAILS</span>
+  </div>
+
+</div>
+
+<!-- ── Overlay + modals ────────────────────────────────────────────────────── -->
+<div id="overlay" onclick="closeModal()"></div>
+
+<div class="modal" id="modal-network">
+  <span class="modal-close" onclick="closeModal()">✕</span>
+  <div class="modal-title">◈ NETWORK DETAILS</div>
+  <div id="modal-net-body"></div>
+</div>
+
+<div class="modal" id="modal-system">
+  <span class="modal-close" onclick="closeModal()">✕</span>
+  <div class="modal-title">◈ SYSTEM DETAILS</div>
+  <div id="modal-sys-body"></div>
+</div>
+
+<div class="modal" id="modal-weather">
+  <span class="modal-close" onclick="closeModal()">✕</span>
+  <div class="modal-title">◈ WEATHER DETAILS</div>
+  <div id="modal-wx-body"></div>
+</div>
+
+<!-- ── Scripts ────────────────────────────────────────────────────────────── -->
+<script>
+'use strict';
+
+// ── Clock ──────────────────────────────────────────────────────────────────
+function tick() {
+  const n = new Date();
+  const pad = x => String(x).padStart(2,'0');
+  const date = `${pad(n.getDate())}/${pad(n.getMonth()+1)}/${n.getFullYear()}`;
+  const time = `${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
+  document.getElementById('clock').textContent = `${time}  ${date}`;
+}
+setInterval(tick, 1000);
+tick();
+
+// ── State ──────────────────────────────────────────────────────────────────
+let last = {};
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+let ws;
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen    = () => console.log('WS connected');
+  ws.onmessage = e => { last = JSON.parse(e.data); render(last); };
+  ws.onclose   = () => { console.log('WS closed, retrying…'); setTimeout(connect, 3000); };
+  ws.onerror   = () => ws.close();
+}
+connect();
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function render(d) {
+  if (d.network) renderNetwork(d.network);
+  if (d.system)  renderSystem(d.system);
+  if (d.weather) renderWeather(d.weather);
+}
+
+function renderNetwork(n) {
+  let html = '';
+  for (const iface of n.interfaces) {
+    const dotCls = iface.is_connected ? 'online' : iface.is_up ? 'noinet' : 'down';
+    const badgeTxt = iface.is_connected ? 'ONLINE' : iface.is_up ? 'NO INET' : 'DOWN';
+    const badgeCls = iface.is_connected ? 'ok' : iface.is_up ? 'warn' : 'err';
+    html += `
+      <div class="iface-row">
+        <div class="dot ${dotCls}"></div>
+        <span class="iface-type">${iface.type.toUpperCase()}</span>
+        <span class="iface-name">${iface.name}${iface.ip ? '<br><span class="iface-ip">'+iface.ip+'</span>' : ''}</span>
+        <span class="badge ${badgeCls}">${badgeTxt}</span>
+      </div>`;
+  }
+  document.getElementById('iface-list').innerHTML = html;
+  document.getElementById('dl').textContent = n.download_mbps.toFixed(1);
+  document.getElementById('ul').textContent = n.upload_mbps.toFixed(1);
+  document.getElementById('failover-alert').style.display = n.failover_alert ? '' : 'none';
+}
+
+function setBar(id, pct) {
+  const bar = document.getElementById(id + '-bar');
+  const val = document.getElementById(id + '-val');
+  bar.style.width = Math.min(pct, 100) + '%';
+  val.textContent = pct + '%';
+  bar.className = 'bar-fill ' + (pct > 85 ? 'danger' : pct > 60 ? 'warn' : 'normal');
+}
+
+function renderSystem(s) {
+  setBar('cpu',  s.cpu_pct);
+  setBar('ram',  s.ram_pct);
+  setBar('disk', s.disk_pct);
+}
+
+function renderWeather(w) {
+  document.getElementById('wx-temp').innerHTML = `${w.temp_c}<sup>°C</sup>`;
+  document.getElementById('wx-desc').textContent = w.description.toUpperCase();
+  document.getElementById('wx-hum').textContent  = w.humidity + '%';
+  document.getElementById('wx-wind').textContent = w.wind_kmh + ' km/h ' + (w.wind_dir || '');
+  document.getElementById('wx-feel').textContent = w.feels_like_c + '°C';
+  document.getElementById('wx-vis').textContent  = w.visibility_km + ' km';
+  document.getElementById('wx-age').textContent  =
+    w.age_min === 0 ? 'UPDATED JUST NOW' : `UPDATED ${w.age_min} MIN AGO`;
+}
+
+// ── Modals ─────────────────────────────────────────────────────────────────
+function openModal(type) {
+  if (type === 'network' && last.network) {
+    const n = last.network;
+    let rows = '';
+    for (const i of n.interfaces) {
+      rows += detailSection(i.name.toUpperCase() + ' (' + i.type.toUpperCase() + ')');
+      rows += detailRow('Status',   i.is_up ? 'UP' : 'DOWN');
+      rows += detailRow('Internet', i.is_connected ? '<span style="color:var(--green)">YES</span>' : '<span style="color:var(--red)">NO</span>');
+      if (i.ip)       rows += detailRow('IP Address', i.ip);
+      if (i.link_mbps) rows += detailRow('Link Speed', i.link_mbps + ' Mbps');
+    }
+    rows += detailSection('THROUGHPUT (LIVE)');
+    rows += detailRow('Download', n.download_mbps.toFixed(2) + ' Mbps');
+    rows += detailRow('Upload',   n.upload_mbps.toFixed(2) + ' Mbps');
+    rows += detailRow('Primary',  n.primary || 'none');
+    rows += detailRow('Failover', n.failover_alert
+      ? '<span style="color:var(--red)">TRIGGERED</span>'
+      : '<span style="color:var(--green)">OK</span>');
+    document.getElementById('modal-net-body').innerHTML = rows;
+    show('modal-network');
+
+  } else if (type === 'system' && last.system) {
+    const s = last.system;
+    let rows = '';
+    rows += detailSection('PROCESSOR');
+    rows += detailRow('CPU Usage',  s.cpu_pct + '%');
+    rows += detailRow('Cores',      s.cpu_cores);
+    rows += detailRow('Frequency',  s.cpu_freq_mhz + ' MHz');
+    rows += detailRow('Load Avg',   s.load_avg);
+    rows += detailSection('MEMORY');
+    rows += detailRow('RAM Usage',  s.ram_pct + '%  (' + s.ram_used_gb + ' / ' + s.ram_total_gb + ' GB)');
+    rows += detailSection('STORAGE');
+    rows += detailRow('Disk Usage', s.disk_pct + '%  (' + s.disk_used_gb + ' / ' + s.disk_total_gb + ' GB)');
+    rows += detailSection('SYSTEM');
+    rows += detailRow('Uptime',     s.uptime);
+    document.getElementById('modal-sys-body').innerHTML = rows;
+    show('modal-system');
+
+  } else if (type === 'weather' && last.weather) {
+    const w = last.weather;
+    let rows = '';
+    rows += detailSection('CONDITIONS — ' + w.location.toUpperCase());
+    rows += detailRow('Temperature',  w.temp_c + '°C');
+    rows += detailRow('Feels Like',   w.feels_like_c + '°C');
+    rows += detailRow('Description',  w.description);
+    rows += detailSection('ATMOSPHERE');
+    rows += detailRow('Humidity',     w.humidity + '%');
+    rows += detailRow('Wind',         w.wind_kmh + ' km/h ' + w.wind_dir);
+    rows += detailRow('Visibility',   w.visibility_km + ' km');
+    rows += detailSection('META');
+    rows += detailRow('Last Updated', w.updated_at);
+    rows += detailRow('Data Age',     w.age_min + ' min');
+    rows += detailRow('Source',       'Open-Meteo API');
+    document.getElementById('modal-wx-body').innerHTML = rows;
+    show('modal-weather');
+  }
+}
+
+function show(id) {
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById(id).classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('overlay').classList.remove('open');
+  document.querySelectorAll('.modal').forEach(m => m.classList.remove('open'));
+}
+
+function detailRow(key, val) {
+  return `<div class="detail-row"><span class="detail-key">${key}</span><span class="detail-val">${val}</span></div>`;
+}
+function detailSection(title) {
+  return `<div class="detail-section">${title}</div>`;
+}
+
+// Close modal on Escape
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
+</body>
+</html>

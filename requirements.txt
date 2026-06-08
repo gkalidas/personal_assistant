@@ -10,7 +10,7 @@ httpx           # Ollama API calls
 Pillow          # EXIF extraction (shared with farming)
 python-docx     # Document processing
 pypdf2          # PDF processing
-openai-whisper  # Local audio transcription
+# openai-whisper  # Local audio transcription — uncomment when building audio input
 
 # Knowledge graph / people
 # insightface   # Face recognition — uncomment when building people graph
@@ -21,6 +21,9 @@ openai-whisper  # Local audio transcription
 # Dashboard
 matplotlib      # Weather chart generation
 numpy           # Array ops for chart data
+
+# Dashboard
+psutil          # CPU / RAM / network io_counters / disk
 
 # Storage
 # SQLite is stdlib — no extra package needed

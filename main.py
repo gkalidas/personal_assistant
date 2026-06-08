@@ -1,10 +1,16 @@
 """GK Personal Assistant — terminal chat entry point."""
 
+import logging
 import os
 import time
 from dotenv import load_dotenv
 
 load_dotenv()
+
+from core.log import setup_logging
+setup_logging()
+
+log = logging.getLogger("gk.main")
 
 import httpx
 from core import memory
@@ -14,6 +20,7 @@ from modules.finance.module import FinanceModule, TEXT_MODEL as FINANCE_MODEL
 from modules.farming.module import FarmingModule, TEXT_MODEL as FARMING_MODEL
 from modules.health.module import HealthModule, TEXT_MODEL as HEALTH_MODEL
 from modules.system.module import SystemModule
+from modules.diary.module import DiaryModule
 
 
 MODULES = {
@@ -21,12 +28,12 @@ MODULES = {
     "farming": FarmingModule(),
     "health":  HealthModule(),
     "system":  SystemModule(),
+    "diary":   DiaryModule(),
 }
 
 
 def _warmup_models() -> None:
     """Load each model into Ollama memory sequentially at startup."""
-    # Deduplicate — router and text model may be the same
     models = list(dict.fromkeys([ROUTER_MODEL, FINANCE_MODEL, FARMING_MODEL, HEALTH_MODEL]))
     for model in models:
         print(f"  Loading {model}...", end=" ", flush=True)
@@ -42,9 +49,12 @@ def _warmup_models() -> None:
                 },
                 timeout=120.0,
             )
-            print(f"ready ({int((time.monotonic()-t0)*1000)}ms)")
+            ms = int((time.monotonic() - t0) * 1000)
+            print(f"ready ({ms}ms)")
+            log.info("warmup %s ready in %dms", model, ms)
         except Exception as e:
             print(f"failed ({e})")
+            log.error("warmup %s failed: %s", model, e)
 
 
 def _build_context(profile: dict) -> dict:
@@ -129,21 +139,26 @@ def main():
         if san.warnings:
             for w in san.warnings:
                 print(f"  [input] {w}")
+                log.warning("sanitizer: %s", w)
         query = san.query   # use cleaned version for LLM
 
         context = _build_context(profile)
         event_id = memory.log_query_start(redact_pii(query))
         t0 = time.monotonic()
+        log.info("query id=%d q=%r", event_id, query[:120])
 
         try:
             responses = dispatch(query, MODULES, context)
         except Exception as e:
             latency_ms = int((time.monotonic() - t0) * 1000)
             memory.log_query_done(event_id, "router", str(e), latency_ms, status="error")
+            log.error("dispatch failed id=%d latency=%dms: %s", event_id, latency_ms, e, exc_info=True)
             print(f"\nGK: Something went wrong — {e}")
             continue
 
         latency_ms = int((time.monotonic() - t0) * 1000)
+        log.info("response id=%d modules=%s latency=%dms",
+                 event_id, [r.module for r in responses], latency_ms)
         print_response(responses)
 
         # Track last follow-up so user can confirm with "sure/yes"
