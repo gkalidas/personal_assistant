@@ -100,6 +100,7 @@ _ACTION_SCHEMA: dict[str, dict[str, dict[str, tuple]]] = {
         "open_observations": {},
         "disease_info":   {"crop": (str,)},
         "diagnose_photo": {"image_path": (str,)},
+        "mandi_price":    {"commodity": (str,)},
         "weather_now":    {},
         "weather_forecast":{},
         "spray_safe_tomorrow": {},
