@@ -8,8 +8,8 @@ from typing import Any
 
 import httpx
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-TEXT_MODEL = os.getenv("TEXT_MODEL", "qwen2.5:3b")
+from core.config import OLLAMA_URL, TEXT_MODEL
+
 
 # ── Prompt injection patterns ─────────────────────────────────────────────────
 # Phrases commonly found in prompt injection attacks embedded in web content.

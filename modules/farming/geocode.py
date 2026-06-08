@@ -29,6 +29,23 @@ _LOCAL_MAP: dict[str, tuple[float, float, str]] = {
     "hingoli":       (19.7167, 77.1500, "Hingoli"),
     "washim":        (20.1167, 77.1333, "Washim"),
     "yavatmal":      (20.3888, 78.1204, "Yavatmal"),
+    "latur":         (18.4088, 76.5604, "Latur"),
+    "udgir":         (18.3939, 77.1183, "Udgir"),
+    "ausa":          (18.2500, 76.5167, "Ausa"),
+    "nilanga":       (17.7667, 76.7500, "Nilanga"),
+    "wadi":          (17.0500, 76.9833, "Wadi"),
+    "parbhani":      (19.2666, 76.7833, "Parbhani"),
+    "jalna":         (19.8347, 75.8816, "Jalna"),
+    "akola":         (20.7002, 77.0082, "Akola"),
+    "amravati":      (20.9333, 77.7500, "Amravati"),
+    "chandrapur":    (19.9615, 79.2961, "Chandrapur"),
+    "gadchiroli":    (20.1833, 80.0000, "Gadchiroli"),
+    "gondia":        (21.4620, 80.1964, "Gondia"),
+    "kolhapur":      (16.7000, 74.2333, "Kolhapur"),
+    "sangli":        (16.8667, 74.5667, "Sangli"),
+    "satara":        (17.6856, 74.0111, "Satara"),
+    "ratnagiri":     (16.9902, 73.3120, "Ratnagiri"),
+    "sindhudurg":    (16.3500, 73.8833, "Sindhudurg"),
 }
 
 

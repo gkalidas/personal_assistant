@@ -8,10 +8,10 @@ from typing import Any
 
 import httpx
 
+from core.config import OLLAMA_URL, TEXT_MODEL
+
 from core.memory import events_for_week, save_diary_draft, get_diary_draft
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-TEXT_MODEL = os.getenv("TEXT_MODEL", "qwen2.5:3b")
 
 
 def current_iso_week() -> str:

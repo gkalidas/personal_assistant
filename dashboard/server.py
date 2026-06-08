@@ -8,6 +8,7 @@ GET /api/data  → single JSON snapshot (for debugging)
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -22,20 +23,18 @@ log = logging.getLogger(__name__)
 
 _STATIC = Path(__file__).parent / "static"
 
-app = FastAPI(title="GK Dashboard", docs_url=None, redoc_url=None)
-
-# Singletons — created once, live for the server lifetime
 _net = NetworkMonitor()
-_wx  = WeatherCache()   # uses default Barloni coords
+_wx  = WeatherCache()
 
 
-# ── Startup: pre-fetch weather so first WS frame has data ────────────────────
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Fire-and-forget weather pre-fetch — don't block startup on slow network
+    asyncio.get_event_loop().run_in_executor(None, _wx.get)
+    yield
 
-@app.on_event("startup")
-async def _prefetch_weather():
-    # Fire-and-forget — don't block server startup if network is slow
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _wx.get)
+
+app = FastAPI(title="GK Dashboard", docs_url=None, redoc_url=None, lifespan=_lifespan)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

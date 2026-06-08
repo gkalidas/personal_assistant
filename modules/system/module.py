@@ -25,18 +25,25 @@ LOG_DIR  = PROJECT / "logs" / "security"
 
 _LOAD_WORDS    = {"load", "busy", "idle", "cpu", "ram", "memory", "heavy", "free",
                   "using", "resource", "utilization", "performance", "slow"}
-_PATTERN_WORDS = {"pattern", "heatmap", "heat", "when", "schedule", "best time",
+_PATTERN_WORDS = {"pattern", "heatmap", "heat", "best time",
                   "good time", "predict", "typical", "usually", "normally"}
 _GUARDIAN_WORDS= {"guardian", "security", "scan", "audit", "vulnerability", "vuln",
                   "cve", "threat", "intel", "patch", "injection", "attack"}
-_SCHEDULE_WORDS= {"next", "queue", "due", "overdue", "task", "run", "running", "will run"}
+_SCHEDULE_WORDS= {"next", "queue", "due", "overdue", "task", "run", "running",
+                  "will run", "when", "schedule"}
 
 
 def _intent(query: str) -> str:
     q = query.lower()
+    # guardian + schedule words together → user is asking about guardian timing
+    if any(w in q for w in _GUARDIAN_WORDS) and any(w in q for w in _SCHEDULE_WORDS):
+        return "schedule"
+    # explicit pattern words override ambiguous load matches
+    if "pattern" in q or "heatmap" in q or "heat map" in q:
+        return "pattern"
     hits = {
-        "load":     sum(1 for w in _LOAD_WORDS    if w in q),
-        "pattern":  sum(1 for w in _PATTERN_WORDS if w in q),
+        "load":     sum(1 for w in _LOAD_WORDS     if w in q),
+        "pattern":  sum(1 for w in _PATTERN_WORDS  if w in q),
         "guardian": sum(1 for w in _GUARDIAN_WORDS if w in q),
         "schedule": sum(1 for w in _SCHEDULE_WORDS if w in q),
     }

@@ -1,12 +1,13 @@
 import json
 import logging
-import os
 import re
 import time
 from datetime import date
 from typing import Any
 
 import httpx
+
+from core.config import OLLAMA_URL, TEXT_MODEL
 
 from core.base_module import BaseModule, ModuleResponse
 from core.memory import recent_events
@@ -15,8 +16,6 @@ from modules.finance import db, tools
 
 log = logging.getLogger(__name__)
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-TEXT_MODEL = os.getenv("TEXT_MODEL", "qwen3:1.7b")
 
 _SYSTEM = """You are the finance advisor inside GK, a private personal assistant.
 The user is Ganesh — a farmer and entrepreneur tracking personal and farm finances.

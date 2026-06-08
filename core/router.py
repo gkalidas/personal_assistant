@@ -1,15 +1,14 @@
 import json
 import logging
-import os
 import time
 import httpx
+
+from core.config import OLLAMA_URL, ROUTER_MODEL
 from core.base_module import BaseModule, ModuleResponse
 
 log = logging.getLogger(__name__)
 
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-ROUTER_MODEL = os.getenv("ROUTER_MODEL", "qwen2.5:0.5b")
 
 _SYSTEM_PROMPT = """Route the user message to the correct module. Reply ONLY with JSON.
 

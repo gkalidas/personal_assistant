@@ -7,15 +7,13 @@ Falls back gracefully if the model is not installed.
 
 import base64
 import logging
-import os
 from pathlib import Path
 
 import httpx
 
-log = logging.getLogger(__name__)
+from core.config import OLLAMA_URL, VISION_MODEL
 
-OLLAMA_URL    = os.getenv("OLLAMA_URL",    "http://localhost:11434")
-VISION_MODEL  = os.getenv("VISION_MODEL", "moondream")
+log = logging.getLogger(__name__)
 
 _CAPTION_PROMPT = (
     "Describe what you see in this photo in 2-3 sentences. "

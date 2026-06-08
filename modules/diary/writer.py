@@ -11,10 +11,10 @@ from datetime import datetime
 
 import httpx
 
+from core.config import OLLAMA_URL, TEXT_MODEL
+
 log = logging.getLogger(__name__)
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-TEXT_MODEL = os.getenv("TEXT_MODEL", "qwen3:1.7b")
 
 _SYSTEM = """You are writing a personal diary for Ganesh Kalidas, a farmer and entrepreneur
 from Barloni village, Solapur district, Maharashtra, India.

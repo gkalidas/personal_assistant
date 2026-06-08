@@ -10,3 +10,13 @@ inbox/
 models/
 .DS_Store
 health.db
+
+# Evaluation benchmark data (large, local only)
+inputs/
+
+# Misc scripts dropped in project root
+install.sh
+
+# Claude internal
+.claude/
+scripts/evaluate_assistant.py

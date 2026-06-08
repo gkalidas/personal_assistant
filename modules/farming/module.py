@@ -1,16 +1,16 @@
 import json
 import logging
-import os
 import time
 from typing import Any
 
 import httpx
 
+from core.config import OLLAMA_URL, TEXT_MODEL
+
 from core.base_module import BaseModule, ModuleResponse
 from core.memory import recent_events
 from core.sanitizer import validate_action
 
-log = logging.getLogger(__name__)
 from modules.farming import db, tools
 from modules.farming import weather as wx
 from modules.farming.soil import get_soil, format_soil
@@ -18,8 +18,8 @@ from modules.farming.knowledge import kb_context_for_llm, list_crops_with_kb, fo
 from modules.farming.farming_client import analyse_photo, format_diagnosis, is_running as farming_server_running
 from modules.farming.geocode import resolve
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-TEXT_MODEL = os.getenv("TEXT_MODEL", "qwen3:1.7b")
+log = logging.getLogger(__name__)
+
 
 _SYSTEM = """You are the farming advisor inside GK — a private personal assistant for Ganesh, a farmer in Maharashtra, India.
 You know his plots, crops, spray schedule, and local weather. Every answer should move him toward better yield and profit.
@@ -188,9 +188,10 @@ def _loc(
 def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | None]:
     a = action.get("action")
     farm = (context or {}).get("default_farm", {})
-    _lat  = farm.get("lat")  or None
-    _lon  = farm.get("lon")  or None
-    _name = farm.get("city") or farm.get("primary_location") or None
+    _lat  = farm.get("lat") or farm.get("latitude") or None
+    _lon  = farm.get("lon") or farm.get("longitude") or None
+    _name = (farm.get("city") or farm.get("primary_location")
+             or farm.get("location") or farm.get("label") or None)
 
     # ── Plot management ────────────────────────────────────────────────────────
     if a == "add_plot":
