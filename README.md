@@ -55,7 +55,7 @@ flowchart TD
         KB["Disease KB\nPomegranate - Sugarcane - Banana"]
     end
 
-    subgraph External APIs - all free, no auth
+    subgraph ExternalAPIs["External APIs — all free, no auth"]
         WAPI["Open-Meteo\nweather - forecast - ERA5"]
         SAPI["SoilGrids\npH - N - clay - sand"]
         GEO["Nominatim\ngeocoding"]
@@ -69,7 +69,7 @@ flowchart TD
     FM & FN & HL --> MEM
     RTR --> MEM
 
-    subgraph Security Guardian - runs on boot, idle-aware
+    subgraph SecurityGuardian["Security Guardian — runs on boot, idle-aware"]
         GR["Guardian Daemon\nsystemd user service"]
         LM["Load Monitor\nCPU - RAM - IO - queries"]
         GR -->|idle?| LM
