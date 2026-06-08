@@ -7,6 +7,7 @@ _cache: dict[str, tuple[float, float, str]] = {}
 
 # Local fallback for important farming talukas/villages the geocoder doesn't know
 _LOCAL_MAP: dict[str, tuple[float, float, str]] = {
+    "pandharpur":    (17.6794, 75.3296, "Pandharpur"),
     "madha":         (17.9019, 75.5119, "Madha"),
     "madha solapur": (17.9019, 75.5119, "Madha"),
     "barloni":       (18.1617, 75.4218, "Barloni"),

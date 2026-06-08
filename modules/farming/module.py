@@ -62,6 +62,12 @@ Examples (follow this format exactly):
   User: will it rain tomorrow — is it safe to spray?
   → {"action": "spray_safe_tomorrow", "location": null}
 
+  User: can I spray tomorrow
+  → {"action": "spray_safe_tomorrow", "location": null}
+
+  User: spray safe check Solapur
+  → {"action": "spray_safe_tomorrow", "location": "Solapur"}
+
   User: 7 day forecast for Solapur
   → {"action": "weather_forecast", "location": "Solapur", "days": 7}
 

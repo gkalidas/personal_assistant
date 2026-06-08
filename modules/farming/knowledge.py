@@ -8,14 +8,20 @@ from pathlib import Path
 from typing import Any
 
 _KB_DIR = Path(__file__).parent.parent.parent / "crops"
+_kb_cache: dict[str, dict] = {}
 
 
 def _load(crop: str) -> dict:
-    path = _KB_DIR / f"{crop.lower()}.json"
+    key = crop.lower()
+    if key in _kb_cache:
+        return _kb_cache[key]
+    path = _KB_DIR / f"{key}.json"
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text())
+        data = json.loads(path.read_text())
+        _kb_cache[key] = data
+        return data
     except Exception:
         return {}
 
