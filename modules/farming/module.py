@@ -14,7 +14,7 @@ from modules.farming.farming_client import analyse_photo, format_diagnosis, is_r
 from modules.farming.geocode import resolve
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-TEXT_MODEL = os.getenv("TEXT_MODEL", "qwen2.5:3b")
+TEXT_MODEL = os.getenv("TEXT_MODEL", "qwen3:1.7b")
 
 _SYSTEM = """You are the farming advisor inside GK — a private personal assistant for Ganesh, a farmer in Maharashtra, India.
 You know his plots, crops, spray schedule, and local weather. Every answer should move him toward better yield and profit.
@@ -81,7 +81,9 @@ def _profile_summary(context: dict) -> str:
 
 
 def _call_llm(query: str, context: dict) -> dict:
+    from datetime import date as _date
     extras = "\n" + _profile_summary(context)
+    extras += f"\nToday: {_date.today().isoformat()}"
 
     try:
         plot_list = tools.list_plots()
@@ -100,6 +102,7 @@ def _call_llm(query: str, context: dict) -> dict:
         ],
         "stream": False,
         "format": "json",
+        "think": False,  # disable qwen3 extended thinking for faster JSON output
     }
     resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=120.0)
     resp.raise_for_status()

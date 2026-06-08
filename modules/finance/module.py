@@ -11,7 +11,7 @@ from core.sanitizer import validate_action
 from modules.finance import db, tools
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-TEXT_MODEL = os.getenv("TEXT_MODEL", "qwen2.5:3b")
+TEXT_MODEL = os.getenv("TEXT_MODEL", "qwen3:1.7b")
 
 _SYSTEM = """You are the finance advisor inside GK, a private personal assistant.
 The user is Ganesh — a farmer and entrepreneur tracking personal and farm finances.
@@ -69,6 +69,8 @@ def _lean_profile(context: dict) -> str:
 
 def _call_llm(query: str, context: dict) -> dict:
     profile_note = _lean_profile(context)
+    today = date.today().isoformat()
+    profile_note += f"\nToday: {today} (use this as current date)"
 
     messages = [
         {"role": "system", "content": _SYSTEM + profile_note},
@@ -79,6 +81,7 @@ def _call_llm(query: str, context: dict) -> dict:
         "messages": messages,
         "stream": False,
         "format": "json",
+        "think": False,  # disable qwen3 extended thinking for faster JSON output
     }
     resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=120.0)
     resp.raise_for_status()
