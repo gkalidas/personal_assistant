@@ -56,14 +56,64 @@ log = logging.getLogger("guardian")
 
 # ── Scan schedules (seconds) ──────────────────────────────────────────────────
 
-SCHEDULE = {
-    "vuln_scan":       24 * 3600,   # dependency CVEs — daily
-    "code_audit":       7 * 86400,  # code analysis — weekly
-    "pattern_update":   6 * 3600,   # injection patterns — every 6h
-    "anomaly_detect":       3600,   # log anomaly — hourly
+# Minimum interval between runs (seconds). Tasks run only when BOTH:
+#   1. min_interval has elapsed since the last run
+#   2. the system is currently idle (CPU/RAM/queries below thresholds)
+# If the system stays busy longer than 3× the interval, the task runs anyway
+# (at the next idle moment) so nothing is skipped indefinitely.
+MIN_INTERVAL = {
+    "anomaly_detect":       3600,   # at most once/h — quick check, low load
+    "pattern_update":   6 * 3600,   # every 6h — light NVD + file write
+    "threat_intel":    12 * 3600,   # every 12h — network + sanitizer tests
+    "vuln_scan":       24 * 3600,   # daily — OSV batch query
+    "code_audit":       7 * 86400,  # weekly — bandit + regex scan
 }
 
-_last_run: dict[str, float] = {k: 0.0 for k in SCHEDULE}
+# Cool-down between back-to-back tasks (seconds).
+# One task finishes → wait this long before starting the next one.
+TASK_COOLDOWN = 3 * 60   # 3 minutes
+
+# Maximum overdue multiplier before forcing a run regardless of load.
+MAX_OVERDUE   = 3.0      # 3× interval = forced run (e.g. anomaly at 3h, vuln at 72h)
+
+_last_run: dict[str, float] = {k: 0.0 for k in MIN_INTERVAL}
+
+# Persist last-run timestamps so other processes (SystemModule) can read them
+_STATE_FILE = LOG_DIR / "guardian_state.json"
+
+
+def _load_state() -> None:
+    """Load persisted last-run wall-clock times back to monotonic offsets."""
+    if not _STATE_FILE.exists():
+        return
+    try:
+        data = json.loads(_STATE_FILE.read_text())
+        now_wall = datetime.now().timestamp()
+        now_mono = time.monotonic()
+        for task, wall_ts in data.get("last_run_wall", {}).items():
+            if task in _last_run:
+                age = now_wall - wall_ts           # seconds since last run
+                _last_run[task] = now_mono - age   # convert to monotonic
+    except Exception as e:
+        log.debug(f"Could not load guardian state: {e}")
+
+
+def _save_state() -> None:
+    """Persist current last-run times as wall-clock timestamps."""
+    now_wall = datetime.now().timestamp()
+    now_mono = time.monotonic()
+    wall_times = {
+        task: now_wall - (now_mono - mono_ts)
+        for task, mono_ts in _last_run.items()
+        if mono_ts > 0.0
+    }
+    try:
+        _STATE_FILE.write_text(json.dumps({
+            "last_run_wall": wall_times,
+            "updated_at":    datetime.now().isoformat(),
+        }, indent=2))
+    except Exception as e:
+        log.debug(f"Could not save guardian state: {e}")
 
 
 # ── Task implementations ──────────────────────────────────────────────────────
@@ -145,6 +195,27 @@ def task_pattern_update() -> dict:
     return result
 
 
+def task_threat_intel() -> dict:
+    from security.threat_intel import run_threat_intel
+
+    log.info("=== Threat Intelligence — AI/LLM Attack News & Replication ===")
+    result = run_threat_intel(hours=48)
+
+    n = result.get("vulnerabilities_found", 0)
+    tested = result.get("new_threats_tested", 0)
+    fetched = result.get("total_fetched", 0)
+
+    if n > 0:
+        log.warning(f"  !! {n} VULNERABILITY(-IES) FOUND — manual fix required")
+        for alert in result.get("alerts", []):
+            log.warning(alert)
+    else:
+        log.info(f"  {tested} new threats tested ({fetched} fetched) — not vulnerable")
+
+    _save_report("threat_intel", result)
+    return result
+
+
 def task_anomaly_detect() -> dict:
     from security.watcher import detect_anomalies
 
@@ -202,6 +273,7 @@ def _full_scan() -> dict:
         ("pattern_update",  task_pattern_update),
         ("vuln_scan",       lambda: task_vuln_scan(auto_patch=True)),
         ("code_audit",      task_code_audit),
+        ("threat_intel",    task_threat_intel),
     ]:
         try:
             results[task_name] = fn()
@@ -246,71 +318,171 @@ def _full_scan() -> dict:
             n = res.get("total", 0)
             a = res.get("added", 0)
             print(f"  {'Patterns':<20} {n} total (+{a} new)")
+        elif task == "threat_intel":
+            n  = res.get("vulnerabilities_found", 0)
+            t  = res.get("new_threats_tested", 0)
+            src = res.get("sources", 4)
+            flag = " !! REQUIRES MANUAL FIX" if n > 0 else ""
+            print(f"  {'Threat Intel':<20} {t} threats tested, {n} vuln(s) found [{src} sources]{flag}")
     print(f"\n  Reports: {LOG_DIR}")
     print("="*60)
     return summary
 
 
-# ── Daemon loop ───────────────────────────────────────────────────────────────
+# ── Idle-aware scheduler ──────────────────────────────────────────────────────
 
-def _is_due(task: str) -> bool:
-    return time.monotonic() - _last_run[task] >= SCHEDULE[task]
+def _overdue_ratio(task: str) -> float:
+    """How overdue is this task?  1.0 = just due, 2.0 = twice overdue, etc."""
+    elapsed = time.monotonic() - _last_run[task]
+    return elapsed / MIN_INTERVAL[task]
 
 
-def _mark_done(task: str) -> None:
-    _last_run[task] = time.monotonic()
+def _pick_next_task() -> str | None:
+    """
+    Return the name of the task to run next, or None if nothing is due.
+
+    Selection rules:
+      1. Task must have elapsed >= its MIN_INTERVAL (overdue_ratio >= 1.0)
+      2. Among eligible tasks, pick the most overdue (highest ratio)
+      3. If overdue_ratio >= MAX_OVERDUE → eligible even if system is busy
+         (caller decides whether to honour that)
+    """
+    due = [(name, _overdue_ratio(name)) for name in MIN_INTERVAL]
+    due = [(n, r) for n, r in due if r >= 1.0]
+    if not due:
+        return None
+    due.sort(key=lambda x: -x[1])   # most overdue first
+    return due[0][0]
+
+
+def _forced_task() -> str | None:
+    """
+    Return a task that is so overdue it must run regardless of system load,
+    or None. This prevents tasks from being skipped forever on a busy machine.
+    """
+    for name, ratio in sorted(
+        [(n, _overdue_ratio(n)) for n in MIN_INTERVAL],
+        key=lambda x: -x[1],
+    ):
+        if ratio >= MAX_OVERDUE:
+            return name
+    return None
+
+
+def _run_one(name: str) -> None:
+    """Run a single named task and record its completion time."""
+    fn_map = {
+        "anomaly_detect":  task_anomaly_detect,
+        "pattern_update":  task_pattern_update,
+        "threat_intel":    task_threat_intel,
+        "vuln_scan":       lambda: task_vuln_scan(auto_patch=True),
+        "code_audit":      task_code_audit,
+    }
+    fn = fn_map.get(name)
+    if fn is None:
+        return
+    log.info(f"[scheduler] Starting: {name}")
+    try:
+        fn()
+    except Exception as e:
+        log.error(f"[scheduler] {name} failed: {e}")
+    _last_run[name] = time.monotonic()
+    _save_state()   # persist so SystemModule can read actual run times
+    log.info(f"[scheduler] Done: {name}  (cooldown {TASK_COOLDOWN//60}m before next task)")
 
 
 def run_daemon() -> None:
-    log.info("="*60)
-    log.info("GK Security Guardian — starting daemon")
-    log.info(f"Schedules: vuln={SCHEDULE['vuln_scan']//3600}h  "
-             f"code={SCHEDULE['code_audit']//3600}h  "
-             f"patterns={SCHEDULE['pattern_update']//3600}h  "
-             f"anomaly={SCHEDULE['anomaly_detect']//3600}h")
-    log.info("="*60)
+    from security.load_monitor import observe, is_idle, predicted_idle_hours
 
-    # Run all tasks immediately on startup
-    _full_scan()
-    for k in _last_run:
-        _last_run[k] = time.monotonic()
+    _load_state()   # restore last-run times from previous daemon run
+
+    log.info("=" * 60)
+    log.info("GK Security Guardian — idle-aware scheduler starting")
+    log.info("  Tasks run ONE AT A TIME, only when system is idle.")
+    log.info("  Minimum intervals:")
+    for name, secs in MIN_INTERVAL.items():
+        h = secs // 3600
+        d = h // 24
+        label = f"{d}d" if d >= 1 else f"{h}h"
+        log.info(f"    {name:<20} every {label}  (forced after {label}×{MAX_OVERDUE:.0f})")
+    log.info(f"  Cool-down between tasks: {TASK_COOLDOWN // 60}m")
+    log.info("=" * 60)
+
+    # First run: anomaly + pattern only (lightest tasks) so startup is fast
+    for name in ("anomaly_detect", "pattern_update"):
+        try:
+            _run_one(name)
+        except Exception as e:
+            log.error(f"Startup task {name} failed: {e}")
+
+    last_task_time = time.monotonic()   # tracks when we last finished a task
+    last_log_busy  = 0.0               # throttle "system busy" log messages
 
     while True:
-        time.sleep(60)  # Check every minute which tasks are due
+        time.sleep(60)
 
-        if _is_due("anomaly_detect"):
-            try:
-                task_anomaly_detect()
-            except Exception as e:
-                log.error(f"anomaly_detect failed: {e}")
-            _mark_done("anomaly_detect")
+        # Always observe load (builds the usage pattern database)
+        try:
+            sample = observe()
+            score  = sample["load_score"]
+            idle   = sample["load_score"] < 25 and sample["recent_queries"] == 0
+        except Exception:
+            idle  = False
+            score = 0.0
 
-        if _is_due("pattern_update"):
-            try:
-                task_pattern_update()
-            except Exception as e:
-                log.error(f"pattern_update failed: {e}")
-            _mark_done("pattern_update")
+        # Check for a forced task (critically overdue regardless of load)
+        forced = _forced_task()
+        if forced:
+            log.warning(
+                f"[scheduler] Task '{forced}' is >{MAX_OVERDUE:.0f}× overdue — "
+                f"running despite load (score={score:.0f})"
+            )
+            _run_one(forced)
+            last_task_time = time.monotonic()
+            continue
 
-        if _is_due("vuln_scan"):
-            try:
-                task_vuln_scan(auto_patch=True)
-            except Exception as e:
-                log.error(f"vuln_scan failed: {e}")
-            _mark_done("vuln_scan")
+        # Enforce cooldown between tasks
+        since_last = time.monotonic() - last_task_time
+        if since_last < TASK_COOLDOWN:
+            continue
 
-        if _is_due("code_audit"):
-            try:
-                task_code_audit()
-            except Exception as e:
-                log.error(f"code_audit failed: {e}")
-            _mark_done("code_audit")
+        # Only proceed if system is idle
+        if not idle:
+            now = time.monotonic()
+            if now - last_log_busy > 600:   # log at most every 10 minutes
+                next_h = predicted_idle_hours(n=2)
+                hint   = f"  Next predicted idle window: {next_h}" if next_h else ""
+                log.info(f"[scheduler] System busy (score={score:.0f}) — tasks paused.{hint}")
+                last_log_busy = now
+            continue
+
+        # System is idle — pick the most overdue task
+        next_task = _pick_next_task()
+        if next_task:
+            log.info(f"[scheduler] System idle (score={score:.0f}) — running: {next_task}")
+            _run_one(next_task)
+            last_task_time = time.monotonic()
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "scan"
+
+    def _cmd_load():
+        from security.load_monitor import report, print_pattern
+        r = report()
+        c = r["current"]
+        p = r["pattern"]
+        print(f"\n  Current load:  CPU={c['cpu_pct']}%  RAM={c['ram_pct']}%  "
+              f"IO={c['io_busy_pct']}%  score={c['load_score']}")
+        print(f"  Recent queries: {c['recent_queries']}   "
+              f"Ollama busy: {c['ollama_busy']}   "
+              f"Idle now: {c['is_idle']}")
+        print(f"\n  Pattern data:  {p['observations_total']} observations "
+              f"since {p['observing_since']}  ({p['data_quality']})")
+        print(f"  Predicted idle hours: {p['predicted_idle_hours']}")
+        print_pattern()
 
     dispatch = {
         "daemon":   run_daemon,
@@ -320,6 +492,8 @@ def main() -> None:
         "patterns": task_pattern_update,
         "anomaly":  task_anomaly_detect,
         "patch":    lambda: task_vuln_scan(auto_patch=True),
+        "intel":    task_threat_intel,
+        "load":     _cmd_load,        # show current load + usage pattern heatmap
     }
 
     fn = dispatch.get(cmd)

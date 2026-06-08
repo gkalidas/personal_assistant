@@ -21,6 +21,12 @@ Examples:
 "walked 9000 steps" -> {{"modules": ["health"]}}
 "slept 6 hours" -> {{"modules": ["health"]}}
 "hello" -> {{"modules": ["general"]}}
+"is the system busy?" -> {{"modules": ["system"]}}
+"show load pattern" -> {{"modules": ["system"]}}
+"show CPU and RAM usage" -> {{"modules": ["system"]}}
+"security scan results" -> {{"modules": ["system"]}}
+"when does guardian run?" -> {{"modules": ["system"]}}
+"is system idle?" -> {{"modules": ["system"]}}
 
 Reply format: {{"modules": ["name"]}}"""
 
@@ -31,6 +37,7 @@ def _build_system_prompt(modules: dict[str, BaseModule]) -> str:
         "finance": "money, expenses, income, budget, savings, loans, spent, earned, SIP, EMI, tax",
         "farming": "crops, weather, spray, soil, disease, farm, harvest, rain, plot, fertilizer",
         "health":  "BP, blood pressure, steps, weight, sleep, sugar, glucose, health, walked, kg, hours slept",
+        "system":  "system load, CPU, RAM, busy, idle, load pattern, heatmap, security guardian, CVE scan, threat intel, anomaly, audit, background tasks, task schedule",
     }
     lines = []
     for name in modules:

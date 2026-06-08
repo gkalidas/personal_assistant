@@ -12,18 +12,22 @@ from core.router import dispatch, ROUTER_MODEL, OLLAMA_URL
 from core.sanitizer import sanitize_input, redact_pii
 from modules.finance.module import FinanceModule, TEXT_MODEL as FINANCE_MODEL
 from modules.farming.module import FarmingModule, TEXT_MODEL as FARMING_MODEL
+from modules.health.module import HealthModule, TEXT_MODEL as HEALTH_MODEL
+from modules.system.module import SystemModule
 
 
 MODULES = {
     "finance": FinanceModule(),
     "farming": FarmingModule(),
+    "health":  HealthModule(),
+    "system":  SystemModule(),
 }
 
 
 def _warmup_models() -> None:
     """Load each model into Ollama memory sequentially at startup."""
     # Deduplicate — router and text model may be the same
-    models = list(dict.fromkeys([ROUTER_MODEL, FINANCE_MODEL, FARMING_MODEL]))
+    models = list(dict.fromkeys([ROUTER_MODEL, FINANCE_MODEL, FARMING_MODEL, HEALTH_MODEL]))
     for model in models:
         print(f"  Loading {model}...", end=" ", flush=True)
         t0 = time.monotonic()

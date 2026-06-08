@@ -1,0 +1,244 @@
+"""
+Generate the GK Personal Assistant mind map PNG.
+Output: docs/mindmap.png
+"""
+
+import math
+import os
+import sys
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch
+import numpy as np
+
+OUT = Path(__file__).parent.parent / "docs" / "mindmap.png"
+OUT.parent.mkdir(exist_ok=True)
+
+# ── Colour palette ─────────────────────────────────────────────────────────────
+C = {
+    "bg":        "#0d1117",
+    "center":    "#58a6ff",
+    "farming":   "#3fb950",
+    "finance":   "#f78166",
+    "health":    "#ff7b72",
+    "security":  "#ffa657",
+    "core":      "#bc8cff",
+    "llm":       "#79c0ff",
+    "apis":      "#56d364",
+    "eval":      "#d2a8ff",
+    "edge":      "#30363d",
+    "text_dark": "#0d1117",
+    "text_light":"#e6edf3",
+    "sub_text":  "#8b949e",
+}
+
+# ── Mind map data ──────────────────────────────────────────────────────────────
+# (angle_deg, label, color_key, [(sublabel, ...)])
+BRANCHES = [
+    (  0, "Farming Module",   "farming", [
+        "Current weather & 7-day forecast",
+        "Spray safety check (wind/rain/humidity)",
+        "Rainfall history (ERA5 archive)",
+        "Plot management (add, list, crop history)",
+        "Crop tracking (plant → harvest → yield)",
+        "Spray log & observation diary",
+        "Soil data (pH, N, clay via SoilGrids)",
+        "Disease KB: Pomegranate · Sugarcane · Banana",
+        "Photo diagnosis (farming vision server)",
+    ]),
+    ( 50, "Finance Module",   "finance", [
+        "Log income & expenses (category-tagged)",
+        "Monthly summary (income vs spend vs net)",
+        "Budget tracker (cap per category)",
+        "Spending breakdown by category",
+        "Financial goals (target + deadline)",
+    ]),
+    (105, "Health Module",    "health", [
+        "Blood pressure (6 risk levels incl. crisis → call 108)",
+        "Step count vs daily goal",
+        "Weight tracking",
+        "Sleep hours & quality",
+        "Blood sugar (fasting / post-meal / random)",
+        "7–14 day trends for any metric",
+        "Goal setting (steps, weight, sleep)",
+    ]),
+    (158, "System Module",    "core", [
+        "Live load: CPU · RAM · Disk I/O",
+        "Idle detection (score 0-100)",
+        "24-hour usage pattern heatmap",
+        "Predicted idle hours (pattern-based)",
+        "Security guardian status",
+        "Task schedule & overdue tracker",
+    ]),
+    (212, "Security Guardian","security", [
+        "CVE scan — OSV.dev (29 packages, daily)",
+        "Code audit — bandit + 15 custom patterns",
+        "Threat intel — NVD · GitHub Advisory · CISA KEV · Arxiv",
+        "Attack replication (sanitizer / package / code tests)",
+        "Alert with fix — NEVER auto-fixes critical vulns",
+        "Injection pattern updates (NVD → patterns.json)",
+        "Log anomaly detection (hourly)",
+        "Auto-patch safe upgrades (same major, HIGH+ CVE)",
+        "Idle-aware scheduler (one task at a time)",
+        "Auto-starts on boot (systemd + linger)",
+    ]),
+    (262, "Core Layer",       "llm", [
+        "Router — qwen2.5:0.5b (intent → module)",
+        "Sanitizer — 45 injection patterns + PII redact",
+        "Memory — SQLite events log + user_profile.json",
+        "Guardrails — web content injection defense",
+        "First-principles reasoning (all modules)",
+        "Action schema validation (type-safe JSON)",
+        "Follow-up suggestion engine",
+    ]),
+    (308, "External APIs",    "apis", [
+        "Open-Meteo (weather · forecast · ERA5 archive)",
+        "SoilGrids / ISRIC (soil pH · N · clay · sand)",
+        "Nominatim / OSM (geocoding — no key needed)",
+        "OSV.dev (Google — 20+ CVE databases)",
+        "NVD (NIST — CVE search + LLM attacks)",
+        "GitHub Advisory API (pip ecosystem)",
+        "CISA KEV (actively exploited CVEs)",
+        "Arxiv cs.CR RSS (AI security papers)",
+    ]),
+]
+
+# ── Drawing helpers ────────────────────────────────────────────────────────────
+
+def polar(angle_deg, r):
+    a = math.radians(angle_deg)
+    return r * math.cos(a), r * math.sin(a)
+
+
+def draw_rounded_box(ax, cx, cy, text, color, fontsize=9, alpha=0.92,
+                     width=None, height=None, text_color=None):
+    tc = text_color or C["text_dark"]
+    bbox = dict(boxstyle="round,pad=0.35", facecolor=color, edgecolor="white",
+                linewidth=0.6, alpha=alpha)
+    ax.text(cx, cy, text, ha="center", va="center", fontsize=fontsize,
+            fontweight="bold", color=tc, bbox=bbox, zorder=5,
+            wrap=False)
+
+
+def draw_line(ax, x0, y0, x1, y1, color, lw=1.0, alpha=0.5, style="-"):
+    ax.plot([x0, x1], [y0, y1], color=color, lw=lw, alpha=alpha,
+            linestyle=style, zorder=2)
+
+
+def draw_curve(ax, x0, y0, x1, y1, color, lw=1.2, alpha=0.55):
+    """Smooth bezier-ish curve via a midpoint."""
+    mx = (x0 + x1) / 2
+    my = (y0 + y1) / 2
+    # Pull midpoint toward center for a curve effect
+    mx = mx * 0.65
+    my = my * 0.65
+    from matplotlib.patches import FancyArrowPatch
+    import matplotlib.patheffects as pe
+    t = np.linspace(0, 1, 80)
+    bx = (1-t)**2*x0 + 2*(1-t)*t*mx + t**2*x1
+    by = (1-t)**2*y0 + 2*(1-t)*t*my + t**2*y1
+    ax.plot(bx, by, color=color, lw=lw, alpha=alpha, zorder=2)
+
+
+# ── Main draw ──────────────────────────────────────────────────────────────────
+
+def build(fig, ax):
+    ax.set_facecolor(C["bg"])
+    fig.patch.set_facecolor(C["bg"])
+    ax.set_xlim(-11, 11)
+    ax.set_ylim(-11, 11)
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    # ── Center node ──
+    circle = plt.Circle((0, 0), 1.35, color=C["center"], zorder=4)
+    ax.add_patch(circle)
+    ax.text(0, 0.18, "GK", ha="center", va="center", fontsize=22,
+            fontweight="bold", color=C["text_dark"], zorder=6)
+    ax.text(0, -0.28, "Personal", ha="center", va="center", fontsize=9,
+            color=C["text_dark"], zorder=6)
+    ax.text(0, -0.62, "Assistant", ha="center", va="center", fontsize=9,
+            color=C["text_dark"], zorder=6)
+
+    # ── Subtitle ring ──
+    ax.text(0, -1.75, "100% local · private · no cloud · router-based",
+            ha="center", va="center", fontsize=8,
+            color=C["sub_text"], zorder=4)
+
+    # ── Branches ──
+    for angle, label, ckey, subs in BRANCHES:
+        color = C[ckey]
+        # Branch node distance
+        br = 4.2
+        bx, by = polar(angle, br)
+
+        # Curve from center to branch
+        draw_curve(ax, 0, 0, bx, by, color, lw=2.0, alpha=0.7)
+
+        # Branch label box
+        draw_rounded_box(ax, bx, by, label, color, fontsize=10,
+                         text_color=C["text_dark"])
+
+        # Sub-items — fan out from branch
+        n = len(subs)
+        # Spread sub-items in a wedge around the branch angle
+        spread = min(50, n * 9)
+        start_a = angle - spread / 2
+        step_a  = spread / max(n - 1, 1) if n > 1 else 0
+
+        sr = 7.8   # sub-item ring radius
+        for i, sub in enumerate(subs):
+            sa = start_a + i * step_a
+            sx, sy = polar(sa, sr)
+
+            # Line from branch to sub
+            draw_line(ax, bx, by, sx, sy, color, lw=0.9, alpha=0.45)
+
+            # Sub text (smaller box)
+            ax.text(sx, sy, sub, ha="center", va="center", fontsize=6.6,
+                    color=C["text_light"], zorder=5,
+                    bbox=dict(boxstyle="round,pad=0.25",
+                              facecolor="#161b22", edgecolor=color,
+                              linewidth=0.8, alpha=0.88))
+
+    # ── LLM stack badge (bottom-center) ──
+    ax.text(0, -10.5,
+            "LLM Stack (fully local):  qwen3:1.7b  ·  qwen2.5:0.5b  |  "
+            "Ollama  ·  SQLite  ·  Python 3.12",
+            ha="center", va="center", fontsize=8, color=C["sub_text"])
+
+    # ── Stats badges ──
+    stats = [
+        ("4 Modules",     -6.5, 10.2, C["farming"]),
+        ("7 Core files",  -3.2, 10.2, C["llm"]),
+        ("8 Free APIs",    0.0, 10.2, C["apis"]),
+        ("45 Sec patterns",3.2, 10.2, C["security"]),
+        ("10K Test cases", 6.5, 10.2, C["eval"]),
+    ]
+    for label, sx, sy, sc in stats:
+        ax.text(sx, sy, label, ha="center", va="center", fontsize=8,
+                fontweight="bold", color=C["text_dark"],
+                bbox=dict(boxstyle="round,pad=0.3", facecolor=sc,
+                          edgecolor="none", alpha=0.9))
+
+    # ── Title ──
+    ax.text(0, 10.8, "GK Personal Assistant — Architecture Mind Map",
+            ha="center", va="center", fontsize=13, fontweight="bold",
+            color=C["text_light"])
+    ax.text(0, 10.45, "June 2026  ·  v0.1  ·  github.com/gkalidas",
+            ha="center", va="center", fontsize=8, color=C["sub_text"])
+
+
+def main():
+    fig, ax = plt.subplots(figsize=(26, 26), dpi=160)
+    build(fig, ax)
+    plt.tight_layout(pad=0.2)
+    fig.savefig(str(OUT), dpi=160, bbox_inches="tight",
+                facecolor=C["bg"], edgecolor="none")
+    print(f"Mind map saved → {OUT}")
+
+
+if __name__ == "__main__":
+    main()
