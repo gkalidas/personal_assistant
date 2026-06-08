@@ -30,6 +30,7 @@ Examples:
 "security scan results" -> {{"modules": ["system"]}}
 "when does guardian run?" -> {{"modules": ["system"]}}
 "is system idle?" -> {{"modules": ["system"]}}
+"pomegranate price at mandi today" -> {{"modules": ["farming"]}}
 "write diary from my photos" -> {{"modules": ["diary"]}}
 "show my diary draft" -> {{"modules": ["diary"]}}
 "approve diary" -> {{"modules": ["diary"]}}
@@ -43,7 +44,7 @@ def _build_system_prompt(modules: dict[str, BaseModule]) -> str:
     # Short keyword list — easier for a 0.5b model than long descriptions
     keywords = {
         "finance": "money, expenses, income, budget, savings, loans, spent, earned, SIP, EMI, tax",
-        "farming": "crops, weather, spray, soil, disease, farm, harvest, rain, plot, fertilizer",
+        "farming": "crops, weather, spray, soil, disease, farm, harvest, rain, plot, fertilizer, mandi, price, market rate, APMC",
         "health":  "BP, blood pressure, steps, weight, sleep, sugar, glucose, health, walked, kg, hours slept",
         "system":  "system load, CPU, RAM, busy, idle, load pattern, heatmap, security guardian, CVE scan, threat intel, anomaly, audit, background tasks, task schedule",
         "diary":   "diary, photos, journal, write diary, photo diary, show diary, approve diary, draft, daily log",
