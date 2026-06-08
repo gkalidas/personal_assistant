@@ -1,0 +1,182 @@
+{
+  "crop": "Banana",
+  "primary_region": "Maharashtra — Jalgaon, Nandurbar, Dhule, Solapur belts",
+  "dominant_variety": "Grand Naine (G9), Shrimanti, Basrai",
+  "growth_duration_months": "11-14",
+  "diseases": {
+    "Healthy": {
+      "visual_symptoms": "Deep green, wide leaves without spots or tears. Pseudostem firm, no discolouration. Uniform bunch development.",
+      "immediate_actions": ["Regular drip irrigation", "Balanced K and N fertilization"],
+      "do_not": ["Overhead irrigation — promotes Sigatoka", "Over-irrigate — causes corm rot"],
+      "watch_for": ["Yellowing on leaf edges", "Unusual leaf streaking"],
+      "timeline": "G9 variety typically flowers at 8-9 months, harvest at 11-14 months."
+    },
+    "Panama Wilt (Fusarium Wilt)": {
+      "causal_agent": "Fusarium oxysporum f.sp. cubense Race 1 and Tropical Race 4 (TR4)",
+      "visual_symptoms": "Older leaves yellow and collapse from base upward. Yellow to brown streaking inside pseudostem when cut. Internal vascular tissue shows red-brown discolouration. Plant wilts and dies. Distinctive 'yellowing ladder' — oldest leaves first.",
+      "favourable_conditions": "Soil temperature 24-28°C, infected soil or planting material. Spreads through water movement, root contact, and contaminated tools. Race 4 affects G9.",
+      "severity_note": "Most devastating banana disease globally. No effective chemical cure. Infected plants must be destroyed. Soil remains infested for 25+ years. Report suspected TR4 to agriculture department immediately.",
+      "immediate_actions": [
+        "Mark infected plants and DO NOT remove — uproot and burn in place",
+        "Quarantine the affected area — prevent people, animals, tools leaving the zone",
+        "Disinfect all tools with bleach or formaldehyde solution",
+        "Do NOT irrigate from infected field water downstream",
+        "Report to Krishi Vigyan Kendra or district agriculture office"
+      ],
+      "preventive_measures": [
+        "Plant only certified disease-free tissue culture plants from reputed nurseries",
+        "Never bring planting material from farms with unknown disease history",
+        "Maintain farm hygiene — wash boots before entering fields",
+        "Avoid waterlogging — Panama Wilt spreads faster in wet soils",
+        "Use Pseudomonas fluorescens + Trichoderma bio-inoculants at planting",
+        "Keep soil pH 6.5-7.0 — extreme pH favours Fusarium"
+      ],
+      "do_not": [
+        "Move infected plant material, soil, or tools off-farm",
+        "Irrigate from fields where infection was detected",
+        "Plant banana on infected land without 5+ year break and soil treatment",
+        "Ignore early yellowing — by the time visible, often advanced"
+      ],
+      "watch_for": [
+        "Yellowing starting from oldest/outer leaves and progressing inward",
+        "Collapsed pseudostem with red-brown internal staining",
+        "Multiple plants affected in a row (indicates soil pathway spread)"
+      ],
+      "timeline": "Once visible, plant dies within 2-6 weeks. Adjacent plants may be infected but show no symptoms for months. Act immediately on detection."
+    },
+    "Sigatoka (Yellow Sigatoka / Black Sigatoka)": {
+      "causal_agent": "Yellow: Mycosphaerella musicola | Black: Mycosphaerella fijiensis",
+      "visual_symptoms": "Yellow Sigatoka: Light yellow streaks on leaves expanding to brown oval spots with yellow halo. Black Sigatoka: Black streaks with yellow halo, more aggressive. Severe infection causes premature leaf death, early ripening (shrivelled fingers).",
+      "favourable_conditions": "High humidity >90%, temperature 26-28°C, frequent rainfall. Worse in dense plantations with poor air circulation.",
+      "severity_note": "Can cause 30-50% yield loss. Black Sigatoka is more destructive than Yellow. G9 is moderately susceptible.",
+      "immediate_actions": [
+        "Spray Mancozeb 0.2% or Propiconazole 0.1% immediately",
+        "Remove and destroy all severely affected leaves (do not leave in field)",
+        "Reduce canopy density — remove excess suckers",
+        "Spray mineral oil 1-2% (blocks spore germination) if organic approach preferred"
+      ],
+      "preventive_measures": [
+        "Regular leaf removal — remove dry/diseased leaves at base every 3-4 weeks",
+        "Alternate fungicides to prevent resistance: Mancozeb → Chlorothalonil → Propiconazole",
+        "Maintain row spacing for air circulation (1.8 × 1.8 m minimum)",
+        "Avoid overhead sprinkler irrigation"
+      ],
+      "do_not": [
+        "Spray in same direction as wind — fungicide won't reach leaf undersides",
+        "Leave removed infected leaves in or near the field",
+        "Use only one fungicide repeatedly — builds resistance"
+      ],
+      "watch_for": [
+        "Progression from leaf streaks to large dead leaf areas (indicates worsening)",
+        "Bunch filling poorly despite healthy-looking plant",
+        "Shrivelled or prematurely yellowing fingers on bunch"
+      ],
+      "timeline": "With treatment: new leaf infections halt in 10-14 days. Existing lesions do not reverse. Spray every 14-21 days during high-humidity monsoon."
+    },
+    "Bunchy Top": {
+      "causal_agent": "Banana Bunchy Top Virus (BBTV) — transmitted by banana aphid Pentalonia nigronervosa",
+      "visual_symptoms": "New leaves emerge small, narrow, stiff, with upright orientation (like a bunch at top). Dark green streaks ('dots and dashes') on midrib and petiole — best seen by holding leaf up to light. Infected plants stop growing. Affected plant never produces a bunch.",
+      "favourable_conditions": "Aphid population increase in dry cool weather (November-February). Spreads through infected suckers and aphid movement.",
+      "severity_note": "No cure. Infected plant must be destroyed. Can devastate entire plantations if not managed. Notifiable disease in some states.",
+      "immediate_actions": [
+        "Inject infected pseudostem with Glyphosate or urea solution to kill plant quickly without regrowth",
+        "Remove and bury or burn — do NOT compost",
+        "Spray surrounding healthy plants with Imidacloprid 0.3ml/L to kill aphid vectors",
+        "Inspect all suckers from infected stool — destroy all"
+      ],
+      "preventive_measures": [
+        "Source suckers only from certified disease-free nurseries",
+        "Inspect all planting material for 'dots and dashes' symptom before planting",
+        "Control aphid population: spray Imidacloprid 17.8% SL 0.5ml/L every 3 weeks in dry season",
+        "Remove infected volunteers and wild banana plants near farm"
+      ],
+      "do_not": [
+        "Take suckers from any plant that showed BBTV symptoms",
+        "Leave infected plants standing — aphids will spread virus",
+        "Compost infected plant material"
+      ],
+      "watch_for": [
+        "Dots and dashes pattern on midrib (diagnostic sign)",
+        "Plants not producing any new leaves",
+        "Aphid colonies on leaf petioles"
+      ],
+      "timeline": "Infected plant must be killed within 1 week of detection. Monitor for new infections for 4-6 weeks."
+    },
+    "Rhizome Rot / Corm Rot": {
+      "causal_agent": "Erwinia carotovora (bacteria) or Pythium spp. (fungus)",
+      "visual_symptoms": "Plant suddenly collapses without prior wilting. Pseudostem falls at base. Corm (underground stem) shows soft, rotten, foul-smelling tissue when dug up. Roots blackened.",
+      "favourable_conditions": "Waterlogged soils, poor drainage, soil temperature >30°C. Often follows mechanical damage to corm from tools or rodents.",
+      "severity_note": "Kills plant rapidly. Spread through soil water movement.",
+      "immediate_actions": [
+        "Improve drainage immediately — break any hardpan layer if present",
+        "Drench surrounding soil with Copper Oxychloride 0.3% or Metalaxyl-M",
+        "Remove and destroy infected corms",
+        "Avoid waterlogging in irrigation schedule"
+      ],
+      "preventive_measures": [
+        "Plant on raised beds or ridges in heavy-rainfall areas",
+        "Do not injure corm during intercultural operations",
+        "Drench corm at planting with Trichoderma viride 2g/L"
+      ],
+      "do_not": [
+        "Over-irrigate — especially avoid basin flooding method",
+        "Leave water stagnant around pseudostem base"
+      ],
+      "watch_for": [
+        "Sudden tilting or collapse of pseudostem",
+        "Blackening of roots when pulled"
+      ],
+      "timeline": "Affected plant cannot be saved. Adjacent plants can be protected with drainage improvement and fungicide drench."
+    }
+  },
+  "pests": {
+    "Banana Stem Weevil": {
+      "scientific_name": "Odoiporus longicollis",
+      "visual_symptoms": "Reddish-brown exudate (sap) oozing from pseudostem. Tunnels visible when pseudostem is split. Plant growth slows, leaves wilt. Gummy frass at base.",
+      "peak_season": "Year-round, peak in wet season",
+      "immediate_actions": [
+        "Inject Chlorpyrifos 2.5ml/L into bore holes using syringe",
+        "Apply Carbofuran 3G granules 25g/plant at pseudostem base",
+        "Plug bore holes with moist soil after injection"
+      ],
+      "preventive_measures": [
+        "Remove and destroy dry leaf sheaths where adults shelter",
+        "Set trap: cut pseudostem pieces smeared with Chlorpyrifos at field borders"
+      ],
+      "do_not": ["Leave dry sheaths attached to pseudostem"]
+    },
+    "Banana Aphid": {
+      "scientific_name": "Pentalonia nigronervosa",
+      "visual_symptoms": "Small brown aphids clustered on inner leaf sheaths and suckers. BBTV virus vector — more dangerous than direct feeding damage.",
+      "peak_season": "November-February (dry season)",
+      "immediate_actions": [
+        "Spray Imidacloprid 17.8% SL 0.3ml/L or Dimethoate 30 EC 2ml/L",
+        "Target inner leaf sheaths where aphids hide"
+      ],
+      "preventive_measures": [
+        "Regular inspection of inner sheaths monthly",
+        "Remove excess suckers — reduces aphid habitat"
+      ],
+      "do_not": ["Ignore aphids even at low populations — BBTV risk is severe"]
+    }
+  },
+  "fertilizer_schedule": {
+    "note": "Per plant for G9 variety (12-month crop)",
+    "at_planting": "FYM 10 kg + Neem cake 250g per pit",
+    "1_month": "Urea 100g + MOP 100g",
+    "2_months": "Urea 100g + SSP 200g + MOP 100g",
+    "3_to_6_months": "Urea 100g + MOP 100g monthly (grand growth phase — critical for bunch size)",
+    "flowering": "MOP 150g extra at flower emergence — improves finger filling",
+    "note_k": "Banana is highly potassium-demanding. Deficiency causes 'T' shaped leaf and poor bunch weight."
+  },
+  "irrigation": {
+    "water_requirement_liters_per_day": "8-12 litres per plant in summer, 5-7 in winter",
+    "drip_recommendation": "Drip at 8 LPH emitter, 2 emitters per plant. Critical for water use efficiency in Solapur belt.",
+    "critical_stages": ["bunch initiation (8-9 months)", "bunch filling (9-11 months)"]
+  },
+  "harvesting": {
+    "maturity_indicators": "Fingers become rounded (angular ridges fill out), skin turns light green-yellow, 75-80 days after bunch emergence",
+    "bunch_weight_g9": "25-35 kg per bunch (10-12 hands)",
+    "post_harvest": "Harvest early morning. Handle gently — bruising causes premature ripening. Store at 13-14°C for transport."
+  }
+}

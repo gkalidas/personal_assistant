@@ -9,3 +9,4 @@ logs/
 inbox/
 models/
 .DS_Store
+health.db

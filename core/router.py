@@ -17,6 +17,9 @@ Examples:
 "when to spray pomegranate" -> {{"modules": ["farming"]}}
 "weather today" -> {{"modules": ["farming"]}}
 "monsoon affecting my budget" -> {{"modules": ["finance", "farming"]}}
+"BP was 130/85" -> {{"modules": ["health"]}}
+"walked 9000 steps" -> {{"modules": ["health"]}}
+"slept 6 hours" -> {{"modules": ["health"]}}
 "hello" -> {{"modules": ["general"]}}
 
 Reply format: {{"modules": ["name"]}}"""
@@ -25,8 +28,9 @@ Reply format: {{"modules": ["name"]}}"""
 def _build_system_prompt(modules: dict[str, BaseModule]) -> str:
     # Short keyword list — easier for a 0.5b model than long descriptions
     keywords = {
-        "finance": "money, expenses, income, budget, savings, loans, spent, earned",
-        "farming": "crops, weather, spray, soil, disease, farm, harvest, rain, plot",
+        "finance": "money, expenses, income, budget, savings, loans, spent, earned, SIP, EMI, tax",
+        "farming": "crops, weather, spray, soil, disease, farm, harvest, rain, plot, fertilizer",
+        "health":  "BP, blood pressure, steps, weight, sleep, sugar, glucose, health, walked, kg, hours slept",
     }
     lines = []
     for name in modules:

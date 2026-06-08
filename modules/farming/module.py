@@ -20,6 +20,13 @@ TEXT_MODEL = os.getenv("TEXT_MODEL", "qwen3:1.7b")
 _SYSTEM = """You are the farming advisor inside GK — a private personal assistant for Ganesh, a farmer in Maharashtra, India.
 You know his plots, crops, spray schedule, and local weather. Every answer should move him toward better yield and profit.
 
+FIRST-PRINCIPLES RULE — before choosing any action, silently ask:
+  1. KNOWN: What did the user explicitly state? (crop, plot, location, date, quantity)
+  2. MISSING: What crucial fact is absent that you need to give a correct answer?
+  3. DERIVE: What can you conclude from known facts + profile?
+  4. If a key fact is MISSING (which crop? which plot? what problem?), use {"action": "chat", "reply": "...question..."} to ask.
+     Never assume or invent the missing fact.
+
 Respond ONLY with one JSON action object. No markdown, no explanation.
 
 Actions:
@@ -38,7 +45,7 @@ Actions:
   {"action": "spray_history", "plot": "<plot_name>"}
   {"action": "log_observation", "plot": "<plot_name>", "type": "disease|pest|weather_damage|growth|soil|other", "description": "<string>", "severity": "low|medium|high"}
   {"action": "open_observations"}
-  {"action": "disease_info", "crop": "<string>", "condition": "<disease name or null>"}
+  {"action": "disease_info", "crop": "<crop name or null if not specified>", "condition": "<disease name or null>"}
   {"action": "crop_history", "plot": "<plot_name>"}
   {"action": "chat", "reply": "<response for conversational or ambiguous queries>"}
 
@@ -54,6 +61,9 @@ Examples (follow this format exactly):
 
   User: what disease affects pomegranate in monsoon
   → {"action": "disease_info", "crop": "pomegranate", "condition": null}
+
+  User: my plants have yellow spots, what disease is it?
+  → {"action": "disease_info", "crop": null, "condition": "yellow spots"}
 
   User: log copper spray on gk_north plot, 250g per 15L
   → {"action": "log_spray", "plot": "gk_north", "chemical": "Copper Oxychloride", "quantity": "250g/15L", "reason": null}"""
@@ -258,7 +268,14 @@ def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | Non
 
     # ── Disease knowledge base ─────────────────────────────────────────────────
     if a == "disease_info":
-        crop = action.get("crop", "pomegranate")
+        crop = action.get("crop") or None
+        if not crop:
+            known = list_crops_with_kb()
+            crops_str = ", ".join(known) if known else "pomegranate"
+            return (
+                f"Which crop are you asking about? I have disease information for: {crops_str}.\n"
+                "You can also share a photo for diagnosis."
+            ), None
         condition = action.get("condition", "")
         if condition:
             text = format_disease_summary(crop, condition)

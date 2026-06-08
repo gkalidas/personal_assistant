@@ -77,6 +77,19 @@ _ACTION_SCHEMA: dict[str, dict[str, dict[str, tuple]]] = {
         "season_summary": {},
         "chat":           {"reply": (str,)},
     },
+    "health": {
+        "log_bp":     {"systolic": (int, float), "diastolic": (int, float),
+                       "notes": (str, type(None))},
+        "log_steps":  {"count": (int, float)},
+        "log_weight": {"kg": (int, float)},
+        "log_sleep":  {"hours": (int, float)},
+        "log_sugar":  {"mg_dl": (int, float), "meal_state": (str, type(None))},
+        "history":    {"type": (str,), "days": (int, float, type(None))},
+        "summary":    {},
+        "trend":      {"type": (str,), "days": (int, float, type(None))},
+        "set_goal":   {"type": (str,), "target": (int, float)},
+        "chat":       {"reply": (str,)},
+    },
 }
 
 # Fields that are REQUIRED (cannot be None). All fields in the schema above

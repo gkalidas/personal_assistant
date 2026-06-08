@@ -1,0 +1,189 @@
+{
+  "crop": "Sugarcane",
+  "primary_region": "Maharashtra — Solapur, Satara, Kolhapur, Sangli belts",
+  "dominant_variety": "Co 86032, CoM 0265, CoM 88121",
+  "growth_duration_months": "12-18",
+  "diseases": {
+    "Healthy": {
+      "visual_symptoms": "Uniform green leaves with glossy surface, thick firm stalks, no yellowing or lesions.",
+      "immediate_actions": ["Maintain regular drip/furrow irrigation", "Apply scheduled fertilizer doses"],
+      "do_not": ["Over-irrigate — causes root rot", "Skip ratoon management"],
+      "watch_for": ["Yellowing at leaf tips", "Uneven stalk growth"],
+      "timeline": "Healthy crop shows consistent growth of 2-3 cm/day during grand growth phase (June-October)."
+    },
+    "Red Rot": {
+      "causal_agent": "Colletotrichum falcatum",
+      "visual_symptoms": "Sudden withering of top leaves. Internal stalk tissue turns red with white patches. Sour fermented smell when cut open. Leaves show reddening along midrib.",
+      "favourable_conditions": "Warm humid weather 28-32°C, RH >80%, waterlogging. Most severe in ratoon crops during June-September.",
+      "severity_note": "Most destructive sugarcane disease in Maharashtra. Can cause 100% loss in severely infected fields. Spreads rapidly through infected setts and waterways.",
+      "immediate_actions": [
+        "Remove and destroy all infected stalks immediately — do NOT leave in field",
+        "Avoid waterlogging — improve drainage urgently",
+        "Drench soil with Carbendazim 0.1% around infection spots",
+        "Stop harvesting infected rows to prevent tool spread",
+        "Treat remaining seed setts with Carbendazim 0.1% for 15 minutes before planting"
+      ],
+      "preventive_measures": [
+        "Use only disease-free certified setts from reputed nurseries",
+        "Hot water treatment of setts at 50°C for 30 minutes before planting",
+        "Plant resistant varieties: CoM 0265, CoC 671",
+        "Avoid ratoon crop in infected fields for at least 2 seasons",
+        "Ensure good field drainage — ridge planting recommended"
+      ],
+      "do_not": [
+        "Irrigate infected fields through furrow — spreads pathogen",
+        "Use infected setts for next planting",
+        "Leave crop debris in field after harvest"
+      ],
+      "watch_for": [
+        "Rapid spread to adjacent rows within 7-10 days",
+        "Sour smell when stalks are cut",
+        "Red discolouration spreading upward through stalk"
+      ],
+      "timeline": "Once detected, remove infected material within 48 hours. New infections can appear for 3-4 weeks. Healthy plants typically unaffected if drainage improved."
+    },
+    "Wilt": {
+      "causal_agent": "Cephalosporium sacchari (Fusarium sacchari)",
+      "visual_symptoms": "Yellowing and drying of top leaves (similar to drought stress). Internal stalk shows hollow cavity with purple-red discolouration. Roots may show decay.",
+      "favourable_conditions": "Soil moisture stress followed by heavy rain. Sandy soils. Late season (September-November).",
+      "severity_note": "Yield loss 30-60% in susceptible varieties. Often confused with drought stress.",
+      "immediate_actions": [
+        "Apply irrigation immediately if soil dry",
+        "Apply Trichoderma viride 2 kg/acre as soil drench",
+        "Remove severely affected plants"
+      ],
+      "preventive_measures": [
+        "Maintain uniform soil moisture — drip irrigation preferred",
+        "Sett treatment with Bavistin 0.1% before planting",
+        "Use resistant varieties: Co 86032",
+        "Apply FYM and potash to improve root health"
+      ],
+      "do_not": [
+        "Allow prolonged drought followed by sudden heavy irrigation",
+        "Plant in poorly drained compacted soils"
+      ],
+      "watch_for": [
+        "Purple-red cavity in stalk when cut",
+        "Yellowing starting from top leaves and progressing downward"
+      ],
+      "timeline": "Recovery possible in early stages with irrigation and bio-fungicide. Advanced cases cannot recover — focus on protecting adjacent rows."
+    },
+    "Grassy Shoot": {
+      "causal_agent": "Phytoplasma (transmitted by leafhopper Pyrilla perpusilla)",
+      "visual_symptoms": "Profuse tillering producing thin, pale yellow grass-like shoots from base. Infected shoots shorter than normal, leaves narrow and light green-yellow.",
+      "favourable_conditions": "Leafhopper population surge in March-May and September-October. Warm dry conditions.",
+      "severity_note": "Once infected, stalk cannot be used for sugar or seed. Entire stool must be removed.",
+      "immediate_actions": [
+        "Uproot and burn all infected stools immediately",
+        "Spray Monocrotophos 0.05% or Imidacloprid 0.05% to control leafhopper vector",
+        "Apply systemic insecticide granules (Carbofuran 3G) in soil around healthy plants"
+      ],
+      "preventive_measures": [
+        "Use disease-free certified planting material",
+        "Control leafhopper population before peak season",
+        "Avoid planting near infected ratoon or wild grass hosts"
+      ],
+      "do_not": [
+        "Use infected plants as seed setts",
+        "Leave infected stools in field"
+      ],
+      "watch_for": [
+        "Dense grass-like tillers at base of plant",
+        "Unusual paleness in new growth"
+      ],
+      "timeline": "Remove infected stools within 1 week of detection. Monitor for new infections for 4-6 weeks."
+    },
+    "Pokkah Boeng": {
+      "causal_agent": "Fusarium moniliforme",
+      "visual_symptoms": "Twisted, distorted, chlorotic young leaves at the growing point. Leaf blade fails to unfurl properly. In severe cases, top rotting with foul smell. Knife cut injury symptom on leaf blade.",
+      "favourable_conditions": "Hot humid weather 25-35°C, RH >85%, frequent rain. Most common in June-September.",
+      "severity_note": "Moderate yield loss if top shoot affected. Rarely kills the entire stalk.",
+      "immediate_actions": [
+        "Spray Carbendazim 0.1% into the leaf whorl (boot leaf area)",
+        "Spray Mancozeb 0.25% as protective spray",
+        "Repeat every 10-14 days for 2 rounds"
+      ],
+      "preventive_measures": [
+        "Avoid excess nitrogen fertilization — promotes succulent growth",
+        "Plant tolerant varieties",
+        "Ensure good air circulation with appropriate row spacing"
+      ],
+      "do_not": [
+        "Apply excess urea during humid monsoon months",
+        "Neglect early symptoms — can lead to top rot"
+      ],
+      "watch_for": [
+        "Rotting of growing point (top rot stage — more serious)",
+        "Knife-cut lesions on unrolled leaves"
+      ],
+      "timeline": "Mild cases recover in 2-3 weeks. Top rot cases may lose the primary shoot but side shoots can compensate."
+    },
+    "Ratoon Stunting": {
+      "causal_agent": "Leifsonia xyli subsp. xyli (bacteria)",
+      "visual_symptoms": "Reduced growth in ratoon crop compared to plant crop. Stalks thin, short. Leaves pale green. No dramatic visible symptoms — diagnosed by poor yield.",
+      "favourable_conditions": "Spreads through infected setts and contaminated harvesting equipment. All growing conditions.",
+      "severity_note": "Yield loss 10-30% in ratoon. Often not noticed until after one poor harvest season.",
+      "immediate_actions": [
+        "Hot water treat all seed setts at 50°C for 30 minutes",
+        "Disinfect all harvesting tools with bleach solution between rows",
+        "Avoid ratoon after 2-3 ratoon cycles in same field"
+      ],
+      "preventive_measures": [
+        "Start from certified clean planting material",
+        "Maximum 2-3 ratoon cycles per field",
+        "Disinfect tools, machines between infected and clean fields"
+      ],
+      "do_not": [
+        "Ratoon indefinitely without replanting",
+        "Use infected stalks as seed"
+      ],
+      "watch_for": [
+        "Significantly lower ratoon yield compared to previous seasons",
+        "Gradual decline across multiple ratoon cycles"
+      ],
+      "timeline": "Spread is slow but cumulative. Replace with fresh clean planting material every 3-4 years."
+    }
+  },
+  "pests": {
+    "Top Borer": {
+      "scientific_name": "Scirpophaga excerptalis",
+      "visual_symptoms": "Dead heart in young plants (central leaf dries, can be pulled out easily). In older plants: 'shot holes' on leaves, internodal boring causing hollow stalks.",
+      "peak_season": "March-April (first generation), June-July (second generation)",
+      "immediate_actions": [
+        "Apply Carbofuran 3G granules 8-10 kg/acre in whorl",
+        "Release Trichogramma chilonis egg parasitoid 50,000/acre × 5 releases at weekly intervals",
+        "Spray Chlorpyrifos 0.05% or Monocrotophos 0.05%"
+      ],
+      "preventive_measures": [
+        "Light trap monitoring — one trap per 5 acres",
+        "Destroy dried leaves and stubble after harvest",
+        "Avoid late planting"
+      ],
+      "do_not": ["Ignore dead heart symptoms — early intervention critical"]
+    },
+    "Pyrilla (Leafhopper)": {
+      "scientific_name": "Pyrilla perpusilla",
+      "visual_symptoms": "White waxy secretion on undersides of leaves. Yellowing of leaves. Sticky honeydew causing sooty mold. Insect jumps when plant is disturbed.",
+      "peak_season": "Dry period May-June, September-October",
+      "immediate_actions": [
+        "Spray Malathion 50 EC 2ml/L or Dimethoate 30 EC 2ml/L",
+        "Release Epiricania melanoleuca parasitoid 5000-10000/acre",
+        "Avoid excess nitrogen which promotes dense foliage"
+      ],
+      "do_not": ["Apply broad-spectrum insecticides that kill natural predators"]
+    }
+  },
+  "fertilizer_schedule": {
+    "note": "Per acre for 12-month crop",
+    "basal": "FYM 4 tons + Urea 25 kg + SSP 50 kg + MOP 25 kg at planting",
+    "30_days": "Urea 25 kg",
+    "60_days": "Urea 25 kg + MOP 12 kg",
+    "90_days": "Urea 25 kg",
+    "grand_growth_phase": "Urea 25 kg at 120 days if crop is thin"
+  },
+  "irrigation": {
+    "water_requirement_mm": "1500-2000 per crop season",
+    "critical_stages": ["germination (0-30 days)", "tillering (30-90 days)", "grand growth (90-240 days)"],
+    "drip_recommendation": "Drip irrigation saves 40-50% water vs furrow. Preferred for Solapur belt."
+  }
+}
