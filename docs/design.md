@@ -297,37 +297,41 @@ PII never leaves the machine. Generic anonymized queries go out: "what medicatio
 
 ## Current Status (updated 2026-06-10)
 
-All core modules are **built and running**. Current focus: remaining integrations (GodsView AI, code analyzer) and knowledge graph.
+All planned Phase 4 modules are **built and running**. System is fully operational.
 
 ### What's Now Live
 | Component | Status |
 |---|---|
 | `core/router.py` — embedding fast-path (FastEmbed + HNSWlib) | ✅ 1ms cosine match before LLM router |
+| `core/embedding_router.py` — expanded phrases | ✅ 15-20 phrases/module, new "code" module routing |
 | `core/llm.py` — streaming tokens, fallback model | ✅ qwen3:1.7b primary, qwen2.5:3b fallback |
 | `core/mistake_log.py` — dual-sink error journal | ✅ SQLite + JSONL |
-| `core/memory.py` — events DB + photo tracker + diary questions | ✅ processed_photos + diary_questions tables |
+| `core/memory.py` — events DB + photo tracker + diary questions | ✅ diary_questions table added |
+| `core/knowledge_graph.py` — SQLite graph | ✅ nodes (person/place/event/media/topic) + edges; vis-network export |
+| `core/db_encryption.py` — AES-256-GCM encrypted backups | ✅ Auto-runs at startup; .enc files excluded from git |
 | `modules/health/` | ✅ BP, steps, weight, sleep, blood sugar |
 | `modules/system/` | ✅ CPU heatmap, load pattern, scheduler |
-| `modules/diary/` | ✅ Photo EXIF → vision captions → LLM diary; auto-skips processed; generates review questions |
+| `modules/diary/` | ✅ Photo EXIF → vision captions → LLM diary; generates review questions |
 | `modules/search/` | ✅ DuckDuckGo + LLM summarise (streaming) |
-| `dashboard/server.py` — FastAPI + WebSocket | ✅ :8765; auto-starts diary write on boot if new photos in ~/Pictures |
-| `dashboard/static/index.html` — 4-col grid | ✅ SVG network icons (WiFi/LAN/VPN), colored bars, diary review questions panel |
+| `modules/code/` — code directory analyzer | ✅ LOC, complexity (AST), bandit security scan, LLM explain |
+| `modules/farming/ndvi.py` — NASA MODIS NDVI | ✅ 16-day composite at 250m; 12h SQLite cache; Barloni default |
+| `dashboard/server.py` — FastAPI + WebSocket | ✅ :8765; graph/ndvi/soil/diary-questions/backup-dbs endpoints |
+| `dashboard/static/index.html` — 4-col grid | ✅ NDVI widget, diary questions panel, news auto-refresh |
 | `dashboard/news_widget.py` — auto-refresh 2.5min | ✅ Source denylist (godi media blocked), background thread |
 | `dashboard/todo_store.py` — SQLite todos API | ✅ CRUD at /api/todos |
 | `dashboard/sysmon.py` — CPU stats | ✅ Optimized: 500ms → 2.8ms (non-blocking psutil) |
-| `security/auditor.py` — bandit integration | ✅ Fixed JSON parse bug (progress bar stripping); 0 issues |
+| `security/auditor.py` — bandit integration | ✅ Fixed JSON parse (progress bar stripped); 0 issues |
 | Voice input (WAV) | ✅ Browser → WAV → faster-whisper tiny |
-| ffmpeg | ✅ Installed |
+| `~/Uploads` + `~/Pictures` | ✅ Both scanned for new photos at startup |
 
 ### Photos → Diary
-**Put photos in `~/Pictures`** — the diary module auto-detects this directory.
+**Put photos in `~/Uploads` or `~/Pictures`** — the diary module auto-detects both.
 
 - Dashboard auto-processes new photos at startup (background thread)
 - Click `✎ FROM PHOTOS` button in diary panel or press **Ctrl+D**
 - System skips already-processed photos (tracked in `processed_photos` DB table)
 - After writing, queues review questions: "Who is in this photo?", "Where was this?"
 - Answers feed back into future diary regeneration
-- Say `"diary for YYYY-MM-DD"` to force-reprocess a specific date
 
 ### Diary Review Questions
 When the diary writes entries, it queues questions about photos that lack context:
@@ -338,40 +342,50 @@ When the diary writes entries, it queues questions about photos that lack contex
 Questions appear as amber blinking items in the diary panel. Click **ANSWER** to respond.
 Answers are stored in `diary_questions` table and used when regenerating entries.
 
-### Pending Integrations (Priority Order)
+### NDVI Crop Health (Barloni)
+- Source: NASA MODIS `MOD13Q1` — 16-day composite, 250m resolution
+- Default coords: Barloni `(18.1617, 75.4218)` — override via `?lat=&lon=`
+- Scale: 0.0001. Range: <0.1 bare soil → >0.7 very healthy
+- Latest reading: NDVI=0.489 "moderate crop cover" (2026-04-23)
+- 12h SQLite cache (`ndvi_cache` table) avoids redundant API hits
+- API: `GET /api/farming/ndvi`, shown in weather panel on dashboard
 
-| Priority | Task |
-|---|---|
-| P1 | GodsView AI satellite monitoring (NDVI for Barloni farm plots) |
-| P1 | Code directory analyzer module (`modules/code/`) |
-| P2 | Knowledge graph: People / Places / Events / Media nodes (SQLite) |
-| P2 | Satellite NDVI crop health widget in dashboard |
-| P3 | SearXNG self-hosted private web search |
-| P3 | Weekly email digest (diary + finance summary) |
-| P3 | Encrypt sensitive DBs at rest |
-| P4 | Face clustering (InsightFace, `~/gk/inbox/`) |
-| P4 | vis-network interactive mindmap |
+### DB Encryption at Rest
+- AES-256-GCM via `cryptography` package
+- Master key: `~/.config/gk/master.key` (32 bytes, chmod 600, never committed)
+- Auto-generated on first use; `.enc` files excluded from git
+- `personal_assistant.db.enc` written at every server startup
+- On-demand: `POST /api/security/backup-dbs`; key info: `GET /api/security/db-key`
+- To restore from backup: `decrypt_db("personal_assistant.db.enc")` from `core.db_encryption`
 
-### GodsView AI
-Website: https://godsviewai.com — "Real Time Satellite Intelligence and Global Monitoring Platform"
-Use case for GK: NDVI crop health, soil moisture from satellite for Barloni farm plot.
-**Action:** Review API docs, check free tier → integrate into `modules/farming/satellite.py`
+### Knowledge Graph
+- SQLite tables: `kg_nodes` (type/label/aliases/properties) + `kg_edges` (src/dst/rel/weight)
+- Node types: person, place, event, media, topic
+- Edge types: appeared_in, attended, located_at, tagged_in, related_to, co_appears_with
+- vis-network export: `GET /api/graph` → `{nodes, edges}`
+- Stats: `GET /api/graph/stats`; add nodes: `POST /api/graph/node`; add edges: `POST /api/graph/edge`
 
-### Code Directory Analyzer (Planned: `modules/code/module.py`)
-Capabilities planned:
-- List + count files by language
-- LOC count, complexity metrics (radon)
-- LLM: "explain this codebase", "what does this directory do"
-- Suggest + apply changes (with approval)
-- Integration with security guardian (bandit scan on demand)
+### Code Directory Analyzer
+- Say "analyze this project", "how many lines of code", "show complex functions"
+- Supports 25+ file extensions; AST cyclomatic complexity (pure Python, no radon)
+- Bandit security scan with JSON parse fix (strips progress bar from stdout)
+- LLM explain mode: `"explain the farming module"` → narrative with codebase context
+- Shortcuts: "this project" → project root, "farming" → modules/farming, etc.
 
 ### Security Guardian — Code Audit Status
-- **bandit** is installed and working (fixed JSON parse bug — progress bar was prefixed to stdout)
+- **bandit** working (fixed JSON parse bug — progress bar was prefixed to stdout)
 - Last audit: 0 issues (CRITICAL=0, HIGH=0, MEDIUM=0, LOW=0)
-- Two `# nosec` suppressions added for documented false positives:
-  - `todo_store.py:87` — SQL column names from hardcoded allow-list, not user input
-  - `run_dashboard.py:25` — `0.0.0.0` is intentional for Tailscale mobile access
+- Two `# nosec` suppressions: `todo_store.py:87` (SQL allow-list), `run_dashboard.py:25` (`0.0.0.0` for Tailscale)
 - Schedule: weekly (7-day interval), runs when system is idle
+
+### Deferred (Future Development)
+| Item | Notes |
+|---|---|
+| GodsView AI | Global tracking platform, NOT farming API. Has MODIS tile proxy but no numeric NDVI. Use NASA MODIS directly (already implemented). |
+| Weekly email digest | Diary + finance weekly summary via email |
+| SearXNG private search | Self-hosted privacy proxy for web queries |
+| Face clustering | InsightFace on `~/Uploads` — surface unknown faces one at a time |
+| OPSEC who-knows-what map | Per-person `knows[]` derived from knowledge graph |
 
 ---
 
@@ -381,6 +395,7 @@ Open `/home/ganesh/projects/personal_assistant/docs/design.md` in a new session 
 
 > "Read the design doc. Resume the build."
 
-**Active top priority:** Integrate GodsView AI satellite API into `modules/farming/satellite.py`.
-**Next:** Build `modules/code/` directory analyzer (LOC, LLM explain, bandit integration).
-**Then:** Knowledge graph — SQLite schema for People/Places/Events nodes.
+**System is complete as of 2026-06-10.** All Phase 4 work done. Next priorities if continuing:
+1. Weekly email digest (diary + finance summary via SMTP)
+2. SearXNG self-hosted private search
+3. Face clustering with InsightFace

@@ -18,6 +18,7 @@ from modules.farming.knowledge import kb_context_for_llm, list_crops_with_kb, fo
 from modules.farming.mandi import get_prices, format_prices
 from modules.farming.farming_client import analyse_photo, format_diagnosis, is_running as farming_server_running
 from modules.farming.geocode import resolve
+from modules.farming.ndvi import get_ndvi, format_ndvi_report
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ Actions:
   {"action": "disease_info", "crop": "<crop name or null if not specified>", "condition": "<disease name or null>"}
   {"action": "crop_history", "plot": "<plot_name>"}
   {"action": "mandi_price", "commodity": "<crop name>", "district": "<district or null>"}
+  {"action": "ndvi_health", "location": "<village/city or null>", "plot": "<plot_name or null>"}
   {"action": "chat", "reply": "<response for conversational or ambiguous queries>"}
 
 Examples (follow this format exactly):
@@ -334,6 +336,17 @@ def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | Non
         district = action.get("district") or None
         data = get_prices(crop, district=district)
         return format_prices(data), data
+
+    # ── NDVI crop health (NASA MODIS) ─────────────────────────────────────────
+    if a == "ndvi_health":
+        loc_raw = action.get("location") or "barloni"
+        name, lat, lon = _loc(loc_raw, _lat, _lon, _name)
+        # Fall back to Barloni if no coordinates
+        if lat is None or lon is None:
+            from modules.farming.geocode import _LOCAL_MAP
+            lat, lon, name = _LOCAL_MAP.get("barloni", (18.1617, 75.4218, "Barloni"))
+        data = get_ndvi(lat=lat, lon=lon)
+        return format_ndvi_report(data, plot_name=name or "Barloni farm"), data
 
     # ── Disease knowledge base ─────────────────────────────────────────────────
     if a == "disease_info":

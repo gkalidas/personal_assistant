@@ -34,6 +34,8 @@ from dashboard.weather_widget import WeatherCache
 from dashboard.guardian import get_guardian_status
 from dashboard.graphql_schema import schema
 from dashboard.todo_store import ensure_table as _ensure_todos, list_todos, add_todo, update_todo, delete_todo
+from core.knowledge_graph import init_graph_tables as _ensure_graph
+from core.db_encryption import backup_sensitive_dbs as _backup_dbs, key_info as _enc_key_info
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +60,7 @@ def _get_query_modules() -> dict:
                 from modules.system.module import SystemModule
                 from modules.diary.module import DiaryModule
                 from modules.search.module import SearchModule
+                from modules.code.module import CodeModule
                 _query_modules = {
                     "finance": FinanceModule(),
                     "farming": FarmingModule(),
@@ -65,6 +68,7 @@ def _get_query_modules() -> dict:
                     "system":  SystemModule(),
                     "diary":   DiaryModule(),
                     "search":  SearchModule(),
+                    "code":    CodeModule(),
                 }
     return _query_modules
 
@@ -98,24 +102,24 @@ def _load_whisper():
 
 
 def _bg_check_new_photos():
-    """At startup: if ~/Pictures has unprocessed photos, auto-trigger diary write."""
+    """At startup: scan ~/Uploads and ~/Pictures for unprocessed photos; auto-write diary."""
     try:
         from core.memory import get_processed_photo_paths
         from pathlib import Path
-        pics_dir = Path.home() / "Pictures"
-        if not pics_dir.exists():
-            return
+        photo_exts = {".jpg", ".jpeg", ".png", ".heic", ".webp", ".heif"}
         already = get_processed_photo_paths()
-        photo_exts = {".jpg", ".jpeg", ".png", ".heic", ".webp"}
-        new = [str(p) for p in pics_dir.rglob("*")
-               if p.suffix.lower() in photo_exts and str(p) not in already]
-        if new:
-            log.info("startup: %d new unprocessed photo(s) in ~/Pictures — queueing diary write", len(new))
-            mods = _get_query_modules()
-            diary = mods.get("diary")
-            if diary:
-                diary.handle("write diary from my photos", {})
-                log.info("startup diary write complete")
+        for folder in ("Uploads", "Pictures"):
+            d = Path.home() / folder
+            if not d.exists():
+                continue
+            new = [str(p) for p in d.rglob("*")
+                   if p.suffix.lower() in photo_exts and str(p) not in already]
+            if new:
+                log.info("startup: %d new photo(s) in ~/%s — writing diary", len(new), folder)
+                mods = _get_query_modules()
+                diary = mods.get("diary")
+                if diary:
+                    diary.handle(f"write diary from my photos {d}", {})
     except Exception as e:
         log.error("bg photo check failed: %s", e)
 
@@ -124,12 +128,15 @@ def _bg_check_new_photos():
 async def _lifespan(app: FastAPI):
     # Initialise persistent stores
     _ensure_todos()
+    _ensure_graph()
     # Warm up weather + whisper in background
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _wx.get)
     loop.run_in_executor(None, _load_whisper)
     # Auto-process new photos in ~/Pictures (non-blocking)
     threading.Thread(target=_bg_check_new_photos, daemon=True, name="photo-check").start()
+    # Encrypted backup of sensitive DBs at startup (non-blocking)
+    threading.Thread(target=_backup_dbs, daemon=True, name="db-backup").start()
     yield
 
 
@@ -389,6 +396,20 @@ async def guardian_patch():
     return JSONResponse({"status": "patching"})
 
 
+@app.get("/api/security/db-key")
+async def api_db_key_info():
+    """Return encryption key metadata (never the key itself)."""
+    return JSONResponse(_enc_key_info())
+
+
+@app.post("/api/security/backup-dbs")
+async def api_backup_dbs():
+    """Encrypt sensitive DBs to .enc snapshot files (non-blocking)."""
+    loop = asyncio.get_event_loop()
+    backed = await loop.run_in_executor(None, _backup_dbs)
+    return JSONResponse({"status": "ok", "files": backed})
+
+
 @app.get("/api/stats")
 async def api_stats():
     """API call analytics — hit counts, latency, caching recommendations."""
@@ -509,6 +530,97 @@ async def diary_draft_get(week: str):
     except Exception as e:
         log.error("diary draft get error: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/graph")
+async def api_graph():
+    """Return knowledge graph nodes + edges for vis-network."""
+    from core.knowledge_graph import get_graph_json
+    return JSONResponse(get_graph_json())
+
+
+@app.get("/api/graph/stats")
+async def api_graph_stats():
+    """Return knowledge graph summary stats."""
+    from core.knowledge_graph import graph_stats
+    return JSONResponse(graph_stats())
+
+
+@app.post("/api/graph/node")
+async def api_graph_add_node(payload: dict = Body(...)):
+    """Add or update a knowledge graph node."""
+    from core.knowledge_graph import upsert_node
+    type_ = payload.get("type", "person")
+    label = (payload.get("label") or "").strip()
+    if not label:
+        return JSONResponse({"error": "label required"}, status_code=400)
+    nid = upsert_node(type_, label, payload.get("properties"), payload.get("aliases"))
+    return JSONResponse({"id": nid})
+
+
+@app.post("/api/graph/edge")
+async def api_graph_add_edge(payload: dict = Body(...)):
+    """Add an edge between two nodes."""
+    from core.knowledge_graph import add_edge
+    src = payload.get("src_id")
+    dst = payload.get("dst_id")
+    rel = (payload.get("rel") or "related_to").strip()
+    if not src or not dst:
+        return JSONResponse({"error": "src_id and dst_id required"}, status_code=400)
+    eid = add_edge(int(src), int(dst), rel, payload.get("weight", 1.0))
+    return JSONResponse({"id": eid})
+
+
+@app.get("/api/farming/ndvi")
+async def api_ndvi(lat: float = 18.1617, lon: float = 75.4218, weeks: int = 6):
+    """NDVI crop health from NASA MODIS for given coordinates (defaults to Barloni)."""
+    loop = asyncio.get_event_loop()
+    def _fetch():
+        from modules.farming.ndvi import get_ndvi
+        return get_ndvi(lat=lat, lon=lon, weeks_back=weeks)
+    data = await loop.run_in_executor(None, _fetch)
+    return JSONResponse(data)
+
+
+@app.get("/api/farming/soil-trend")
+async def api_soil_trend(lat: float = 18.1617, lon: float = 75.4218, days: int = 14):
+    """Soil moisture + temperature trend from Open-Meteo ERA5 for given coordinates."""
+    loop = asyncio.get_event_loop()
+    def _fetch():
+        try:
+            import httpx
+            from datetime import datetime, timedelta
+            end = datetime.now().strftime("%Y-%m-%d")
+            start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+            resp = httpx.get(
+                "https://archive-api.open-meteo.com/v1/archive",
+                params={
+                    "latitude": lat, "longitude": lon,
+                    "start_date": start, "end_date": end,
+                    "daily": "soil_moisture_0_to_7cm_mean,soil_temperature_0_to_7cm_mean,precipitation_sum",
+                    "timezone": "Asia/Kolkata",
+                },
+                timeout=15,
+            )
+            resp.raise_for_status()
+            d = resp.json()
+            daily = d.get("daily", {})
+            dates = daily.get("time", [])
+            sm    = daily.get("soil_moisture_0_to_7cm_mean", [])
+            st    = daily.get("soil_temperature_0_to_7cm_mean", [])
+            rain  = daily.get("precipitation_sum", [])
+            return {
+                "history": [
+                    {"date": dates[i], "soil_moisture": sm[i], "soil_temp_c": st[i], "rain_mm": rain[i]}
+                    for i in range(len(dates))
+                    if sm[i] is not None
+                ],
+                "lat": lat, "lon": lon,
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    data = await loop.run_in_executor(None, _fetch)
+    return JSONResponse(data)
 
 
 @app.post("/api/weather/refresh")

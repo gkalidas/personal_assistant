@@ -57,6 +57,7 @@ def _build_system_prompt(modules: dict[str, BaseModule]) -> str:
         "system":  "system load, CPU, RAM, busy, idle, load pattern, heatmap, security guardian, CVE scan, threat intel, anomaly, audit, background tasks, task schedule",
         "diary":   "diary, photos, journal, write diary, photo diary, show diary, approve diary, draft, daily log, weekly summary, week review, this week",
         "search":  "search, news, latest, current events, what is, who is, government scheme, policy, regulation, internet, web, find out, look up",
+        "code":    "analyze code, codebase, lines of code, LOC, complexity, security scan code, what does this directory do, explain module, file breakdown",
     }
     lines = []
     for name in modules:

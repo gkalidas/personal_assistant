@@ -4,6 +4,7 @@ __pycache__/
 .env
 user_profile.json
 *.db
+*.enc
 *.log
 logs/
 inbox/

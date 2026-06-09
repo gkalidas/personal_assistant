@@ -35,6 +35,11 @@ _MODULE_EXAMPLES: dict[str, list[str]] = {
         "add spray log copper fungicide", "show plots",
         "soil pH and nitrogen", "kharif season advisory",
         "what is the best spray for aphids",
+        "NDVI crop health barloni", "show crop health index",
+        "soil moisture trend", "is my crop healthy",
+        "show farm NDVI", "vegetation index for my plot",
+        "rainfall history barloni", "spray safe check",
+        "add my north field 3 acres", "pomegranate harvest forecast",
     ],
     "finance": [
         "log expense 500 groceries", "log income 20000",
@@ -43,6 +48,9 @@ _MODULE_EXAMPLES: dict[str, list[str]] = {
         "how much did I spend", "financial goals",
         "income vs expenses", "budget for groceries",
         "total expenses this month", "savings",
+        "how much have I saved", "show all transactions",
+        "spent 200 on medicine", "earned 15000 from harvest",
+        "do I have enough for tractor loan", "finance report",
     ],
     "health": [
         "log BP 120/80", "blood pressure today",
@@ -51,6 +59,9 @@ _MODULE_EXAMPLES: dict[str, list[str]] = {
         "blood sugar fasting", "log health reading",
         "BP trend last 2 weeks", "health summary",
         "my health history", "daily steps goal",
+        "how is my health", "log blood sugar 110",
+        "I slept 7 hours last night", "I walked 5000 steps",
+        "show BP history", "weight trend",
     ],
     "diary": [
         "write diary from my photos", "show diary draft",
@@ -59,6 +70,9 @@ _MODULE_EXAMPLES: dict[str, list[str]] = {
         "week in review", "diary for 2025-08-03",
         "auto draft from queries", "diary history",
         "show this week's diary entry",
+        "write my diary", "create diary entry from photos",
+        "show last week journal", "approve my diary draft",
+        "write journal from pictures", "diary from uploads",
     ],
     "search": [
         "search for farming subsidies", "latest news agriculture",
@@ -66,6 +80,9 @@ _MODULE_EXAMPLES: dict[str, list[str]] = {
         "web search drip irrigation", "news about wheat prices",
         "search pomegranate export", "latest farming news",
         "what is the current policy on", "find information about",
+        "look up PM-KISAN scheme", "what is urea subsidy",
+        "recent news about onion prices", "search for drip irrigation cost",
+        "who is agriculture minister", "latest government scheme for farmers",
     ],
     "system": [
         "system status", "show system load",
@@ -73,6 +90,19 @@ _MODULE_EXAMPLES: dict[str, list[str]] = {
         "disk space", "uptime",
         "server load", "show processes",
         "guardian status", "security schedule",
+        "how busy is the system", "RAM and CPU",
+        "show security alerts", "when did guardian last run",
+        "is the server idle", "load average",
+    ],
+    "code": [
+        "analyze this project", "analyze the codebase",
+        "how many lines of code", "show complex functions",
+        "security scan the project", "what does this codebase do",
+        "explain the farming module", "show code complexity",
+        "scan for vulnerabilities in code", "analyze dashboard directory",
+        "how big is this project", "show file breakdown",
+        "code analysis", "review the code",
+        "analyze security module", "what files are in this project",
     ],
 }
 
