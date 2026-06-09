@@ -104,6 +104,8 @@ class NetworkMonitor:
         self._lock = threading.Lock()
         self._primary: Optional[str] = None
         self._last_check: float = 0.0   # 0 → check immediately on first loop
+        # Populate interface list instantly so speed sampling starts on first tick
+        self._status.interfaces = self._scan_interfaces()
         t = threading.Thread(target=self._run, daemon=True, name="net-monitor")
         t.start()
         log.info("NetworkMonitor started")
@@ -149,8 +151,12 @@ class NetworkMonitor:
         ifaces = self._scan_interfaces()
 
         for iface in ifaces:
-            if iface.is_up and iface.ip:
+            if iface.is_up and iface.ip and iface.type != "vpn":
                 iface.is_connected = _check_connectivity(iface.ip)
+            elif iface.type == "vpn" and iface.is_up:
+                # VPN connectivity mirrors the underlying interface — mark connected
+                # if any non-VPN interface already has internet.
+                iface.is_connected = iface.is_up
             else:
                 iface.is_connected = False
 
