@@ -26,12 +26,14 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.responses import Response
 from strawberry.fastapi import GraphQLRouter
 
+from fastapi import Body
 from dashboard.network import NetworkMonitor
 from dashboard.news_widget import NewsCache
 from dashboard.sysmon import get_system_stats
 from dashboard.weather_widget import WeatherCache
 from dashboard.guardian import get_guardian_status
 from dashboard.graphql_schema import schema
+from dashboard.todo_store import ensure_table as _ensure_todos, list_todos, add_todo, update_todo, delete_todo
 
 log = logging.getLogger(__name__)
 
@@ -97,6 +99,8 @@ def _load_whisper():
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    # Initialise persistent stores
+    _ensure_todos()
     # Warm up weather + whisper in background
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _wx.get)
@@ -463,6 +467,83 @@ async def api_news_refresh():
     loop = asyncio.get_event_loop()
     data = await loop.run_in_executor(None, _news.refresh)
     return JSONResponse(data)
+
+
+# ── Todo CRUD ──────────────────────────────────────────────────────────────────
+
+@app.get("/api/todos")
+async def api_todos_list(include_done: bool = False):
+    return JSONResponse(list_todos(include_done=include_done))
+
+
+@app.post("/api/todos")
+async def api_todos_add(payload: dict = Body(...)):
+    text = (payload.get("text") or "").strip()
+    if not text:
+        return JSONResponse({"error": "text required"}, status_code=400)
+    quad = payload.get("quad", "q2")
+    tid = add_todo(text, quad)
+    return JSONResponse({"id": tid})
+
+
+@app.put("/api/todos/{tid}")
+async def api_todos_update(tid: str, payload: dict = Body(...)):
+    update_todo(tid, **payload)
+    return JSONResponse({"ok": True})
+
+
+@app.delete("/api/todos/{tid}")
+async def api_todos_delete(tid: str):
+    delete_todo(tid)
+    return JSONResponse({"ok": True})
+
+
+# ── System upgrade (pip packages) ──────────────────────────────────────────────
+
+@app.post("/api/guardian/upgrade")
+async def guardian_upgrade():
+    """Upgrade all outdated pip packages in the project venv + report apt upgradable."""
+    import subprocess, shutil
+
+    def _run():
+        results = {}
+        # Python packages
+        pip = shutil.which("pip") or shutil.which("pip3")
+        if pip:
+            try:
+                out = subprocess.run(
+                    [pip, "list", "--outdated", "--format=columns"],
+                    capture_output=True, text=True, timeout=30
+                ).stdout
+                pkgs = [l.split()[0] for l in out.strip().splitlines()[2:] if l.strip()]
+                results["pip_outdated"] = pkgs
+                if pkgs:
+                    for p in pkgs[:10]:  # cap at 10 packages
+                        subprocess.run([pip, "install", "--upgrade", p],
+                                       capture_output=True, text=True, timeout=120)
+                    results["pip_upgraded"] = pkgs[:10]
+                else:
+                    results["pip_upgraded"] = []
+            except Exception as e:
+                results["pip_error"] = str(e)
+        # System packages (read-only — list available, no sudo needed)
+        apt = shutil.which("apt")
+        if apt:
+            try:
+                out = subprocess.run(
+                    ["apt", "list", "--upgradable"],
+                    capture_output=True, text=True, timeout=30
+                ).stdout
+                sys_pkgs = [l.split("/")[0] for l in out.strip().splitlines()[1:] if "/" in l]
+                results["apt_upgradable"] = sys_pkgs[:20]
+            except Exception as e:
+                results["apt_note"] = str(e)
+        log.info("upgrade done: %s", results)
+        return results
+
+    loop = asyncio.get_event_loop()
+    res = await loop.run_in_executor(None, _run)
+    return JSONResponse({"status": "done", "results": res})
 
 
 @app.post("/api/voice/query")

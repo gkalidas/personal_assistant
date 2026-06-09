@@ -1,7 +1,7 @@
 {
   "_meta": {
     "version": 1,
-    "last_updated": "2026-06-09",
+    "last_updated": "2026-06-10",
     "source": "GK Security Guardian — curated LLM attack pattern library",
     "description": "Regex patterns for prompt injection and jailbreak detection. Auto-updated by guardian.py.",
     "total_patterns": 45,

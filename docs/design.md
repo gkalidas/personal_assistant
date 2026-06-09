@@ -295,11 +295,73 @@ PII never leaves the machine. Generic anonymized queries go out: "what medicatio
 
 ---
 
+## Current Status (updated 2026-06-10)
+
+All core modules are **built and running**. Current focus: dashboard UX polish + new integrations.
+
+### What's Now Live
+| Component | Status |
+|---|---|
+| `core/router.py` — embedding fast-path (FastEmbed + HNSWlib) | ✅ Live — 1ms cosine match before LLM router |
+| `core/llm.py` — streaming tokens, fallback model | ✅ qwen3:1.7b primary, qwen2.5:3b fallback |
+| `core/mistake_log.py` — dual-sink error journal | ✅ SQLite + JSONL |
+| `modules/health/` | ✅ BP, steps, weight, sleep, blood sugar |
+| `modules/system/` | ✅ CPU heatmap, load pattern, scheduler |
+| `modules/diary/` | ✅ Photo EXIF → vision captions → LLM diary |
+| `modules/search/` | ✅ DuckDuckGo + LLM summarise (streaming) |
+| `dashboard/server.py` — FastAPI + WebSocket | ✅ Live at :8765 |
+| `dashboard/static/index.html` — 4-col grid | ✅ Colored bars, WiFi labels, blink-by-severity |
+| `dashboard/news_widget.py` — auto-refresh 2.5min | ✅ Source denylist, background thread |
+| `dashboard/todo_store.py` — SQLite todos API | ✅ CRUD at /api/todos |
+| `dashboard/guardian.py` — security guardian | ✅ CVE scan, audit, threat intel |
+| Voice input (WAV) | ✅ Browser → WAV → faster-whisper tiny |
+| ffmpeg | ✅ Installed (for video/audio processing) |
+
+### Photos → Diary
+**Put photos in `~/Pictures`** — the diary module auto-detects this as the default photo directory.
+
+To write diary from today's photos:
+```
+python main.py
+> write diary from my photos
+```
+Or in the voice panel: say *"write diary from my photos"*
+
+The system reads EXIF timestamps, captions each photo with moondream (vision model), then writes a narrative diary entry with qwen3:1.7b.
+
+### Pending Integrations (Priority Order)
+
+| Priority | Task |
+|---|---|
+| P1 | GodsView AI satellite monitoring (NDVI for farm plots) |
+| P1 | Code directory analyzer module (`modules/code/`) |
+| P2 | Satellite NDVI crop health widget in dashboard |
+| P2 | Real-time plot boundary overlay on farm panel |
+| P3 | Weekly email digest (diary + finance summary) |
+| P3 | Embedding router phrase expansion (improve routing accuracy) |
+| P4 | Face clustering (InsightFace, from design phase) |
+| P4 | Knowledge graph (People / Places / Events nodes) |
+
+### GodsView AI
+Website: https://godsviewai.com — "Real Time Satellite Intelligence and Global Monitoring Platform"
+Use case for GK: NDVI crop health, soil moisture from satellite for Barloni farm plot.
+**Action:** Review API docs, check free tier → integrate into `modules/farming/satellite.py`
+
+### Code Directory Analyzer (Planned: `modules/code/module.py`)
+Capabilities planned:
+- List + count files by language
+- LOC count, complexity metrics (radon)
+- LLM: "explain this codebase", "what does this directory do"
+- Suggest + apply changes (with approval)
+- Integration with security guardian (bandit scan on demand)
+
+---
+
 ## How to Resume
 
 Open `/home/ganesh/projects/personal_assistant/docs/design.md` in a new session and say:
 
 > "Read the design doc. Resume the build."
 
-Current active step: **Step 1 — fix Ollama, then pull qwen2.5:0.5b and qwen3:1.7b.**
-Next after that: **Step 2 — Farming module with weather (Open-Meteo).**
+**Active top priority:** Integrate GodsView AI satellite API into farming module.
+**Next:** Build `modules/code/` directory analyzer.

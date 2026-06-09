@@ -220,40 +220,67 @@ const STORE_KEY = 'gk_tasks';
 let tasks = [];
 let _draggingId = null;
 let _showDone   = false;
+let _useApi     = true;   // prefer backend API; fall back to localStorage
 
 // ── Persistence ────────────────────────────────────────────────────────────
-function load() {
+async function load() {
+  if (_useApi) {
+    try {
+      const r = await fetch('/api/todos?include_done=true');
+      if (!r.ok) throw new Error('API unavailable');
+      const apiTasks = await r.json();
+      tasks = apiTasks.map(t => ({ id: t.id, text: t.text, quad: t.quad, done: !!t.done, created: t.created_at }));
+      render(); return;
+    } catch (e) { _useApi = false; }
+  }
   try { tasks = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); }
   catch { tasks = []; }
 }
-function save() { localStorage.setItem(STORE_KEY, JSON.stringify(tasks)); }
+
+function save() {
+  localStorage.setItem(STORE_KEY, JSON.stringify(tasks));  // always mirror to localStorage
+}
+
 function uid()  { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
 // ── Add ────────────────────────────────────────────────────────────────────
-function addTask() {
+async function addTask() {
   const input = document.getElementById('task-input');
   const quad  = document.getElementById('task-quad').value;
   const text  = input.value.trim();
   if (!text) { input.focus(); return; }
+
+  if (_useApi) {
+    try {
+      await fetch('/api/todos', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text, quad}) });
+      input.value = ''; input.focus(); load(); return;
+    } catch (e) { _useApi = false; }
+  }
   tasks.push({ id: uid(), text, quad, done: false, created: Date.now() });
-  save();
-  input.value = '';
-  input.focus();
-  render();
+  save(); input.value = ''; input.focus(); render();
 }
 
 // ── Complete / delete ──────────────────────────────────────────────────────
-function toggleDone(id) {
+async function toggleDone(id) {
   const t = tasks.find(t => t.id === id);
-  if (t) { t.done = !t.done; save(); render(); }
+  if (!t) return;
+  if (_useApi) {
+    try {
+      await fetch(`/api/todos/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({done: t.done?0:1}) });
+      load(); return;
+    } catch (e) { _useApi = false; }
+  }
+  t.done = !t.done; save(); render();
 }
-function deleteTask(id) {
-  tasks = tasks.filter(t => t.id !== id);
-  save(); render();
+async function deleteTask(id) {
+  if (_useApi) {
+    try { await fetch(`/api/todos/${id}`, {method:'DELETE'}); load(); return; }
+    catch (e) { _useApi = false; }
+  }
+  tasks = tasks.filter(t => t.id !== id); save(); render();
 }
 function clearDone() {
-  tasks = tasks.filter(t => !t.done);
-  save(); render();
+  tasks.filter(t => t.done).forEach(t => deleteTask(t.id));
 }
 function toggleShowDone() {
   _showDone = !_showDone;
@@ -282,11 +309,18 @@ function dragLeave(e) {
   if (!e.currentTarget.contains(e.relatedTarget))
     e.currentTarget.classList.remove('drag-over');
 }
-function dropTask(e, quad) {
+async function dropTask(e, quad) {
   e.preventDefault();
   e.currentTarget.classList.remove('drag-over');
   if (!_draggingId) return;
-  const t = tasks.find(t => t.id === _draggingId);
+  const id = _draggingId;
+  if (_useApi) {
+    try {
+      await fetch(`/api/todos/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({quad}) });
+      load(); return;
+    } catch (e) { _useApi = false; }
+  }
+  const t = tasks.find(t => t.id === id);
   if (t) { t.quad = quad; save(); render(); }
 }
 
@@ -335,9 +369,10 @@ function seedIfEmpty() {
   save();
 }
 
-load();
-seedIfEmpty();
-render();
+load().then(() => {
+  if (!tasks.length) seedIfEmpty();
+  render();
+}).catch(() => { seedIfEmpty(); render(); });
 </script>
 </body>
 </html>
