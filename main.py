@@ -24,6 +24,8 @@ from core.config import OLLAMA_URL, TEXT_MODEL
 from core.router import dispatch, ROUTER_MODEL
 from core.sanitizer import sanitize_input, redact_pii
 from core.doc_reader import read_document, describe as doc_describe
+from core.llm import Spinner, is_uncertain, is_data_operation
+from core.mistake_log import ensure_table as _ensure_mistake_log, log_mistake
 from modules.finance.module import FinanceModule
 from modules.farming.module import FarmingModule
 from modules.health.module import HealthModule
@@ -131,13 +133,19 @@ def _inject_doc_context(query: str) -> str:
 
 def print_response(responses):
     for r in responses:
-        print(f"\nGK [{r.module}]: {r.text}")
-        if r.follow_up:
-            print(f"\n  → {r.follow_up}")
+        if r.streamed:
+            # Text already printed live during streaming; only show follow-up
+            if r.follow_up:
+                print(f"\n  → {r.follow_up}")
+        else:
+            print(f"\nGK [{r.module}]: {r.text}")
+            if r.follow_up:
+                print(f"\n  → {r.follow_up}")
 
 
 def main():
     memory.init_db()
+    _ensure_mistake_log()
     profile = memory.load_profile()
 
     print("Welcome to the future, GK.")
@@ -207,23 +215,50 @@ def main():
         t0 = time.monotonic()
         log.info("query id=%d q=%r", event_id, query[:120])
 
+        # Show spinner while the module pipeline processes (hidden by streaming output)
+        spinner = Spinner("Thinking")
         try:
             responses = dispatch(query, MODULES, context)
         except Exception as e:
+            spinner.stop()
             latency_ms = int((time.monotonic() - t0) * 1000)
             memory.log_query_done(event_id, "router", str(e), latency_ms, status="error")
             log.error("dispatch failed id=%d latency=%dms: %s", event_id, latency_ms, e, exc_info=True)
+            log_mistake("module_error", query=redact_pii(query), module="router",
+                        details=str(e), severity="high")
             print(f"\nGK: Something went wrong — {e}")
             continue
+        finally:
+            spinner.stop()
 
         latency_ms = int((time.monotonic() - t0) * 1000)
         log.info("response id=%d modules=%s latency=%dms",
                  event_id, [r.module for r in responses], latency_ms)
-        print_response(responses)
+
+        # ── Uncertainty fallback → search ─────────────────────────────────────
+        augmented = []
+        for r in responses:
+            augmented.append(r)
+            if (is_uncertain(r.text) and r.module != "search"
+                    and not is_data_operation(query)):
+                log_mistake("uncertain_response", query=redact_pii(query),
+                            module=r.module, details=r.text[:200], severity="medium")
+                log.info("uncertain response from %s — triggering search fallback", r.module)
+                try:
+                    from modules.search.module import SearchModule
+                    search_r = SearchModule().handle(query, context)
+                    search_r.text = "[Search fallback]\n" + search_r.text
+                    augmented.append(search_r)
+                    log_mistake("search_fallback", query=redact_pii(query),
+                                module=r.module, severity="low")
+                except Exception as se:
+                    log.error("search fallback failed: %s", se)
+
+        print_response(augmented)
 
         # Track last follow-up so user can confirm with "sure/yes"
         pending_follow_up = None
-        for r in responses:
+        for r in augmented:
             if r.follow_up:
                 pending_follow_up = r.follow_up
             memory.log_query_done(

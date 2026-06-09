@@ -414,6 +414,17 @@ async def weather_refresh():
     return JSONResponse(data)
 
 
+@app.get("/api/mistakes")
+async def api_mistakes(limit: int = 50, error_type: str | None = None):
+    """Return Jarvis mistake log for analysis."""
+    from core.mistake_log import get_mistakes, count_by_type
+    return JSONResponse({
+        "mistakes": get_mistakes(limit=limit, error_type=error_type or None),
+        "summary":  count_by_type(),
+        "hint": "Run `python -m core.mistake_log` for suggested fixes",
+    })
+
+
 @app.get("/api/news")
 async def api_news():
     """Return cached agriculture/India news (15-min TTL)."""

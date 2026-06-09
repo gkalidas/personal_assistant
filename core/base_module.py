@@ -9,6 +9,7 @@ class ModuleResponse:
     module: str
     data: dict[str, Any] | None = None
     follow_up: str | None = None
+    streamed: bool = False   # True when text was already printed live to stdout
 
 
 class BaseModule(ABC):

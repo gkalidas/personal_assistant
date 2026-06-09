@@ -10,10 +10,7 @@ import logging
 import time
 from typing import Any
 
-import httpx
-
 from core.base_module import BaseModule, ModuleResponse
-from core.config import OLLAMA_URL, TEXT_MODEL
 
 log = logging.getLogger(__name__)
 
@@ -66,22 +63,21 @@ def _format_results(results: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-def _llm_summarise(query: str, search_text: str) -> str:
-    payload = {
-        "model": TEXT_MODEL,
-        "messages": [
-            {"role": "system", "content": _SYSTEM},
-            {"role": "user",   "content": f"User query: {query}\n\nSearch results:\n{search_text}"},
-        ],
-        "stream": False,
-        "think": False,
-    }
+def _llm_summarise(query: str, search_text: str, stream: bool = False) -> str:
+    from core.llm import call as llm_call
+    messages = [
+        {"role": "system", "content": _SYSTEM},
+        {"role": "user",   "content": f"User query: {query}\n\nSearch results:\n{search_text}"},
+    ]
     t0 = time.monotonic()
-    resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=120.0)
-    resp.raise_for_status()
-    ms = int((time.monotonic() - t0) * 1000)
-    log.debug("LLM summarise %dms", ms)
-    return resp.json()["message"]["content"]
+    text = llm_call(
+        messages, think=False,
+        stream_to_stdout=stream,
+        prefix=f"\nGK [search]: " if stream else "",
+        use_fallback=True,
+    )
+    log.debug("LLM summarise %.0fms stream=%s", (time.monotonic() - t0) * 1000, stream)
+    return text
 
 
 _NEWS_WORDS = {
@@ -120,10 +116,12 @@ class SearchModule(BaseModule):
 
         search_text = _format_results(results)
         try:
-            summary = _llm_summarise(query, search_text)
+            summary = _llm_summarise(query, search_text, stream=True)
+            return ModuleResponse(text=summary, module=self.name, streamed=True)
         except Exception as e:
             log.error("LLM summarise failed: %s", e)
-            # Fall back to raw results
+            from core.mistake_log import log_mistake
+            log_mistake("llm_timeout", query=query, module=self.name,
+                        details=str(e), severity="medium")
             summary = f"Search results for: {query}\n\n{search_text}"
-
-        return ModuleResponse(text=summary, module=self.name)
+            return ModuleResponse(text=summary, module=self.name)

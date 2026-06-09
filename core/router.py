@@ -68,12 +68,13 @@ def _build_system_prompt(modules: dict[str, BaseModule]) -> str:
 def route(query: str, modules: dict[str, BaseModule]) -> list[str]:
     """Return list of module names that should handle this query."""
     # Fast path: embedding router (~1 ms, no LLM call)
+    _embed_choice: str | None = None
     try:
         from core.embedding_router import fast_route
-        fast_module = fast_route(query)
-        if fast_module and fast_module in modules:
-            log.info("embed-route → %s  q=%r", fast_module, query[:80])
-            return [fast_module]
+        _embed_choice = fast_route(query)
+        if _embed_choice and _embed_choice in modules:
+            log.info("embed-route → %s  q=%r", _embed_choice, query[:80])
+            return [_embed_choice]
     except Exception as e:
         log.debug("embed fast-path skip: %s", e)
 
@@ -102,8 +103,22 @@ def route(query: str, modules: dict[str, BaseModule]) -> list[str]:
         chosen = result.get("modules", [])
         valid = [m for m in chosen if m in modules]
         routed = valid if valid else list(modules.keys())
-        log.info("route → %s  (%dms)  q=%r",
-                 routed, int((time.monotonic() - t0) * 1000), query[:80])
+        ms = int((time.monotonic() - t0) * 1000)
+        log.info("route → %s  (%dms)  q=%r", routed, ms, query[:80])
+
+        # Log mismatch when embed router and LLM router disagreed
+        if (_embed_choice and routed and _embed_choice not in routed):
+            try:
+                from core.mistake_log import log_mistake
+                log_mistake(
+                    "routing_mismatch",
+                    query=query[:300],
+                    details={"embed": _embed_choice, "llm": routed},
+                    severity="low",
+                )
+            except Exception:
+                pass
+
         return routed
     except Exception as e:
         log.error("router LLM failed (%dms): %s", int((time.monotonic() - t0) * 1000), e)
