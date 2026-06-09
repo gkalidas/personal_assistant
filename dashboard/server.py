@@ -97,7 +97,8 @@ _MINDMAP_BRANCHES = [
         "id": "diary", "label": "Diary Module", "color": "#d2a8ff",
         "graphql": None,
         "examples": ["write diary from today's photos",
-                     "show this week's diary", "diary summary this month"],
+                     "weekly summary", "what did I do this week",
+                     "show this week's diary", "approve diary"],
         "children": [
             "Photo EXIF extraction (GPS · device)",
             "Vision captions via moondream (local)",

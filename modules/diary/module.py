@@ -19,6 +19,7 @@ from typing import Any
 
 from core.base_module import BaseModule, ModuleResponse
 from core.memory import save_diary_draft, get_diary_draft, approve_diary_draft, list_diary_drafts
+from core.analysis import run_weekly_pipeline, analyse_week, current_iso_week
 from modules.diary.photo_reader import scan_photos, default_photo_dir
 from modules.diary.vision import caption_batch
 from modules.diary.writer import write_diary_entry, format_draft
@@ -28,10 +29,12 @@ log = logging.getLogger(__name__)
 
 # ── Intent detection ──────────────────────────────────────────────────────────
 
-_WRITE_WORDS  = {"write", "create", "make", "generate", "draft", "from photos", "from my photos"}
-_SHOW_WORDS   = {"show", "display", "read", "view", "get", "see"}
-_LIST_WORDS   = {"list", "all drafts", "history", "entries"}
-_APPROVE_WORDS= {"approve", "save", "confirm", "done", "finalize", "finalise"}
+_WRITE_WORDS   = {"write", "create", "make", "generate", "draft", "from photos", "from my photos"}
+_SHOW_WORDS    = {"show", "display", "read", "view", "get", "see"}
+_LIST_WORDS    = {"list", "all drafts", "history", "entries"}
+_APPROVE_WORDS = {"approve", "save", "confirm", "done", "finalize", "finalise"}
+_WEEKLY_WORDS  = {"this week", "weekly summary", "what did i do", "week summary",
+                  "week in review", "auto draft", "from queries", "from history"}
 
 # Regex to pull a path from the query (e.g. "from /home/ganesh/Photos")
 _PATH_RE   = re.compile(r"(?:from\s+)?(/[\w/._~-]+|~/[\w/._-]*)", re.IGNORECASE)
@@ -45,6 +48,8 @@ def _intent(query: str) -> str:
         return "approve"
     if any(w in q for w in _LIST_WORDS) and "diary" in q:
         return "list"
+    if any(w in q for w in _WEEKLY_WORDS):
+        return "weekly"
     if any(w in q for w in _SHOW_WORDS) and "diary" in q:
         return "show"
     if any(w in q for w in _WRITE_WORDS):
@@ -184,6 +189,35 @@ def _do_list() -> tuple[str, dict | None]:
     return "\n".join(lines), {"count": len(drafts)}
 
 
+def _do_weekly(query: str) -> tuple[str, dict | None]:
+    """Auto-draft a diary entry from this week's query history."""
+    date_match = _DATE_RE.search(query)
+    if date_match:
+        week = _date_to_week(date_match.group(1))
+    else:
+        week = _current_week()
+
+    force = "force" in query.lower() or "regenerate" in query.lower()
+    log.info("weekly pipeline: week=%s force=%s", week, force)
+    result = run_weekly_pipeline(week=week, force=force)
+
+    if result.get("skipped"):
+        return result["reason"], {"week": week, "skipped": True}
+
+    ana = result.get("analysis", {})
+    total = ana.get("total_queries", 0)
+    by_mod = ana.get("by_module", {})
+    mod_summary = ", ".join(f"{m}:{n}" for m, n in sorted(by_mod.items(), key=lambda x: -x[1])[:3])
+
+    text = (
+        f"Weekly diary for {week} auto-drafted from {total} queries"
+        + (f" ({mod_summary})" if mod_summary else "")
+        + ".\n\n"
+        + result.get("draft", "")
+    )
+    return text, {"week": week, "total_queries": total, "by_module": by_mod}
+
+
 def _do_approve(query: str) -> tuple[str, dict | None]:
     """Approve a diary draft."""
     date_match = _DATE_RE.search(query)
@@ -223,6 +257,9 @@ class DiaryModule(BaseModule):
         if intent == "write":
             text, data = _do_write(query, profile)
             follow_up = "Say \"approve diary\" when you're happy with the entry."
+        elif intent == "weekly":
+            text, data = _do_weekly(query)
+            follow_up = "Say \"approve diary\" to mark this week's draft as final."
         elif intent == "show":
             text, data = _do_show(query)
             follow_up = "Say \"approve diary\" to mark it as final."

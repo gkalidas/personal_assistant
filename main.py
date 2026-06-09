@@ -95,6 +95,7 @@ _FOLLOW_UP_ACTIONS = {
     "Want disease risk advice based on this soil type?":     "what disease risk does this soil have",
     "Want to log a treatment or observation?":               "log a field observation",
     "Want to compare prices across more markets or check a different district?": "show pomegranate prices in all Maharashtra markets",
+    "Say \"approve diary\" to mark this week's draft as final.":                "approve diary",
 }
 
 
