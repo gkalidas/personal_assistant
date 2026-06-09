@@ -8,8 +8,10 @@ httpx           # Ollama API calls
 
 # Input layer
 Pillow          # EXIF extraction (shared with farming)
-python-docx     # Document processing
+python-docx     # Document processing (DOCX)
 pypdf2          # PDF processing
+openpyxl        # XLSX / Excel processing
+strawberry-graphql[fastapi]  # GraphQL API for dashboard
 # openai-whisper  # Local audio transcription — uncomment when building audio input
 
 # Knowledge graph / people
