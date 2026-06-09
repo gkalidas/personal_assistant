@@ -363,6 +363,57 @@ body::after {
 .panel-btn:disabled { opacity: 0.4; cursor: default; }
 .panel-btn.scanning { color: var(--amber); border-color: var(--amber); animation: blink-alert 1s infinite; }
 
+/* ── Forecast table ───────────────────────────────────────────────────────── */
+.forecast-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px; }
+.forecast-table th { font-size: 9px; letter-spacing: 2px; color: var(--dim); text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.forecast-table td { padding: 6px 6px; border-bottom: 1px solid #060e18; }
+.forecast-table td:first-child { color: #6ab0c0; letter-spacing: 1px; }
+.forecast-table .fc-desc { color: #8ab0b8; }
+.forecast-table .fc-hot  { color: var(--red); }
+.forecast-table .fc-cool { color: #6ab0c0; }
+.forecast-table .fc-rain { color: var(--amber); }
+.forecast-table .fc-today { background: rgba(0,229,255,0.05); }
+
+/* ── Tour system ──────────────────────────────────────────────────────────── */
+#tour-highlight {
+  display: none; position: fixed;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.82);
+  border: 2px solid var(--cyan);
+  box-sizing: border-box;
+  border-radius: 4px; z-index: 8000;
+  pointer-events: none;
+  transition: top 0.3s ease, left 0.3s ease, width 0.3s ease, height 0.3s ease;
+}
+#tour-card {
+  display: none; position: fixed;
+  background: var(--panel);
+  border: 1px solid var(--cyan);
+  box-shadow: 0 0 30px rgba(0,229,255,0.2);
+  border-radius: 3px; padding: 18px 22px;
+  min-width: 280px; max-width: 360px;
+  z-index: 8100;
+}
+#tour-card::before { content: ''; position: absolute; top: 6px; left: 6px; width: 12px; height: 12px; border-top: 1px solid var(--cyan); border-left: 1px solid var(--cyan); }
+.tour-step-label { font-size: 9px; letter-spacing: 3px; color: var(--dim); margin-bottom: 8px; }
+.tour-title { font-size: 13px; letter-spacing: 3px; color: var(--cyan); text-shadow: 0 0 10px var(--glow-c); margin-bottom: 10px; }
+.tour-text  { font-size: 11px; color: #8ab8c8; line-height: 1.7; margin-bottom: 16px; white-space: pre-wrap; }
+.tour-btns  { display: flex; gap: 10px; justify-content: flex-end; }
+.tour-btn {
+  font-size: 9px; letter-spacing: 2px; padding: 4px 12px; border-radius: 2px;
+  cursor: pointer; border: 1px solid var(--border); background: transparent;
+  color: var(--dim); font-family: inherit; transition: all 0.15s;
+}
+.tour-btn.primary { border-color: var(--cyan); color: var(--cyan); }
+.tour-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+#tour-float-btn {
+  position: fixed; bottom: 20px; right: 20px;
+  font-size: 9px; letter-spacing: 3px; padding: 7px 14px; border-radius: 3px;
+  cursor: pointer; border: 1px solid var(--border); background: var(--panel);
+  color: var(--dim); font-family: inherit; z-index: 7000;
+  transition: all 0.2s;
+}
+#tour-float-btn:hover { border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 12px var(--glow-c); }
+
 /* ── Animations ───────────────────────────────────────────────────────────── */
 @keyframes pulse-dot  { 0%,100%{opacity:1} 50%{opacity:0.35} }
 @keyframes blink-alert{ 0%,100%{opacity:1} 50%{opacity:0.55} }
@@ -475,6 +526,8 @@ body::after {
   <div class="h-title"><span>◈</span> GK PERSONAL ASSISTANT</div>
   <div class="h-right">
     <a href="/mindmap" style="font-size:10px;letter-spacing:3px;color:var(--dim);text-decoration:none;border:1px solid var(--border);padding:3px 10px;border-radius:2px;" onmouseover="this.style.color='var(--cyan)';this.style.borderColor='var(--cyan)'" onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">MIND MAP</a>
+    <a href="/todo"    style="font-size:10px;letter-spacing:3px;color:var(--dim);text-decoration:none;border:1px solid var(--border);padding:3px 10px;border-radius:2px;" onmouseover="this.style.color='var(--amber)';this.style.borderColor='var(--amber)'" onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">TODO</a>
+    <a href="/guide"   style="font-size:10px;letter-spacing:3px;color:var(--dim);text-decoration:none;border:1px solid var(--border);padding:3px 10px;border-radius:2px;" onmouseover="this.style.color='var(--green)';this.style.borderColor='var(--green)'" onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">GUIDE</a>
     <div id="clock">--:--:-- --/--/----</div>
     <div class="status-dot" title="Live"></div>
   </div>
@@ -589,7 +642,7 @@ body::after {
   <div class="panel" id="p-guardian" onclick="openModal('guardian')">
     <div class="panel-label" style="justify-content:space-between">
       SECURITY GUARDIAN
-      <button class="panel-btn" id="g-scan-btn" onclick="event.stopPropagation();triggerScan()" title="Run anomaly scan now">⟳ SCAN NOW</button>
+      <button class="panel-btn" id="g-scan-btn" onclick="event.stopPropagation();triggerUpdate()" title="Auto-patch HIGH+ CVEs (same major version)">⬆ UPDATE</button>
     </div>
     <div class="guardian-status">
       <div class="guardian-icon" id="g-icon">◈</div>
@@ -681,6 +734,19 @@ body::after {
   </div>
 </div>
 
+<!-- Tour elements (always in DOM, hidden until tour starts) -->
+<div id="tour-highlight"></div>
+<div id="tour-card">
+  <div class="tour-step-label" id="tour-step-lbl">STEP 1 / 9</div>
+  <div class="tour-title"     id="tour-title">WELCOME</div>
+  <div class="tour-text"      id="tour-text"></div>
+  <div class="tour-btns">
+    <button class="tour-btn" onclick="tourSkip()">SKIP</button>
+    <button class="tour-btn primary" onclick="tourNext()">NEXT →</button>
+  </div>
+</div>
+<button id="tour-float-btn" onclick="tourStart()">◈ TOUR</button>
+
 <script>
 'use strict';
 
@@ -694,13 +760,19 @@ function tick() {
 setInterval(tick, 1000); tick();
 
 let last = {};
+let _openModal = null;   // tracks which regular modal is open for live refresh
 
 // WebSocket
 let ws;
 function connect() {
   ws = new WebSocket(`ws://${location.host}/ws`);
   ws.onopen    = () => console.log('WS connected');
-  ws.onmessage = e => { last = JSON.parse(e.data); render(last); };
+  ws.onmessage = e => {
+    last = JSON.parse(e.data);
+    render(last);
+    // Keep open modals current — modal HTML is rebuilt from fresh `last` data
+    if (_openModal) openModal(_openModal);
+  };
   ws.onclose   = () => { setTimeout(connect, 3000); };
   ws.onerror   = () => ws.close();
 }
@@ -830,6 +902,7 @@ function renderGuardian(g) {
 
 // ── Modals ───────────────────────────────────────────────────────────────────
 function openModal(type) {
+  _openModal = type;
   if (type === 'network' && last.network) {
     const n = last.network;
     let rows = '';
@@ -873,7 +946,7 @@ function openModal(type) {
 
   } else if (type === 'weather' && last.weather) {
     const w = last.weather;
-    let rows = sec('CONDITIONS — '+w.location.toUpperCase());
+    let rows = sec('CONDITIONS — '+(w.location||'').toUpperCase());
     rows += row('Temperature', w.temp_c+'°C');
     rows += row('Feels Like',  w.feels_like_c+'°C');
     rows += row('Description', w.description);
@@ -881,6 +954,33 @@ function openModal(type) {
     rows += row('Humidity',    w.humidity+'%');
     rows += row('Wind',        w.wind_kmh+' km/h '+w.wind_dir);
     rows += row('Visibility',  w.visibility_km+' km');
+
+    // 7-day forecast table
+    if (w.forecast && w.forecast.length) {
+      rows += sec('7-DAY FORECAST');
+      rows += `<table class="forecast-table">
+        <tr><th>DATE</th><th>CONDITIONS</th><th>MAX</th><th>MIN</th><th>RAIN %</th><th>WIND km/h</th><th>PRECIP mm</th></tr>`;
+      const today = new Date().toISOString().slice(0,10);
+      for (const f of w.forecast) {
+        const isToday = f.date === today;
+        const d = new Date(f.date);
+        const dayLabel = isToday ? 'TODAY' :
+          ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()] + ' ' + f.date.slice(5);
+        const rainCls = f.rain_pct >= 70 ? 'fc-rain' : f.rain_pct >= 40 ? 'fc-rain' : '';
+        const maxCls  = f.t_max !== '--' && f.t_max > 38 ? 'fc-hot' : 'fc-cool';
+        rows += `<tr class="${isToday?'fc-today':''}">
+          <td>${dayLabel}</td>
+          <td class="fc-desc">${f.desc}</td>
+          <td class="${maxCls}">${f.t_max}°</td>
+          <td style="color:#6ab0c0">${f.t_min}°</td>
+          <td class="${rainCls}">${f.rain_pct}%</td>
+          <td style="color:var(--dim)">${f.wind_kmh}</td>
+          <td style="color:var(--dim)">${f.precip_mm}</td>
+        </tr>`;
+      }
+      rows += '</table>';
+    }
+
     rows += sec('META');
     rows += row('Last Updated', w.updated_at);
     rows += row('Data Age',    w.age_min+' min');
@@ -953,6 +1053,7 @@ function show(id) {
   el(id).classList.add('open');
 }
 function closeModal() {
+  _openModal = null;
   el('overlay').classList.remove('open');
   document.querySelectorAll('.modal').forEach(m => m.classList.remove('open'));
   el('modal-diary').classList.remove('open');
@@ -1136,15 +1237,15 @@ function _animatePage(direction) {
 // Load diary list on page init
 loadDiaryList();
 
-// ── Guardian scan now ────────────────────────────────────────────────────────
-async function triggerScan() {
+// ── Guardian update (auto-patch HIGH+ CVEs) ───────────────────────────────────
+async function triggerUpdate() {
   const btn = el('g-scan-btn');
   btn.disabled = true;
   btn.className = 'panel-btn scanning';
-  btn.textContent = '⟳ SCANNING…';
+  btn.textContent = '⬆ PATCHING…';
   try {
-    await fetch('/api/guardian/scan', {method:'POST'});
-    // Poll for updated status after ~8 seconds (anomaly scan is fast)
+    await fetch('/api/guardian/patch', {method:'POST'});
+    // Patching takes longer than a scan — poll after 18 s
     setTimeout(async () => {
       try {
         const r = await fetch('/api/data');
@@ -1152,13 +1253,70 @@ async function triggerScan() {
         if (d.guardian) { last.guardian = d.guardian; renderGuardian(d.guardian); }
       } catch(_) {}
       btn.className = 'panel-btn';
-      btn.textContent = '⟳ DONE';
-      setTimeout(() => { btn.textContent = '⟳ SCAN NOW'; btn.disabled = false; }, 1500);
-    }, 8000);
+      btn.textContent = '⬆ DONE';
+      setTimeout(() => { btn.textContent = '⬆ UPDATE'; btn.disabled = false; }, 2000);
+    }, 18000);
   } catch(e) {
     btn.className = 'panel-btn';
-    btn.textContent = '⟳ ERR';
-    setTimeout(() => { btn.textContent = '⟳ SCAN NOW'; btn.disabled = false; }, 2000);
+    btn.textContent = '⬆ ERR';
+    setTimeout(() => { btn.textContent = '⬆ UPDATE'; btn.disabled = false; }, 2000);
+  }
+}
+
+// ── Tour system ────────────────────────────────────────────────────────────────
+const TOUR = [
+  { id: null,         title: 'WELCOME',             text: 'GK Personal Assistant — your private AI on your own hardware.\nAll panels update live every 2 seconds via WebSocket.\nPress NEXT to tour each feature.' },
+  { id: 'p-network',  title: 'NETWORK MONITOR',     text: 'Shows all active interfaces (WiFi, LAN, VPN/Tailscale), connectivity status, and real-time download/upload speeds in both Mbps and Kbps.' },
+  { id: 'p-system',   title: 'SYSTEM RESOURCES',    text: 'CPU, RAM, Swap, Disk — values in GiB match system monitors exactly.\nClick the panel to see frequency, logical cores, load averages, and full storage breakdown.' },
+  { id: 'p-weather',  title: 'WEATHER WIDGET',      text: 'Live weather from Open-Meteo for Barloni farm.\nClick to see a 7-day forecast with rain probability, wind, and precipitation.\nUse ↻ REFRESH to force an immediate re-fetch.' },
+  { id: 'p-guardian', title: 'SECURITY GUARDIAN',   text: 'Monitors CVEs (OSV.dev), code quality (bandit), threat intel (NVD + CISA KEV), and log anomalies hourly.\nCLICK UPDATE to auto-patch packages with HIGH+ CVEs at the same major version.' },
+  { id: 'p-diary',    title: 'DIARY',               text: 'Lists your diary entries by week.\nClick any entry to open the book viewer — navigate between day entries with a smooth page-slide animation.\nSay "write diary from my photos" in the CLI to create entries.' },
+  { id: null,         title: 'TEXT INPUT (CLI)',     text: 'Run:  python main.py\n\nThen type any query:\n  "show my farm weather"\n  "log expense 500 groceries"\n  "log BP 120/80"\n  "mandi price pomegranate"\n  "search latest farming news"' },
+  { id: null,         title: 'VOICE INPUT (CLI)',    text: 'In the CLI type:  /voice 5\nThis records 5 seconds from your microphone (faster-whisper transcription).\n\nMarathi and Hindi are auto-detected — just type in Devanagari script and the AI replies in the same language.' },
+  { id: null,         title: 'NAVIGATION',           text: 'MIND MAP — visual graph of all modules with live GraphQL data\nTODO — Eisenhower priority matrix with drag & drop\nGUIDE — full feature list with input examples\n\nTailscale: access from phone at http://100.67.193.127:8765' },
+];
+let _tourIdx = 0;
+
+function tourStart() {
+  _tourIdx = 0;
+  _tourShow();
+}
+function tourNext() {
+  _tourIdx++;
+  if (_tourIdx >= TOUR.length) { tourSkip(); return; }
+  _tourShow();
+}
+function tourSkip() {
+  el('tour-highlight').style.display = 'none';
+  el('tour-card').style.display = 'none';
+}
+function _tourShow() {
+  const step = TOUR[_tourIdx];
+  el('tour-step-lbl').textContent = `STEP ${_tourIdx + 1} / ${TOUR.length}`;
+  el('tour-title').textContent    = step.title;
+  el('tour-text').textContent     = step.text;
+  el(document.getElementById('tour-card').querySelector('.tour-btn.primary')?'tour-card':'tour-card')
+    .querySelector('.tour-btn.primary').textContent =
+      _tourIdx === TOUR.length - 1 ? 'FINISH ✓' : 'NEXT →';
+
+  const hl = el('tour-highlight');
+  const tc = el('tour-card');
+
+  if (step.id) {
+    const target = document.getElementById(step.id);
+    if (target) {
+      const r = target.getBoundingClientRect();
+      const pad = 6;
+      hl.style.cssText = `display:block;top:${r.top-pad}px;left:${r.left-pad}px;width:${r.width+pad*2}px;height:${r.height+pad*2}px;`;
+      // Position card below or above the highlight
+      const cardTop = r.bottom + pad + 16;
+      const cardLeft = Math.min(r.left, window.innerWidth - 380);
+      tc.style.cssText = `display:block;top:${Math.min(cardTop, window.innerHeight - 200)}px;left:${Math.max(10, cardLeft)}px;`;
+    }
+  } else {
+    // No target — center the card, no highlight
+    hl.style.display = 'none';
+    tc.style.cssText = `display:block;top:50%;left:50%;transform:translate(-50%,-50%);`;
   }
 }
 </script>

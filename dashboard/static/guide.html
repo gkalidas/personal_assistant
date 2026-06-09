@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GK · FEATURE GUIDE</title>
+<style>
+:root {
+  --cyan:  #00e5ff; --green: #00ff88; --amber: #ffaa00;
+  --red:   #ff2255; --orange: #ff7700; --purple: #bc8cff;
+  --bg:    #030b10; --panel: #060e18; --border: #0c2535; --dim: #1a4a5e;
+  --glow-c: rgba(0,229,255,0.18);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg); color: var(--cyan);
+  font-family: 'Courier New', Courier, monospace; font-size: 13px;
+  overflow-x: hidden;
+}
+body::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9000;
+  background: repeating-linear-gradient(0deg, transparent 0, transparent 2px,
+    rgba(0,229,255,0.008) 2px, rgba(0,229,255,0.008) 4px);
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+#header {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 24px; background: var(--panel);
+  border-bottom: 1px solid var(--border); height: 48px;
+}
+.h-title { font-size: 14px; letter-spacing: 5px; color: var(--cyan); text-shadow: 0 0 14px var(--glow-c); }
+.h-title span { color: var(--dim); margin-right: 8px; }
+.h-nav { display: flex; gap: 10px; }
+.nav-link {
+  font-size: 10px; letter-spacing: 3px; color: var(--dim); text-decoration: none;
+  border: 1px solid var(--border); padding: 3px 10px; border-radius: 2px;
+  transition: all 0.15s;
+}
+.nav-link:hover { color: var(--cyan); border-color: var(--cyan); }
+
+/* ── Input method badges ─────────────────────────────────────────────────── */
+#input-methods {
+  display: flex; gap: 12px; padding: 16px 24px;
+  background: var(--panel); border-bottom: 1px solid var(--border);
+}
+.input-badge {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; border: 1px solid var(--border); border-radius: 3px;
+  cursor: pointer; transition: all 0.2s; text-decoration: none;
+}
+.input-badge:hover { border-color: var(--cyan); }
+.input-badge .ib-icon { font-size: 18px; }
+.input-badge .ib-body { display: flex; flex-direction: column; gap: 2px; }
+.input-badge .ib-title { font-size: 11px; letter-spacing: 2px; }
+.input-badge .ib-sub   { font-size: 9px; letter-spacing: 1px; color: var(--dim); }
+
+/* ── Module tabs ─────────────────────────────────────────────────────────── */
+#tabs {
+  display: flex; gap: 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto; padding: 0 24px;
+  background: var(--panel);
+}
+.tab {
+  font-size: 10px; letter-spacing: 3px; padding: 10px 16px;
+  cursor: pointer; border-bottom: 2px solid transparent;
+  color: var(--dim); transition: all 0.15s; white-space: nowrap;
+}
+.tab:hover { color: var(--cyan); }
+.tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+
+/* ── Content ─────────────────────────────────────────────────────────────── */
+#content { padding: 24px; max-width: 1000px; margin: 0 auto; }
+
+.module-section { display: none; }
+.module-section.active { display: block; }
+
+.module-header {
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 24px; padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.module-icon { font-size: 28px; }
+.module-title { font-size: 18px; letter-spacing: 4px; }
+.module-desc  { font-size: 11px; color: var(--dim); margin-top: 4px; letter-spacing: 1px; }
+
+.feature-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;
+}
+.feature-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+  padding: 16px 18px; transition: border-color 0.2s;
+}
+.feature-card:hover { border-color: var(--dim); }
+.fc-title { font-size: 10px; letter-spacing: 3px; color: var(--cyan); margin-bottom: 10px; }
+.fc-desc  { font-size: 11px; color: #6ab0c0; line-height: 1.7; margin-bottom: 12px; }
+
+.example-block { margin-top: 10px; }
+.ex-label { font-size: 9px; letter-spacing: 2px; color: var(--dim); margin-bottom: 5px; }
+.ex-cmd {
+  font-size: 11px; background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+  border-radius: 2px; padding: 6px 10px; color: #8ab8c8; letter-spacing: 0.5px;
+  cursor: pointer; transition: border-color 0.15s; margin-bottom: 4px;
+  white-space: pre-wrap; word-break: break-word;
+}
+.ex-cmd:hover { border-color: var(--cyan); color: var(--cyan); }
+.ex-cmd.voice { border-color: rgba(188,140,255,0.3); color: #bc8cff; }
+.ex-cmd.voice::before { content: '🎙 '; }
+
+.section-title {
+  font-size: 10px; letter-spacing: 4px; color: var(--dim);
+  margin: 20px 0 10px; display: flex; align-items: center; gap: 8px;
+}
+.section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+.tip-block {
+  background: rgba(0,229,255,0.04); border: 1px solid rgba(0,229,255,0.15);
+  border-radius: 2px; padding: 12px 16px; margin-bottom: 16px;
+}
+.tip-block .tip-label { font-size: 9px; letter-spacing: 3px; color: var(--cyan); margin-bottom: 6px; }
+.tip-block p { font-size: 11px; color: #6ab0c0; line-height: 1.7; }
+
+.cmd-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+.cmd-table th {
+  font-size: 9px; letter-spacing: 2px; color: var(--dim);
+  text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border);
+}
+.cmd-table td { font-size: 11px; padding: 8px 8px; border-bottom: 1px solid #060e18; }
+.cmd-table td:first-child { color: var(--cyan); font-family: 'Courier New'; letter-spacing: 1px; }
+.cmd-table td:last-child  { color: #8ab0b8; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div class="h-title"><span>◈</span> GK · FEATURE GUIDE</div>
+  <div class="h-nav">
+    <a href="/"      class="nav-link">DASHBOARD</a>
+    <a href="/todo"  class="nav-link" style="color:var(--amber);border-color:rgba(255,170,0,0.25)">TODO</a>
+    <a href="/mindmap" class="nav-link">MIND MAP</a>
+  </div>
+</div>
+
+<!-- Input method summary -->
+<div id="input-methods">
+  <div class="input-badge" style="border-color:rgba(0,229,255,0.3)">
+    <span class="ib-icon">⌨</span>
+    <div class="ib-body">
+      <span class="ib-title" style="color:var(--cyan)">TEXT</span>
+      <span class="ib-sub">python main.py → type query</span>
+    </div>
+  </div>
+  <div class="input-badge" style="border-color:rgba(188,140,255,0.3)">
+    <span class="ib-icon">🎙</span>
+    <div class="ib-body">
+      <span class="ib-title" style="color:#bc8cff">VOICE</span>
+      <span class="ib-sub">/voice [secs] in CLI</span>
+    </div>
+  </div>
+  <div class="input-badge" style="border-color:rgba(0,255,136,0.3)">
+    <span class="ib-icon">मर</span>
+    <div class="ib-body">
+      <span class="ib-title" style="color:var(--green)">MARATHI / HINDI</span>
+      <span class="ib-sub">type in Devanagari — auto detected</span>
+    </div>
+  </div>
+  <div class="input-badge" style="border-color:rgba(255,170,0,0.3)">
+    <span class="ib-icon">🌐</span>
+    <div class="ib-body">
+      <span class="ib-title" style="color:var(--amber)">DASHBOARD</span>
+      <span class="ib-sub">localhost:8765 or Tailscale IP</span>
+    </div>
+  </div>
+  <div class="input-badge" style="border-color:rgba(86,211,100,0.3)">
+    <span class="ib-icon">⬡</span>
+    <div class="ib-body">
+      <span class="ib-title" style="color:#56d364">GRAPHQL</span>
+      <span class="ib-sub">POST localhost:8765/graphql</span>
+    </div>
+  </div>
+</div>
+
+<!-- Module tabs -->
+<div id="tabs">
+  <div class="tab active" onclick="showModule('farming')">FARMING</div>
+  <div class="tab" onclick="showModule('finance')">FINANCE</div>
+  <div class="tab" onclick="showModule('health')">HEALTH</div>
+  <div class="tab" onclick="showModule('diary')">DIARY</div>
+  <div class="tab" onclick="showModule('search')">SEARCH</div>
+  <div class="tab" onclick="showModule('security')">SECURITY</div>
+  <div class="tab" onclick="showModule('dashboard')">DASHBOARD</div>
+  <div class="tab" onclick="showModule('voice')">VOICE &amp; LANG</div>
+</div>
+
+<div id="content">
+
+  <!-- ── FARMING ──────────────────────────────────────────────────────────── -->
+  <div class="module-section active" id="sec-farming">
+    <div class="module-header">
+      <span class="module-icon">🌾</span>
+      <div><div class="module-title" style="color:var(--green)">FARMING MODULE</div>
+      <div class="module-desc">Weather · Soil · Spray safety · Mandi prices · Disease diagnosis · Plot management</div></div>
+    </div>
+
+    <div class="tip-block">
+      <div class="tip-label">YOUR FARMS</div>
+      <p>GK Farm (6 acres, Barloni) and Mugdha Farm (10 acres, Barloni) — both configured in user_profile.json.<br>
+      Mention farm name in query to switch context: "mugdha farm mandi price" vs "my farm weather".</p>
+    </div>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="fc-title">WEATHER + FORECAST</div>
+        <div class="fc-desc">Live current conditions + 7-day forecast for your farm GPS coordinates via Open-Meteo.</div>
+        <div class="example-block">
+          <div class="ex-label">TEXT EXAMPLES</div>
+          <div class="ex-cmd">show my farm weather</div>
+          <div class="ex-cmd">7 day forecast barloni</div>
+          <div class="ex-cmd">will it rain tomorrow on my farm?</div>
+          <div class="ex-label" style="margin-top:8px">VOICE</div>
+          <div class="ex-cmd voice">/voice 5  →  "show farm weather"</div>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="fc-title">SPRAY SAFETY CHECK</div>
+        <div class="fc-desc">Checks wind speed, humidity, and rain probability for the next 24 hours. Returns GO / NO-GO with reason.</div>
+        <div class="example-block">
+          <div class="ex-label">TEXT EXAMPLES</div>
+          <div class="ex-cmd">is it safe to spray tomorrow?</div>
+          <div class="ex-cmd">spray safety check for afternoon</div>
+          <div class="ex-cmd">can I spray fungicide this weekend?</div>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="fc-title">MANDI PRICES</div>
+        <div class="fc-desc">Live APMC mandi prices from data.gov.in. Ask for any crop by name.</div>
+        <div class="example-block">
+          <div class="ex-label">TEXT EXAMPLES</div>
+          <div class="ex-cmd">mandi price pomegranate today</div>
+          <div class="ex-cmd">onion price in solapur mandi</div>
+          <div class="ex-cmd">sugarcane rate this week</div>
+          <div class="ex-cmd voice">/voice 5  →  "डाळिंब मंदी भाव सांगा"</div>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="fc-title">SOIL DATA</div>
+        <div class="fc-desc">Soil pH, nitrogen, organic carbon for your farm coordinates via SoilGrids (ISRIC).</div>
+        <div class="example-block">
+          <div class="ex-label">TEXT EXAMPLES</div>
+          <div class="ex-cmd">soil data for my farm</div>
+          <div class="ex-cmd">show soil pH and nitrogen barloni</div>
+          <div class="ex-cmd">soil health mugdha farm</div>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="fc-title">DISEASE DIAGNOSIS</div>
+        <div class="fc-desc">Fuzzy symptom matching against a disease knowledge base. Describe what you see.</div>
+        <div class="example-block">
+          <div class="ex-label">TEXT EXAMPLES</div>
+          <div class="ex-cmd">pomegranate leaves turning yellow with black spots</div>
+          <div class="ex-cmd">my sugarcane has white powder on leaves</div>
+          <div class="ex-cmd">what disease causes fruit cracking?</div>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="fc-title">PLOT &amp; CROP MANAGEMENT</div>
+        <div class="fc-desc">Add / update plots and crops. Log spray events with date, chemical, dose.</div>
+        <div class="example-block">
+          <div class="ex-label">TEXT EXAMPLES</div>
+          <div class="ex-cmd">show my plots</div>
+          <div class="ex-cmd">add spray log: plot A, copper fungicide, 2g/L, today</div>
+          <div class="ex-cmd">show spray history this month</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">RAINFALL HISTORY</div>
+    <div class="cmd-table-wrap">
+      <table class="cmd-table">
+        <tr><th>QUERY</th><th>WHAT IT DOES</th></tr>
+        <tr><td>rainfall last 30 days</td><td>ERA5 archive data for farm coordinates</td></tr>
+        <tr><td>monthly rainfall 2025</td><td>Monthly totals from historical archive</td></tr>
+        <tr><td>how much rain did we get in June?</td><td>Natural language rainfall lookup</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── FINANCE ──────────────────────────────────────────────────────────── -->
+  <div class="module-section" id="sec-finance">
+    <div class="module-header">
+      <span class="module-icon">₹</span>
+      <div><div class="module-title" style="color:#f78166">FINANCE MODULE</div>
+      <div class="module-desc">Income · Expenses · Budgets · Goals · Monthly summaries — all encrypted at rest</div></div>
+    </div>
+
+    <div class="tip-block">
+      <div class="tip-label">ENCRYPTION</div>
+      <p>Transaction descriptions are Fernet-encrypted in SQLite using your master key at ~/.config/gk/master.key.<br>
+      Numeric amounts are stored plaintext so SQL aggregates (SUM, AVG) keep working.</p>
+    </div>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="fc-title">LOG TRANSACTIONS</div>
+        <div class="ex-cmd">log expense 500 groceries</div>
+        <div class="ex-cmd">log income 20000 farm sale</div>
+        <div class="ex-cmd">add expense 1200 fertilizer</div>
+        <div class="ex-cmd voice">/voice 5  →  "add expense 800 medicine"</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-title">MONTHLY SUMMARY</div>
+        <div class="ex-cmd">monthly summary</div>
+        <div class="ex-cmd">show this month's income vs spend</div>
+        <div class="ex-cmd">spending breakdown by category</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-title">BUDGET TRACKER</div>
+        <div class="ex-cmd">set budget groceries 3000</div>
+        <div class="ex-cmd">show budget status</div>
+        <div class="ex-cmd">am I over budget this month?</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-title">FINANCIAL GOALS</div>
+        <div class="ex-cmd">add goal tractor 150000 by 2026-12-31</div>
+        <div class="ex-cmd">show my savings goals</div>
+        <div class="ex-cmd">how close am I to my goals?</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── HEALTH ───────────────────────────────────────────────────────────── -->
+  <div class="module-section" id="sec-health">
+    <div class="module-header">
+      <span class="module-icon">❤</span>
+      <div><div class="module-title" style="color:#ff7b72">HEALTH MODULE</div>
+      <div class="module-desc">BP · Steps · Weight · Sleep · Blood sugar · 7-14 day trends — notes encrypted</div></div>
+    </div>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="fc-title">BLOOD PRESSURE</div>
+        <div class="fc-desc">6-level risk classification (Normal → Hypertensive Crisis).</div>
+        <div class="ex-cmd">log BP 120/80</div>
+        <div class="ex-cmd">show BP trend last 2 weeks</div>
+        <div class="ex-cmd voice">/voice 5  →  "BP 130/85 log karo"</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-title">STEPS &amp; WEIGHT</div>
+        <div class="ex-cmd">steps today 8000</div>
+        <div class="ex-cmd">log weight 72</div>
+        <div class="ex-cmd">show weight trend</div>
+        <div class="ex-cmd">steps goal progress this week</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-title">SLEEP &amp; BLOOD SUGAR</div>
+        <div class="ex-cmd">log sleep 7.5 hours</div>
+        <div class="ex-cmd">blood sugar fasting 95</div>
+        <div class="ex-cmd">blood sugar post-meal 140</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-title">TRENDS &amp; HISTORY</div>
+        <div class="ex-cmd">show health trends</div>
+        <div class="ex-cmd">last 14 days BP history</div>
+        <div class="ex-cmd">health summary this week</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DIARY ────────────────────────────────────────────────────────────── -->
+  <div class="module-section" id="sec-diary">
+    <div class="module-header">
+      <span class="module-icon">📖</span>
+      <div><div class="module-title" style="color:#d2a8ff">DIARY MODULE</div>
+      <div class="module-desc">Photo captions · LLM writer · Weekly auto-draft · Draft → approve workflow</div></div>
+    </div>
+
+    <div class="tip-block">
+      <div class="tip-label">HOW IT WORKS</div>
+      <p>1. Your photos are scanned for EXIF date/time and GPS.<br>
+      2. moondream (local vision model) captions each photo.<br>
+      3. qwen3:1.7b writes a warm first-person diary entry from the captions.<br>
+      4. Draft is saved — you review and approve it.</p>
+    </div>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="fc-title">WRITE FROM PHOTOS</div>
+        <div class="ex-cmd">write diary from my photos</div>
+        <div class="ex-cmd">write diary from /home/ganesh/Photos</div>
+        <div class="ex-cmd">diary for 2025-08-03</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-title">WEEKLY AUTO-DRAFT</div>
+        <div class="fc-desc">Auto-drafts from your query history — no photos needed.</div>
+        <div class="ex-cmd">weekly summary</div>
+        <div class="ex-cmd">what did I do this week?</div>
+        <div class="ex-cmd">week in review</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-title">VIEW &amp; APPROVE</div>
+        <div class="ex-cmd">show diary draft</div>
+        <div class="ex-cmd">show diary 2025-W31</div>
+        <div class="ex-cmd">list diary drafts</div>
+        <div class="ex-cmd">approve diary</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-title">DASHBOARD BOOK VIEW</div>
+        <div class="fc-desc">Click the DIARY panel on the dashboard → select an entry → page-slide book viewer.</div>
+        <div class="ex-cmd" style="color:var(--cyan)">→ http://localhost:8765 → DIARY panel</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SEARCH ───────────────────────────────────────────────────────────── -->
+  <div class="module-section" id="sec-search">
+    <div class="module-header">
+      <span class="module-icon">🔍</span>
+      <div><div class="module-title" style="color:#56d364">SEARCH MODULE</div>
+      <div class="module-desc">DuckDuckGo web search + news · LLM summarises top 5 results</div></div>
+    </div>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="fc-title">WEB SEARCH</div>
+        <div class="ex-cmd">search for pomegranate export prices 2025</div>
+        <div class="ex-cmd">search drip irrigation cost per acre india</div>
+        <div class="ex-cmd">what is the best spray for aphids on pomegranate</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-title">NEWS</div>
+        <div class="fc-desc">Uses DuckDuckGo news API, prefers Indian authoritative sources.</div>
+        <div class="ex-cmd">latest news about farming subsidies</div>
+        <div class="ex-cmd">today agriculture news india</div>
+        <div class="ex-cmd">recent msp announcement wheat</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECURITY ─────────────────────────────────────────────────────────── -->
+  <div class="module-section" id="sec-security">
+    <div class="module-header">
+      <span class="module-icon">🛡</span>
+      <div><div class="module-title" style="color:#ffa657">SECURITY GUARDIAN</div>
+      <div class="module-desc">CVE scan · Code audit · Threat intel · Log anomaly detection · Auto-patch</div></div>
+    </div>
+
+    <div class="tip-block">
+      <div class="tip-label">AUTO-PATCH</div>
+      <p>Click UPDATE on the dashboard to auto-patch packages with HIGH+ CVEs at the same major version.<br>
+      Packages needing a major-version bump are flagged for manual review in the guardian state file.</p>
+    </div>
+
+    <table class="cmd-table">
+      <tr><th>TASK</th><th>TRIGGER</th><th>FREQUENCY</th></tr>
+      <tr><td>CVE scan (OSV.dev)</td><td>Dashboard UPDATE button</td><td>Daily automatic</td></tr>
+      <tr><td>Code audit (bandit)</td><td>auto</td><td>Weekly</td></tr>
+      <tr><td>Threat intel (NVD + CISA)</td><td>auto</td><td>Daily</td></tr>
+      <tr><td>Log anomaly detect</td><td>Dashboard SCAN NOW (legacy)</td><td>Hourly</td></tr>
+    </table>
+
+    <div class="section-title">CLI COMMANDS</div>
+    <table class="cmd-table">
+      <tr><th>COMMAND</th><th>DESCRIPTION</th></tr>
+      <tr><td>guardian status</td><td>Show current security state</td></tr>
+      <tr><td>show security schedule</td><td>Next/last run times for each task</td></tr>
+      <tr><td>show code audit issues</td><td>List bandit findings by severity</td></tr>
+    </table>
+  </div>
+
+  <!-- ── DASHBOARD ────────────────────────────────────────────────────────── -->
+  <div class="module-section" id="sec-dashboard">
+    <div class="module-header">
+      <span class="module-icon">◈</span>
+      <div><div class="module-title" style="color:#79c0ff">DASHBOARD</div>
+      <div class="module-desc">Live panels · WebSocket · GraphQL · Mind map · Todo · Diary book</div></div>
+    </div>
+
+    <table class="cmd-table">
+      <tr><th>URL</th><th>DESCRIPTION</th></tr>
+      <tr><td>localhost:8765/</td><td>Main dashboard — 5 live panels, updates every 2 s</td></tr>
+      <tr><td>localhost:8765/mindmap</td><td>D3.js module map with live GraphQL data on node click</td></tr>
+      <tr><td>localhost:8765/todo</td><td>Eisenhower priority matrix — drag &amp; drop, localStorage</td></tr>
+      <tr><td>localhost:8765/guide</td><td>This feature guide</td></tr>
+      <tr><td>localhost:8765/graphql</td><td>GraphQL playground (GET) / API (POST)</td></tr>
+      <tr><td>localhost:8765/api/stats</td><td>API call analytics + caching recommendations</td></tr>
+      <tr><td>localhost:8765/api/data</td><td>Single JSON snapshot of all panel data</td></tr>
+      <tr><td>100.67.193.127:8765</td><td>Tailscale — access from phone or remote machine</td></tr>
+    </table>
+
+    <div class="section-title">GRAPHQL EXAMPLES</div>
+    <div class="ex-cmd" style="white-space:pre">{ system { cpuPct ramPct diskPct uptime } }</div>
+    <div class="ex-cmd" style="white-space:pre;margin-top:6px">{ weather { tempC description humidity } }</div>
+    <div class="ex-cmd" style="white-space:pre;margin-top:6px">{ guardian { overall alertCount vulnCount } }</div>
+    <div class="ex-cmd" style="white-space:pre;margin-top:6px">{ farming { plotsCount cropsCount } finance { currentMonthIncome currentMonthSpend } }</div>
+
+    <div class="section-title">START / RESTART</div>
+    <table class="cmd-table">
+      <tr><th>COMMAND</th><th>DESCRIPTION</th></tr>
+      <tr><td>nohup python scripts/run_dashboard.py > /tmp/dash.log 2>&amp;1 &amp;</td><td>Start in background</td></tr>
+      <tr><td>tail -f /tmp/dash.log</td><td>Monitor dashboard logs</td></tr>
+      <tr><td>pkill -f run_dashboard</td><td>Stop dashboard</td></tr>
+    </table>
+  </div>
+
+  <!-- ── VOICE & LANG ─────────────────────────────────────────────────────── -->
+  <div class="module-section" id="sec-voice">
+    <div class="module-header">
+      <span class="module-icon">🎙</span>
+      <div><div class="module-title" style="color:#bc8cff">VOICE &amp; LANGUAGE</div>
+      <div class="module-desc">faster-whisper mic recording · Marathi · Hindi · Devanagari auto-detect</div></div>
+    </div>
+
+    <div class="tip-block">
+      <div class="tip-label">SETUP</div>
+      <p>faster-whisper is already installed. The 74 MB base model auto-downloads on first /voice call.<br>
+      Requires: arecord (ALSA) — usually pre-installed on Ubuntu/Debian.</p>
+    </div>
+
+    <div class="section-title">VOICE COMMANDS (type in CLI)</div>
+    <table class="cmd-table">
+      <tr><th>COMMAND</th><th>DESCRIPTION</th></tr>
+      <tr><td>/voice</td><td>Record 5 seconds (default)</td></tr>
+      <tr><td>/voice 10</td><td>Record 10 seconds</td></tr>
+      <tr><td>/mic 3</td><td>Same as /voice, alternate alias</td></tr>
+      <tr><td>/v</td><td>Short alias for /voice 5</td></tr>
+    </table>
+
+    <div class="section-title">LANGUAGE SUPPORT</div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="fc-title">ENGLISH</div>
+        <div class="fc-desc">Default — just type or speak normally. All modules respond in English.</div>
+        <div class="ex-cmd">show my farm weather</div>
+        <div class="ex-cmd">log expense 500 groceries</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-title">मराठी / MARATHI</div>
+        <div class="fc-desc">Type in Devanagari — automatically detected, AI responds in Marathi.</div>
+        <div class="ex-cmd">डाळिंब मंदी भाव सांगा</div>
+        <div class="ex-cmd">माझ्या शेताचे हवामान दाखवा</div>
+        <div class="ex-cmd voice">/voice 5  →  speak in Marathi</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-title">हिंदी / HINDI</div>
+        <div class="fc-desc">Type in Devanagari — same auto-detection as Marathi.</div>
+        <div class="ex-cmd">आज मौसम कैसा है खेत पर?</div>
+        <div class="ex-cmd">500 रुपये खर्च दर्ज करो किराना</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-title">HOW DETECTION WORKS</div>
+        <div class="fc-desc">Any Devanagari character (U+0900–U+097F) in your query triggers the language hint. qwen3:1.7b replies in the same script.</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<script>
+function showModule(id) {
+  document.querySelectorAll('.module-section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('sec-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>

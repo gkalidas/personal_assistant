@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GK · TASK MATRIX</title>
+<style>
+:root {
+  --cyan:   #00e5ff; --green:  #00ff88; --amber: #ffaa00;
+  --red:    #ff2255; --orange: #ff7700;
+  --bg:     #030b10; --panel:  #060e18; --border: #0c2535;
+  --dim:    #1a4a5e;
+  --q1: rgba(255, 34, 85, 0.08);    --q1b: rgba(255,34,85,0.4);
+  --q2: rgba(0, 229, 255, 0.06);    --q2b: rgba(0,229,255,0.4);
+  --q3: rgba(255, 170, 0, 0.07);    --q3b: rgba(255,170,0,0.4);
+  --q4: rgba(26, 74, 94, 0.12);     --q4b: rgba(26,74,94,0.4);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  background: var(--bg); color: var(--cyan);
+  font-family: 'Courier New', Courier, monospace; font-size: 13px;
+  user-select: none;
+}
+body::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9000;
+  background: repeating-linear-gradient(0deg, transparent 0px, transparent 2px,
+    rgba(0,229,255,0.01) 2px, rgba(0,229,255,0.01) 4px);
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+#header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 20px; background: var(--panel);
+  border-bottom: 1px solid var(--border); height: 48px;
+}
+.h-title { font-size: 14px; letter-spacing: 5px; color: var(--cyan); text-shadow: 0 0 14px rgba(0,229,255,0.3); }
+.h-title span { color: var(--dim); margin-right: 8px; }
+.h-nav { display: flex; gap: 12px; align-items: center; }
+.nav-link {
+  font-size: 10px; letter-spacing: 3px; color: var(--dim);
+  text-decoration: none; border: 1px solid var(--border); padding: 3px 10px; border-radius: 2px;
+  transition: all 0.15s;
+}
+.nav-link:hover { color: var(--cyan); border-color: var(--cyan); }
+
+/* ── Add form ────────────────────────────────────────────────────────────── */
+#add-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+#add-bar input {
+  flex: 1; background: var(--bg); border: 1px solid var(--border);
+  color: var(--cyan); font-family: inherit; font-size: 12px;
+  padding: 6px 10px; border-radius: 2px; outline: none;
+  transition: border-color 0.15s;
+}
+#add-bar input:focus { border-color: var(--cyan); }
+#add-bar input::placeholder { color: var(--dim); }
+#add-bar select {
+  background: var(--bg); border: 1px solid var(--border); color: var(--cyan);
+  font-family: inherit; font-size: 11px; letter-spacing: 1px;
+  padding: 6px 10px; border-radius: 2px; outline: none; cursor: pointer;
+}
+#add-bar button {
+  background: transparent; border: 1px solid var(--cyan); color: var(--cyan);
+  font-family: inherit; font-size: 10px; letter-spacing: 3px;
+  padding: 6px 16px; border-radius: 2px; cursor: pointer; transition: all 0.15s;
+}
+#add-bar button:hover { background: rgba(0,229,255,0.08); box-shadow: 0 0 10px rgba(0,229,255,0.2); }
+.filter-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--dim);
+  font-family: inherit; font-size: 9px; letter-spacing: 2px;
+  padding: 5px 10px; border-radius: 2px; cursor: pointer; transition: all 0.15s;
+}
+.filter-btn.active { border-color: var(--amber); color: var(--amber); }
+.filter-btn:hover { border-color: var(--dim); color: var(--dim); }
+
+/* ── Matrix ──────────────────────────────────────────────────────────────── */
+#matrix {
+  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+  gap: 0; height: calc(100vh - 48px - 49px); padding: 12px; gap: 12px;
+}
+.quad {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+  display: flex; flex-direction: column; overflow: hidden;
+  transition: border-color 0.2s;
+  position: relative;
+}
+.quad.drag-over { border-color: var(--cyan); box-shadow: inset 0 0 20px rgba(0,229,255,0.06); }
+
+.quad-header { padding: 10px 14px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.quad-label { font-size: 11px; letter-spacing: 4px; font-weight: bold; }
+.quad-sub   { font-size: 9px;  letter-spacing: 2px; color: var(--dim); margin-top: 3px; }
+.quad-count { position: absolute; top: 10px; right: 14px; font-size: 9px; letter-spacing: 2px; color: var(--dim); }
+
+#q1 { background: var(--q1); } #q1 .quad-header { border-color: rgba(255,34,85,0.2); }
+#q2 { background: var(--q2); } #q2 .quad-header { border-color: rgba(0,229,255,0.15); }
+#q3 { background: var(--q3); } #q3 .quad-header { border-color: rgba(255,170,0,0.15); }
+#q4 { background: var(--q4); } #q4 .quad-header { border-color: rgba(26,74,94,0.4); }
+
+#q1 .quad-label { color: #ff4466; text-shadow: 0 0 8px rgba(255,34,85,0.35); }
+#q2 .quad-label { color: var(--cyan); text-shadow: 0 0 8px rgba(0,229,255,0.2); }
+#q3 .quad-label { color: var(--amber); text-shadow: 0 0 8px rgba(255,170,0,0.25); }
+#q4 .quad-label { color: #3a6a7a; }
+
+.quad-tasks {
+  flex: 1; overflow-y: auto; padding: 8px 10px;
+}
+.quad-tasks::-webkit-scrollbar { width: 3px; }
+.quad-tasks::-webkit-scrollbar-track { background: transparent; }
+.quad-tasks::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── Task item ────────────────────────────────────────────────────────────── */
+.task-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 7px 8px; margin-bottom: 5px;
+  border: 1px solid var(--border); border-radius: 2px;
+  background: rgba(0,0,0,0.25); cursor: grab;
+  transition: border-color 0.15s, opacity 0.15s, background 0.15s;
+  user-select: none;
+}
+.task-item:hover { border-color: var(--dim); background: rgba(0,0,0,0.4); }
+.task-item.dragging { opacity: 0.4; cursor: grabbing; }
+.task-item.done { opacity: 0.3; text-decoration: line-through; }
+
+.task-cb {
+  width: 14px; height: 14px; margin-top: 1px; flex-shrink: 0;
+  accent-color: var(--green); cursor: pointer;
+}
+.task-text { flex: 1; font-size: 11px; color: #8ab8c8; line-height: 1.5; word-break: break-word; }
+.task-del {
+  background: transparent; border: none; color: var(--dim); cursor: pointer;
+  font-size: 13px; line-height: 1; padding: 0 2px; flex-shrink: 0; transition: color 0.15s;
+}
+.task-del:hover { color: var(--red); }
+
+.quad-empty {
+  font-size: 10px; letter-spacing: 2px; color: var(--dim);
+  text-align: center; padding: 20px 0; opacity: 0.5;
+}
+
+/* ── Corner labels ────────────────────────────────────────────────────────── */
+.quad::before {
+  content: ''; position: absolute; top: 5px; left: 5px;
+  width: 10px; height: 10px;
+  border-top: 1px solid currentColor; border-left: 1px solid currentColor;
+  opacity: 0.3;
+}
+#q1::before { color: var(--red); } #q2::before { color: var(--cyan); }
+#q3::before { color: var(--amber); } #q4::before { color: var(--dim); }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div class="h-title"><span>◈</span> GK · TASK MATRIX</div>
+  <div class="h-nav">
+    <button class="filter-btn" id="show-done-btn" onclick="toggleShowDone()">SHOW DONE</button>
+    <button class="filter-btn" onclick="clearDone()" style="border-color:rgba(255,34,85,0.3);color:rgba(255,34,85,0.5)">CLEAR DONE</button>
+    <a href="/"      class="nav-link">← DASHBOARD</a>
+    <a href="/guide" class="nav-link" style="color:var(--green);border-color:rgba(0,255,136,0.25)">GUIDE</a>
+  </div>
+</div>
+
+<div id="add-bar">
+  <input id="task-input" placeholder="Describe the task…" onkeydown="if(event.key==='Enter') addTask()">
+  <select id="task-quad">
+    <option value="q1">Q1 — DO FIRST  (Urgent · Important)</option>
+    <option value="q2">Q2 — SCHEDULE  (Important · Not Urgent)</option>
+    <option value="q3">Q3 — DELEGATE  (Urgent · Not Important)</option>
+    <option value="q4">Q4 — ELIMINATE (Not Urgent · Not Important)</option>
+  </select>
+  <button onclick="addTask()">+ ADD</button>
+</div>
+
+<div id="matrix">
+  <div class="quad" id="q1" ondragover="allowDrop(event)" ondrop="dropTask(event,'q1')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">
+    <div class="quad-header">
+      <div class="quad-label">DO FIRST</div>
+      <div class="quad-sub">URGENT · IMPORTANT</div>
+    </div>
+    <span class="quad-count" id="q1-count">0</span>
+    <div class="quad-tasks" id="q1-tasks"></div>
+  </div>
+
+  <div class="quad" id="q2" ondragover="allowDrop(event)" ondrop="dropTask(event,'q2')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">
+    <div class="quad-header">
+      <div class="quad-label">SCHEDULE</div>
+      <div class="quad-sub">IMPORTANT · NOT URGENT</div>
+    </div>
+    <span class="quad-count" id="q2-count">0</span>
+    <div class="quad-tasks" id="q2-tasks"></div>
+  </div>
+
+  <div class="quad" id="q3" ondragover="allowDrop(event)" ondrop="dropTask(event,'q3')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">
+    <div class="quad-header">
+      <div class="quad-label">DELEGATE</div>
+      <div class="quad-sub">URGENT · NOT IMPORTANT</div>
+    </div>
+    <span class="quad-count" id="q3-count">0</span>
+    <div class="quad-tasks" id="q3-tasks"></div>
+  </div>
+
+  <div class="quad" id="q4" ondragover="allowDrop(event)" ondrop="dropTask(event,'q4')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">
+    <div class="quad-header">
+      <div class="quad-label">ELIMINATE</div>
+      <div class="quad-sub">NOT URGENT · NOT IMPORTANT</div>
+    </div>
+    <span class="quad-count" id="q4-count">0</span>
+    <div class="quad-tasks" id="q4-tasks"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const STORE_KEY = 'gk_tasks';
+let tasks = [];
+let _draggingId = null;
+let _showDone   = false;
+
+// ── Persistence ────────────────────────────────────────────────────────────
+function load() {
+  try { tasks = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); }
+  catch { tasks = []; }
+}
+function save() { localStorage.setItem(STORE_KEY, JSON.stringify(tasks)); }
+function uid()  { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+// ── Add ────────────────────────────────────────────────────────────────────
+function addTask() {
+  const input = document.getElementById('task-input');
+  const quad  = document.getElementById('task-quad').value;
+  const text  = input.value.trim();
+  if (!text) { input.focus(); return; }
+  tasks.push({ id: uid(), text, quad, done: false, created: Date.now() });
+  save();
+  input.value = '';
+  input.focus();
+  render();
+}
+
+// ── Complete / delete ──────────────────────────────────────────────────────
+function toggleDone(id) {
+  const t = tasks.find(t => t.id === id);
+  if (t) { t.done = !t.done; save(); render(); }
+}
+function deleteTask(id) {
+  tasks = tasks.filter(t => t.id !== id);
+  save(); render();
+}
+function clearDone() {
+  tasks = tasks.filter(t => !t.done);
+  save(); render();
+}
+function toggleShowDone() {
+  _showDone = !_showDone;
+  document.getElementById('show-done-btn').classList.toggle('active', _showDone);
+  render();
+}
+
+// ── Drag & drop ────────────────────────────────────────────────────────────
+function dragStart(e, id) {
+  _draggingId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => {
+    const el = document.getElementById('task-' + id);
+    if (el) el.classList.add('dragging');
+  }, 0);
+}
+function dragEnd(id) {
+  const el = document.getElementById('task-' + id);
+  if (el) el.classList.remove('dragging');
+  _draggingId = null;
+}
+function allowDrop(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+function dragEnter(e) { e.currentTarget.classList.add('drag-over'); }
+function dragLeave(e) {
+  // Only remove if leaving the quad div itself, not a child
+  if (!e.currentTarget.contains(e.relatedTarget))
+    e.currentTarget.classList.remove('drag-over');
+}
+function dropTask(e, quad) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!_draggingId) return;
+  const t = tasks.find(t => t.id === _draggingId);
+  if (t) { t.quad = quad; save(); render(); }
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function render() {
+  for (const q of ['q1','q2','q3','q4']) {
+    const container = document.getElementById(q + '-tasks');
+    const qTasks = tasks.filter(t => t.quad === q && (_showDone || !t.done));
+    const allQ   = tasks.filter(t => t.quad === q && !t.done);
+
+    document.getElementById(q + '-count').textContent = allQ.length || '';
+
+    if (!qTasks.length) {
+      container.innerHTML = '<div class="quad-empty">drag tasks here</div>';
+      continue;
+    }
+    container.innerHTML = qTasks.map(t => `
+      <div class="task-item${t.done?' done':''}" id="task-${t.id}"
+           draggable="true"
+           ondragstart="dragStart(event,'${t.id}')"
+           ondragend="dragEnd('${t.id}')">
+        <input type="checkbox" class="task-cb" ${t.done?'checked':''} onchange="toggleDone('${t.id}')">
+        <span class="task-text">${escHtml(t.text)}</span>
+        <button class="task-del" onclick="deleteTask('${t.id}')">✕</button>
+      </div>
+    `).join('');
+  }
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Seed example tasks if empty ────────────────────────────────────────────
+function seedIfEmpty() {
+  if (tasks.length) return;
+  const seeds = [
+    { text: 'Fix critical server bug',         quad: 'q1' },
+    { text: 'Call farm supplier about spray',   quad: 'q1' },
+    { text: 'Add ChromaDB RAG for crop docs',   quad: 'q2' },
+    { text: 'Review weekly diary draft',        quad: 'q2' },
+    { text: 'Reply pending WhatsApp messages',  quad: 'q3' },
+    { text: 'Browse social media feeds',        quad: 'q4' },
+  ];
+  seeds.forEach(s => tasks.push({ id: uid(), text: s.text, quad: s.quad, done: false, created: Date.now() }));
+  save();
+}
+
+load();
+seedIfEmpty();
+render();
+</script>
+</body>
+</html>

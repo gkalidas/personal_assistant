@@ -56,26 +56,46 @@ class WeatherCache:
                 f"?latitude={self.lat}&longitude={self.lon}"
                 "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,"
                 "wind_direction_10m,weathercode,apparent_temperature,visibility"
-                "&wind_speed_unit=kmh&forecast_days=1"
+                "&daily=weathercode,temperature_2m_max,temperature_2m_min,"
+                "precipitation_probability_max,wind_speed_10m_max,precipitation_sum"
+                "&wind_speed_unit=kmh&forecast_days=7"
+                "&timezone=Asia%2FKolkata"
             )
             r = httpx.get(url, timeout=10.0)
             r.raise_for_status()
-            c = r.json()["current"]
+            resp = r.json()
+            c = resp["current"]
+            d = resp.get("daily", {})
+
+            # Build 7-day forecast list
+            forecast = []
+            for i, day in enumerate(d.get("time", [])):
+                forecast.append({
+                    "date":      day,
+                    "desc":      _wcode(d["weathercode"][i] if i < len(d.get("weathercode", [])) else 0),
+                    "t_max":     round(d["temperature_2m_max"][i], 1) if i < len(d.get("temperature_2m_max", [])) else "--",
+                    "t_min":     round(d["temperature_2m_min"][i], 1) if i < len(d.get("temperature_2m_min", [])) else "--",
+                    "rain_pct":  d["precipitation_probability_max"][i] if i < len(d.get("precipitation_probability_max", [])) else 0,
+                    "wind_kmh":  round(d["wind_speed_10m_max"][i], 1) if i < len(d.get("wind_speed_10m_max", [])) else "--",
+                    "precip_mm": round(d["precipitation_sum"][i], 1) if i < len(d.get("precipitation_sum", [])) else 0,
+                })
 
             self._fetched_at = time.time()
             self._data = {
-                "temp_c":       round(c["temperature_2m"], 1),
-                "feels_like_c": round(c.get("apparent_temperature", c["temperature_2m"]), 1),
-                "humidity":     c.get("relative_humidity_2m", 0),
-                "wind_kmh":     round(c.get("wind_speed_10m", 0), 1),
-                "wind_dir":     _deg_dir(c.get("wind_direction_10m", 0)),
-                "description":  _wcode(c.get("weathercode", 0)),
-                "visibility_km":round(c.get("visibility", 10000) / 1000, 1),
-                "location":     self.location,
-                "updated_at":   time.strftime("%H:%M"),
-                "age_min":      0,
+                "temp_c":        round(c["temperature_2m"], 1),
+                "feels_like_c":  round(c.get("apparent_temperature", c["temperature_2m"]), 1),
+                "humidity":      c.get("relative_humidity_2m", 0),
+                "wind_kmh":      round(c.get("wind_speed_10m", 0), 1),
+                "wind_dir":      _deg_dir(c.get("wind_direction_10m", 0)),
+                "description":   _wcode(c.get("weathercode", 0)),
+                "visibility_km": round(c.get("visibility", 10000) / 1000, 1),
+                "location":      self.location,
+                "updated_at":    time.strftime("%H:%M"),
+                "age_min":       0,
+                "forecast":      forecast,
             }
-            log.info("weather: %s°C %s", self._data["temp_c"], self._data["description"])
+            log.info("weather+forecast: %s°C %s, %d days",
+                     self._data["temp_c"], self._data["description"], len(forecast))
             return self._data
 
         except Exception as e:
@@ -87,5 +107,5 @@ class WeatherCache:
                 "temp_c": "--", "feels_like_c": "--", "humidity": "--",
                 "wind_kmh": "--", "wind_dir": "--", "description": "Unavailable",
                 "visibility_km": "--", "location": self.location,
-                "updated_at": "--", "age_min": 0,
+                "updated_at": "--", "age_min": 0, "forecast": [],
             }

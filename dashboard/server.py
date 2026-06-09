@@ -253,6 +253,16 @@ async def mindmap():
     return HTMLResponse((_STATIC / "mindmap.html").read_text(encoding="utf-8"))
 
 
+@app.get("/todo")
+async def todo_page():
+    return HTMLResponse((_STATIC / "todo.html").read_text(encoding="utf-8"))
+
+
+@app.get("/guide")
+async def guide_page():
+    return HTMLResponse((_STATIC / "guide.html").read_text(encoding="utf-8"))
+
+
 @app.get("/api/data")
 async def api_data():
     return JSONResponse(_build_payload())
@@ -265,10 +275,10 @@ async def api_mindmap():
 
 @app.post("/api/guardian/scan")
 async def guardian_scan():
-    """Trigger an on-demand anomaly scan in background and return result."""
+    """Trigger an on-demand anomaly scan in background."""
     def _run():
         try:
-            import sys, os
+            import sys
             sys.path.insert(0, str(Path(__file__).parent.parent))
             from security.guardian import task_anomaly_detect
             task_anomaly_detect()
@@ -277,6 +287,24 @@ async def guardian_scan():
     import threading
     threading.Thread(target=_run, daemon=True, name="on-demand-scan").start()
     return JSONResponse({"status": "scanning"})
+
+
+@app.post("/api/guardian/patch")
+async def guardian_patch():
+    """Trigger on-demand CVE scan with auto-patching (HIGH+ severity, same major version)."""
+    def _run():
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            from security.guardian import task_vuln_scan
+            result = task_vuln_scan(auto_patch=True)
+            p = result.get("patch_result", {}).get("summary", {}).get("patched", 0)
+            log.info("on-demand patch: %d package(s) patched", p)
+        except Exception as e:
+            log.error("on-demand patch failed: %s", e)
+    import threading
+    threading.Thread(target=_run, daemon=True, name="on-demand-patch").start()
+    return JSONResponse({"status": "patching"})
 
 
 @app.get("/api/stats")
