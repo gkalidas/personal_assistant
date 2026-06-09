@@ -73,10 +73,10 @@ body::after {
   animation: pulse-dot 2.5s infinite;
 }
 
-/* ── Grid (2×2) ───────────────────────────────────────────────────────────── */
+/* ── Grid (3 col × 2 row — Diary spans col 2-3 in row 2) ─────────────────── */
 #grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   grid-template-rows: 1fr 1fr;
   gap: 12px;
   padding: 12px;
@@ -366,6 +366,106 @@ body::after {
 /* ── Animations ───────────────────────────────────────────────────────────── */
 @keyframes pulse-dot  { 0%,100%{opacity:1} 50%{opacity:0.35} }
 @keyframes blink-alert{ 0%,100%{opacity:1} 50%{opacity:0.55} }
+
+/* ── Diary panel ──────────────────────────────────────────────────────────── */
+.diary-list { margin-bottom: 8px; }
+.diary-entry-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 8px; margin-bottom: 4px;
+  border: 1px solid var(--border); border-radius: 2px;
+  cursor: pointer; font-size: 11px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.diary-entry-row:hover { border-color: var(--cyan); background: rgba(0,229,255,0.04); }
+.diary-entry-row .d-week { letter-spacing: 2px; color: var(--dim); flex: 1; }
+.diary-entry-row .d-status { font-size: 9px; letter-spacing: 1px; }
+.diary-entry-row .d-date  { font-size: 9px; color: #0c2535; }
+.diary-footer { font-size: 10px; letter-spacing: 2px; color: var(--dim); }
+
+/* ── Book modal ───────────────────────────────────────────────────────────── */
+.book-modal {
+  display: none; position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(880px, 96vw);
+  height: min(600px, 90vh);
+  background: var(--panel);
+  border: 1px solid var(--cyan);
+  box-shadow: 0 0 50px rgba(0,229,255,0.14);
+  border-radius: 3px; z-index: 300;
+  flex-direction: column;
+}
+.book-modal.open { display: flex; }
+.book-modal::before {
+  content: ''; position: absolute; top: 6px; left: 6px;
+  width: 16px; height: 16px;
+  border-top: 1px solid var(--cyan); border-left: 1px solid var(--cyan);
+}
+.book-modal::after {
+  content: ''; position: absolute; bottom: 6px; right: 6px;
+  width: 16px; height: 16px;
+  border-bottom: 1px solid var(--cyan); border-right: 1px solid var(--cyan);
+}
+.book-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 22px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.book-title { font-size: 10px; letter-spacing: 4px; color: var(--cyan); text-shadow: 0 0 10px var(--glow-c); flex: 1; }
+.book-close { font-size: 16px; color: var(--dim); cursor: pointer; }
+.book-close:hover { color: var(--red); }
+.book-body {
+  flex: 1; display: flex; overflow: hidden;
+  perspective: 1200px;
+}
+.book-chapters {
+  width: 152px; flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 10px 0; overflow-y: auto;
+}
+.chapter-item {
+  padding: 9px 14px; font-size: 10px; letter-spacing: 1px;
+  color: var(--dim); cursor: pointer; border-left: 2px solid transparent;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chapter-item:hover { color: var(--cyan); background: rgba(0,229,255,0.04); }
+.chapter-item.active { color: var(--cyan); border-left-color: var(--cyan); background: rgba(0,229,255,0.06); }
+.book-spine {
+  width: 3px; flex-shrink: 0;
+  background: linear-gradient(180deg, transparent 5%, var(--border) 30%, var(--border) 70%, transparent 95%);
+}
+.book-page-area {
+  flex: 1; position: relative; overflow: hidden;
+}
+.book-page {
+  position: absolute; inset: 0;
+  padding: 22px 28px; overflow-y: auto;
+  color: #9ab8c4; line-height: 1.85; font-size: 12px; letter-spacing: 0.3px;
+}
+.book-page .pg-title {
+  font-size: 11px; letter-spacing: 4px; color: var(--cyan);
+  text-shadow: 0 0 8px var(--glow-c);
+  margin-bottom: 16px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.book-page p { margin-bottom: 12px; color: #8ab8c8; }
+.book-page .photo-note { font-size: 10px; letter-spacing: 2px; color: var(--dim); margin-top: 14px; }
+.book-page .empty-note { font-size: 10px; letter-spacing: 2px; color: #0c2535; padding: 30px 0; text-align: center; }
+.book-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 22px; border-top: 1px solid var(--border); flex-shrink: 0;
+}
+.book-nav-btn {
+  font-size: 9px; letter-spacing: 2px; padding: 3px 10px; border-radius: 2px;
+  cursor: pointer; border: 1px solid var(--border); background: transparent;
+  color: var(--dim); font-family: inherit;
+  transition: color 0.15s, border-color 0.15s;
+}
+.book-nav-btn:hover:not(:disabled) { color: var(--cyan); border-color: var(--cyan); }
+.book-nav-btn:disabled { opacity: 0.2; cursor: default; }
+.book-counter { font-size: 9px; letter-spacing: 3px; color: var(--dim); }
 </style>
 </head>
 <body>
@@ -523,6 +623,14 @@ body::after {
     <span class="click-hint">CLICK FOR DETAILS</span>
   </div>
 
+  <!-- DIARY — spans columns 2-3 in row 2 -->
+  <div class="panel" id="p-diary" style="grid-column:2/4" onclick="openDiaryBook(null)">
+    <div class="panel-label">DIARY</div>
+    <div class="diary-list" id="diary-list"><div style="font-size:10px;letter-spacing:2px;color:#0c2535;padding:4px">loading…</div></div>
+    <div class="diary-footer" id="diary-footer">—</div>
+    <span class="click-hint">CLICK TO OPEN BOOK</span>
+  </div>
+
 </div>
 
 <!-- Overlay + Modals -->
@@ -550,6 +658,27 @@ body::after {
   <span class="modal-close" onclick="closeModal()">✕</span>
   <div class="modal-title">◈ SECURITY GUARDIAN DETAILS</div>
   <div id="modal-g-body"></div>
+</div>
+
+<!-- DIARY BOOK MODAL -->
+<div class="book-modal" id="modal-diary">
+  <div class="book-header">
+    <span class="book-title">◈ DIARY — <span id="book-week-label">--</span></span>
+    <span id="book-status-badge"></span>
+    <span class="book-close" onclick="closeDiaryBook()">✕</span>
+  </div>
+  <div class="book-body">
+    <div class="book-chapters" id="book-chapters"></div>
+    <div class="book-spine"></div>
+    <div class="book-page-area" id="book-page-area">
+      <div class="book-page" id="book-page-active"></div>
+    </div>
+  </div>
+  <div class="book-footer">
+    <button class="book-nav-btn" id="book-prev" onclick="bookPrevPage()">← PREV</button>
+    <span class="book-counter" id="book-counter">PAGE 1 / 1</span>
+    <button class="book-nav-btn" id="book-next" onclick="bookNextPage()">NEXT →</button>
+  </div>
 </div>
 
 <script>
@@ -826,7 +955,9 @@ function show(id) {
 function closeModal() {
   el('overlay').classList.remove('open');
   document.querySelectorAll('.modal').forEach(m => m.classList.remove('open'));
+  el('modal-diary').classList.remove('open');
 }
+function closeDiaryBook() { closeModal(); }
 function el(id)  { return document.getElementById(id); }
 function row(k,v){ return `<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${v}</span></div>`; }
 function sec(t)  { return `<div class="detail-section">${t}</div>`; }
@@ -849,6 +980,161 @@ async function refreshWeather() {
     setTimeout(() => { btn.textContent = '↻ REFRESH'; btn.disabled = false; }, 2000);
   }
 }
+
+// ── Diary ─────────────────────────────────────────────────────────────────────
+let _diaryDrafts = [];
+let _bookPages   = [];
+let _bookPage    = 0;
+
+async function loadDiaryList() {
+  try {
+    const r = await fetch('/api/diary/drafts');
+    _diaryDrafts = await r.json();
+    renderDiaryPanel();
+  } catch(e) {
+    el('diary-footer').textContent = 'unavailable';
+  }
+}
+
+function renderDiaryPanel() {
+  const list   = el('diary-list');
+  const footer = el('diary-footer');
+  if (!_diaryDrafts.length) {
+    list.innerHTML = '<div style="font-size:10px;letter-spacing:2px;color:#0c2535;padding:4px 0">No entries yet — say "write diary"</div>';
+    footer.textContent = '0 entries';
+    return;
+  }
+  let html = '';
+  for (const d of _diaryDrafts.slice(0, 5)) {
+    const ap = d.approved
+      ? '<span style="color:var(--green)">✓ APPROVED</span>'
+      : '<span style="color:var(--dim)">○ DRAFT</span>';
+    html += `<div class="diary-entry-row" onclick="event.stopPropagation();openDiaryBook('${d.week}')">
+      <span class="d-week">${d.week}</span>
+      <span class="d-status">${ap}</span>
+      <span class="d-date">${d.created_at}</span>
+    </div>`;
+  }
+  list.innerHTML = html;
+  const ap = _diaryDrafts.filter(d => d.approved).length;
+  footer.textContent = `${_diaryDrafts.length} entr${_diaryDrafts.length===1?'y':'ies'} · ${ap} approved`;
+}
+
+async function openDiaryBook(week) {
+  const target = week || (_diaryDrafts[0] && _diaryDrafts[0].week);
+  if (!target) { alert('No diary entries yet.'); return; }
+  try {
+    const r = await fetch('/api/diary/' + encodeURIComponent(target));
+    if (!r.ok) return;
+    const draft = await r.json();
+    _buildBook(draft);
+    el('overlay').classList.add('open');
+    el('modal-diary').classList.add('open');
+  } catch(e) { console.error('diary open error', e); }
+}
+
+function _buildBook(draft) {
+  const raw = (draft.draft || '').trim();
+  // Section header format: "── Sunday, 03 August 2025 (12 photos) ──"
+  // Also handles legacy "## YYYY-MM-DD" format.
+  const sections = raw.split(/(?=^(?:──|##)\s)/m).filter(s => s.trim());
+  _bookPages = sections.length
+    ? sections.map(s => {
+        const nl = s.indexOf('\n');
+        const title = s.substring(0, nl < 0 ? undefined : nl)
+          .replace(/^──\s*/, '').replace(/\s*──\s*$/, '')
+          .replace(/^##\s*/, '').trim();
+        const body  = nl < 0 ? '' : s.substring(nl + 1).trim();
+        return { title, body };
+      })
+    : [{ title: draft.week, body: raw || '(no content)' }];
+  _bookPage = 0;
+
+  el('book-week-label').textContent = draft.week || '—';
+  el('book-status-badge').innerHTML = draft.approved
+    ? '<span class="badge ok">APPROVED</span>'
+    : '<span class="badge warn">DRAFT</span>';
+
+  let ch = '';
+  _bookPages.forEach((p, i) => {
+    ch += `<div class="chapter-item${i===0?' active':''}" id="ch-${i}" onclick="bookGoTo(${i})">${p.title}</div>`;
+  });
+  el('book-chapters').innerHTML = ch;
+
+  el('book-page-active').innerHTML = _formatPage(_bookPages[0]);
+  _updateBookNav();
+}
+
+function _formatPage(page) {
+  if (!page.body) return `<div class="pg-title">${page.title}</div><div class="empty-note">—</div>`;
+  const body = page.body
+    .replace(/📷[^\n]*/g, m => `<div class="photo-note">${m}</div>`)
+    .split(/\n{2,}/)
+    .filter(p => p.trim())
+    .map(p => p.startsWith('<div') ? p : `<p>${p.replace(/\n/g, '<br>')}</p>`)
+    .join('');
+  return `<div class="pg-title">${page.title}</div>${body}`;
+}
+
+function _updateBookNav() {
+  el('book-prev').disabled = _bookPage === 0;
+  el('book-next').disabled = _bookPage >= _bookPages.length - 1;
+  el('book-counter').textContent = `PAGE ${_bookPage + 1} / ${_bookPages.length}`;
+  document.querySelectorAll('.chapter-item').forEach((c, i) => {
+    c.className = 'chapter-item' + (i === _bookPage ? ' active' : '');
+  });
+}
+
+function bookGoTo(idx) {
+  if (idx === _bookPage || idx < 0 || idx >= _bookPages.length) return;
+  const dir = idx > _bookPage ? 'next' : 'prev';
+  _bookPage = idx;
+  _animatePage(dir);
+}
+function bookNextPage() { bookGoTo(_bookPage + 1); }
+function bookPrevPage() { bookGoTo(_bookPage - 1); }
+
+function _animatePage(direction) {
+  const area    = el('book-page-area');
+  const oldPage = el('book-page-active');
+  const newPage = document.createElement('div');
+  newPage.className = 'book-page';
+  newPage.id = 'book-page-active';
+  newPage.innerHTML = _formatPage(_bookPages[_bookPage]);
+  area.appendChild(newPage);
+
+  const enterFrom = direction === 'next' ? '110%'  : '-110%';
+  const exitTo    = direction === 'next' ? '-110%' : '110%';
+  const tiltIn    = direction === 'next' ? '6deg'  : '-6deg';
+  const tiltOut   = direction === 'next' ? '-6deg' : '6deg';
+  const T = 'transform 0.35s ease, opacity 0.35s ease';
+
+  // Position new page off-screen, no transition yet
+  newPage.style.cssText = `transform:translateX(${enterFrom}) rotateY(${tiltIn});opacity:0;`;
+
+  // Double rAF ensures the initial off-screen position is painted before animating
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (oldPage) {
+      oldPage.style.transition = T;
+      oldPage.style.transform  = `translateX(${exitTo}) rotateY(${tiltOut})`;
+      oldPage.style.opacity    = '0';
+    }
+    newPage.style.transition = T;
+    newPage.style.transform  = 'translateX(0) rotateY(0)';
+    newPage.style.opacity    = '1';
+  }));
+
+  // Remove old page after animation completes
+  if (oldPage) {
+    const OLD = oldPage;
+    OLD.id = '';
+    setTimeout(() => OLD.parentNode && OLD.parentNode.removeChild(OLD), 400);
+  }
+  _updateBookNav();
+}
+
+// Load diary list on page init
+loadDiaryList();
 
 // ── Guardian scan now ────────────────────────────────────────────────────────
 async function triggerScan() {

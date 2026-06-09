@@ -12,11 +12,14 @@ GET  /graphql    → GraphQL playground (browser)
 
 import asyncio
 import logging
+import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.responses import Response
 from strawberry.fastapi import GraphQLRouter
@@ -34,6 +37,13 @@ _STATIC = Path(__file__).parent / "static"
 _net = NetworkMonitor()
 _wx  = WeatherCache()
 
+# ── API request tracking ───────────────────────────────────────────────────────
+# Keyed by "METHOD /path". WebSocket upgrades (101) are excluded.
+_api_stats: dict[str, dict] = defaultdict(lambda: {
+    "calls": 0, "total_ms": 0.0, "max_ms": 0.0,
+    "errors": 0, "recent": deque(maxlen=20),
+})
+
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
@@ -42,6 +52,33 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(title="GK Dashboard", docs_url=None, redoc_url=None, lifespan=_lifespan)
+
+
+@app.middleware("http")
+async def _request_logger(request: Request, call_next):
+    t0 = time.monotonic()
+    response = await call_next(request)
+    # Skip WebSocket upgrade (101) — duration would be entire connection lifetime
+    if response.status_code == 101:
+        return response
+    elapsed = (time.monotonic() - t0) * 1000
+    key = f"{request.method} {request.url.path}"
+    s = _api_stats[key]
+    s["calls"] += 1
+    s["total_ms"] += elapsed
+    if elapsed > s["max_ms"]:
+        s["max_ms"] = elapsed
+    if response.status_code >= 400:
+        s["errors"] += 1
+    s["recent"].append({
+        "ts": datetime.now().strftime("%H:%M:%S"),
+        "ms": round(elapsed, 1),
+        "status": response.status_code,
+    })
+    log.info("API %-6s %-30s → %d  %.1f ms", request.method, request.url.path,
+             response.status_code, elapsed)
+    return response
+
 
 # Mount GraphQL at /graphql (GET = playground, POST = query)
 graphql_app = GraphQLRouter(schema, graphql_ide="graphiql")
@@ -240,6 +277,76 @@ async def guardian_scan():
     import threading
     threading.Thread(target=_run, daemon=True, name="on-demand-scan").start()
     return JSONResponse({"status": "scanning"})
+
+
+@app.get("/api/stats")
+async def api_stats():
+    """API call analytics — hit counts, latency, caching recommendations."""
+    result = {}
+    for key, s in sorted(_api_stats.items(), key=lambda x: -x[1]["calls"]):
+        calls = s["calls"]
+        avg_ms = s["total_ms"] / calls if calls else 0.0
+        path = key.split(" ", 1)[1] if " " in key else key
+
+        # Caching recommendation heuristics
+        if path in ("/", "/mindmap"):
+            rec = "cache with ETag — static HTML, never changes at runtime"
+        elif path == "/api/data":
+            rec = "use WebSocket /ws instead of polling; data is 2 s stale by design"
+        elif path.startswith("/api/diary"):
+            rec = "cache 60 s TTL — diary drafts change only on write"
+        elif path == "/graphql":
+            rec = "cacheable per query hash; selective fields keep payload small"
+        elif path in ("/api/guardian/scan", "/api/weather/refresh"):
+            rec = "write/trigger endpoint — do not cache"
+        elif calls > 20 and avg_ms > 80:
+            rec = "cache recommended — high traffic AND slow (> 80 ms avg)"
+        elif avg_ms > 200:
+            rec = "cache recommended — slow endpoint (> 200 ms avg)"
+        else:
+            rec = "ok"
+
+        result[key] = {
+            "calls": calls,
+            "avg_ms": round(avg_ms, 1),
+            "max_ms": round(s["max_ms"], 1),
+            "errors": s["errors"],
+            "recent": list(s["recent"])[-5:],
+            "recommendation": rec,
+        }
+    return JSONResponse({"endpoints": result, "snapshot_at": datetime.now().isoformat()})
+
+
+@app.get("/api/diary/drafts")
+async def diary_drafts_list():
+    """List all diary draft metadata (no full text — avoids large payloads)."""
+    try:
+        from core.memory import list_diary_drafts
+        drafts = list_diary_drafts()
+        return JSONResponse([{
+            "week":        d["week"],
+            "approved":    bool(d.get("approved")),
+            "created_at":  (d.get("created_at") or "")[:10],
+            "approved_at": (d.get("approved_at") or "")[:10],
+            "chars":       len(d.get("draft") or ""),
+        } for d in drafts])
+    except Exception as e:
+        log.error("diary drafts list error: %s", e)
+        return JSONResponse([], status_code=200)
+
+
+@app.get("/api/diary/{week}")
+async def diary_draft_get(week: str):
+    """Return one diary draft (full text) by ISO week key e.g. 2025-W31."""
+    try:
+        from core.memory import get_diary_draft
+        draft = get_diary_draft(week)
+        if not draft:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse(draft)
+    except Exception as e:
+        log.error("diary draft get error: %s", e)
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.post("/api/weather/refresh")

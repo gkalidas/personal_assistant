@@ -103,11 +103,12 @@ class NetworkMonitor:
         self._status = NetworkStatus()
         self._lock = threading.Lock()
         self._primary: Optional[str] = None
-        self._last_check: float = 0.0   # 0 → check immediately on first loop
-        # Populate interface list instantly so speed sampling starts on first tick
+        # Pre-populate so speed thread has interfaces on its very first tick
         self._status.interfaces = self._scan_interfaces()
-        t = threading.Thread(target=self._run, daemon=True, name="net-monitor")
-        t.start()
+        # Two dedicated threads: connectivity checks (may block 3 s) never
+        # interrupt the speed loop (must fire every SPEED_INTERVAL seconds).
+        threading.Thread(target=self._speed_loop, daemon=True, name="net-speed").start()
+        threading.Thread(target=self._connectivity_loop, daemon=True, name="net-conn").start()
         log.info("NetworkMonitor started")
 
     @property
@@ -115,15 +116,18 @@ class NetworkMonitor:
         with self._lock:
             return self._status
 
-    # ── Background loop ───────────────────────────────────────────────────────
+    # ── Background loops ──────────────────────────────────────────────────────
 
-    def _run(self):
+    def _speed_loop(self):
+        """Runs every SPEED_INTERVAL seconds — never blocked by connectivity checks."""
         while True:
-            now = time.monotonic()
-            if now - self._last_check >= self.CHECK_INTERVAL:
-                self._do_connectivity_check()
-                self._last_check = time.monotonic()
-            self._do_speed_sample()   # sleeps SPEED_INTERVAL internally
+            self._do_speed_sample()
+
+    def _connectivity_loop(self):
+        """Runs every CHECK_INTERVAL seconds — may block seconds on TCP probes."""
+        while True:
+            self._do_connectivity_check()
+            time.sleep(self.CHECK_INTERVAL)
 
     def _scan_interfaces(self) -> list[IfaceInfo]:
         addrs = psutil.net_if_addrs()
