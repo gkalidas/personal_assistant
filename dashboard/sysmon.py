@@ -7,9 +7,13 @@ import psutil
 
 _GiB = 1024 ** 3
 
+# Prime the psutil CPU sampler once at import so subsequent calls with
+# interval=None return immediately (uses delta from the last sample).
+psutil.cpu_percent(interval=None)
+
 
 def get_system_stats() -> dict:
-    cpu_pct   = psutil.cpu_percent(interval=0.5)
+    cpu_pct   = psutil.cpu_percent(interval=None)   # non-blocking — uses last sample
     ram       = psutil.virtual_memory()
     swap      = psutil.swap_memory()
     disk      = psutil.disk_usage("/")

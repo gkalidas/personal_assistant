@@ -97,6 +97,29 @@ def _load_whisper():
     return _whisper_model
 
 
+def _bg_check_new_photos():
+    """At startup: if ~/Pictures has unprocessed photos, auto-trigger diary write."""
+    try:
+        from core.memory import get_processed_photo_paths
+        from pathlib import Path
+        pics_dir = Path.home() / "Pictures"
+        if not pics_dir.exists():
+            return
+        already = get_processed_photo_paths()
+        photo_exts = {".jpg", ".jpeg", ".png", ".heic", ".webp"}
+        new = [str(p) for p in pics_dir.rglob("*")
+               if p.suffix.lower() in photo_exts and str(p) not in already]
+        if new:
+            log.info("startup: %d new unprocessed photo(s) in ~/Pictures — queueing diary write", len(new))
+            mods = _get_query_modules()
+            diary = mods.get("diary")
+            if diary:
+                diary.handle("write diary from my photos", {})
+                log.info("startup diary write complete")
+    except Exception as e:
+        log.error("bg photo check failed: %s", e)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     # Initialise persistent stores
@@ -105,6 +128,8 @@ async def _lifespan(app: FastAPI):
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _wx.get)
     loop.run_in_executor(None, _load_whisper)
+    # Auto-process new photos in ~/Pictures (non-blocking)
+    threading.Thread(target=_bg_check_new_photos, daemon=True, name="photo-check").start()
     yield
 
 
@@ -400,6 +425,32 @@ async def api_stats():
             "recommendation": rec,
         }
     return JSONResponse({"endpoints": result, "snapshot_at": datetime.now().isoformat()})
+
+
+@app.get("/api/diary/questions")
+async def diary_questions_list(week: str | None = None):
+    """Return pending (unanswered) diary review questions."""
+    try:
+        from core.memory import get_pending_questions
+        return JSONResponse(get_pending_questions(week=week))
+    except Exception as e:
+        log.error("diary questions error: %s", e)
+        return JSONResponse([])
+
+
+@app.post("/api/diary/questions/{qid}/answer")
+async def diary_question_answer(qid: int, payload: dict = Body(...)):
+    """Record user's answer to a diary review question."""
+    try:
+        from core.memory import answer_diary_question
+        answer = (payload.get("answer") or "").strip()
+        if not answer:
+            return JSONResponse({"error": "answer required"}, status_code=400)
+        answer_diary_question(qid, answer)
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        log.error("diary question answer error: %s", e)
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/api/diary/photo-stats")

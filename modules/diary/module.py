@@ -20,7 +20,8 @@ from typing import Any
 from core.base_module import BaseModule, ModuleResponse
 from core.memory import (save_diary_draft, get_diary_draft, approve_diary_draft,
                          list_diary_drafts, mark_photos_processed,
-                         get_processed_photo_paths, get_photo_stats)
+                         get_processed_photo_paths, get_photo_stats,
+                         add_diary_question, get_pending_questions)
 from core.analysis import run_weekly_pipeline, analyse_week, current_iso_week
 from modules.diary.photo_reader import scan_photos, default_photo_dir
 from modules.diary.vision import caption_batch
@@ -74,6 +75,40 @@ def _date_to_week(date_str: str) -> str:
 
 
 # ── Action handlers ───────────────────────────────────────────────────────────
+
+# Questions the diary module asks about photos to enrich entries
+_QUESTION_TEMPLATES = [
+    ("unknown_faces",  "Who is in this photo? (names, relationship to you)"),
+    ("unknown_place",  "Where was this photo taken? (location, occasion)"),
+    ("no_gps",         "What was happening at this moment? Tell me more about this photo."),
+    ("many_people",    "Who are all the people in this photo?"),
+    ("event",          "What was this event/occasion?"),
+]
+
+
+def _ask_photo_questions(photos: list, captions: dict, week: str) -> None:
+    """Queue review questions for photos that lack context."""
+    asked = set()
+    for photo in photos[:5]:  # limit to 5 questions per diary write to avoid spam
+        path = str(getattr(photo, "path", photo))
+        caption = captions.get(path, "") if captions else ""
+        has_gps = bool(getattr(photo, "gps", None))
+
+        # Ask about location if no GPS and caption doesn't mention a place
+        if not has_gps and "location" not in asked:
+            q_type = "no_gps" if not caption else "unknown_place"
+            q = next((t for k, t in _QUESTION_TEMPLATES if k == q_type), None)
+            if q:
+                add_diary_question(week, q, path)
+                asked.add("location")
+
+        # Ask about people if caption suggests there are people but no names
+        if caption and any(w in caption.lower() for w in ("person", "people", "man", "woman", "child", "group")) and "people" not in asked:
+            q = next((t for k, t in _QUESTION_TEMPLATES if k == "many_people"), None)
+            if q:
+                add_diary_question(week, q, path)
+                asked.add("people")
+
 
 def _do_write(query: str, profile: dict) -> tuple[str, dict | None]:
     """Scan photos, caption them, write diary entries, save drafts."""
@@ -167,6 +202,9 @@ def _do_write(query: str, profile: dict) -> tuple[str, dict | None]:
 
         # Mark photos as processed so they won't be re-processed next time
         mark_photos_processed(photos, week_key)
+
+        # Generate review questions for photos that need context
+        _ask_photo_questions(photos, captions, week_key)
 
         written_days.append(date_str)
         output_lines.append(format_draft(date_str, entry, len(photos)))

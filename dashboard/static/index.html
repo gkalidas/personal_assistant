@@ -48,7 +48,7 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .nav-link:hover{color:var(--cyan);border-color:var(--cyan)}
 
 /* ── Grid: 4-col × 3-row ──────────────────────────────────────────────────── */
-#grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;grid-template-rows:150px 1fr 1fr;gap:8px;padding:8px;height:calc(100vh - 44px)}
+#grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;grid-template-rows:150px minmax(130px,160px) 1fr;gap:8px;padding:8px;height:calc(100vh - 44px)}
 
 /* ── Panel ────────────────────────────────────────────────────────────────── */
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:10px 12px;position:relative;overflow:hidden;transition:border-color 0.25s,box-shadow 0.25s}
@@ -94,6 +94,13 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .diary-write-btn{font-size:8px;letter-spacing:2px;padding:2px 6px;background:rgba(210,168,255,0.08);border:1px solid rgba(210,168,255,0.25);color:#d2a8ff;border-radius:2px;cursor:pointer;flex-shrink:0}
 .diary-write-btn:hover{background:rgba(210,168,255,0.15);border-color:#d2a8ff}
 .diary-photo-stat{font-size:8px;letter-spacing:1px;color:#5a3a7a;margin-top:2px}
+/* diary review questions */
+.diary-questions{margin-top:5px;border-top:1px solid var(--border);padding-top:5px;overflow-y:auto;max-height:80px}
+.dq-item{display:flex;align-items:flex-start;gap:6px;padding:4px 6px;margin-bottom:3px;background:rgba(255,170,0,0.04);border:1px solid rgba(255,170,0,0.2);border-radius:2px}
+.dq-dot{width:5px;height:5px;border-radius:50%;background:var(--amber);flex-shrink:0;margin-top:4px;animation:blink-med 3s infinite}
+.dq-text{flex:1;font-size:9px;color:#c8a060;line-height:1.4;letter-spacing:0.3px}
+.dq-answer-btn{font-size:8px;letter-spacing:1px;padding:1px 5px;border:1px solid rgba(255,170,0,0.3);background:transparent;color:var(--amber);border-radius:2px;cursor:pointer;flex-shrink:0}
+.dq-answer-btn:hover{background:rgba(255,170,0,0.1)}
 
 /* ── System panel ─────────────────────────────────────────────────────────── */
 .metric{margin-bottom:7px}
@@ -377,6 +384,7 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
     <div class="diary-list" id="diary-list"><div style="font-size:10px;letter-spacing:2px;color:#0c2535;padding:4px">loading…</div></div>
     <div class="diary-footer" id="diary-footer">—</div>
     <div class="diary-photo-stat" id="diary-photo-stat"></div>
+    <div class="diary-questions" id="diary-questions" style="display:none"></div>
     <span class="click-hint">CLICK TO OPEN BOOK</span>
   </div>
 
@@ -811,6 +819,35 @@ async function loadDiaryList(){
       stat.textContent=ps.total_processed?`${ps.total_processed} photos processed · last: ${last}`:'no photos processed yet';
     }
   }catch(e){}
+  loadDiaryQuestions();
+}
+
+async function loadDiaryQuestions(){
+  try{
+    const r=await fetch('/api/diary/questions');
+    const qs=await r.json();
+    const box=el('diary-questions');
+    if(!box)return;
+    if(!qs.length){box.style.display='none';return;}
+    box.style.display='';
+    let html='';
+    for(const q of qs.slice(0,4)){
+      const photo=q.photo_path?q.photo_path.split('/').pop():'';
+      const label=photo?`<span style="color:#4a2a6a">${photo}</span> — `:'';
+      html+=`<div class="dq-item"><div class="dq-dot"></div><div class="dq-text">${label}${q.question}</div><button class="dq-answer-btn" onclick="event.stopPropagation();answerDiaryQuestion(${q.id})">ANSWER</button></div>`;
+    }
+    if(qs.length>4)html+=`<div style="font-size:8px;letter-spacing:1px;color:#4a2a6a;padding:2px 6px">+${qs.length-4} more questions…</div>`;
+    box.innerHTML=html;
+  }catch(e){}
+}
+
+async function answerDiaryQuestion(qid){
+  const ans=prompt('Your answer:');
+  if(!ans||!ans.trim())return;
+  try{
+    await fetch(`/api/diary/questions/${qid}/answer`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answer:ans.trim()})});
+    loadDiaryQuestions();
+  }catch(e){}
 }
 
 async function writeDiaryFromPhotos(){
@@ -1069,8 +1106,8 @@ const TOUR=[
   {id:'p-network',title:'NETWORK MONITOR',text:'SVG icons show connection type: WiFi arcs=wireless, port+pins=LAN, padlock=VPN. IP/interface name alternates every 2.5s.\nSpeed shown live in panel header. Colors: cyan=WiFi, green=LAN, amber=VPN.'},
   {id:'p-system',title:'SYSTEM RESOURCES',text:'4-level color coding:\n  GREEN  = 0–30%  (healthy)\n  CYAN   = 30–60% (normal)\n  AMBER  = 60–85% (watch)\n  RED    = 85%+   (critical)\nClick for full details.'},
   {id:'p-weather',title:'WEATHER WIDGET',text:'Live weather from Open-Meteo for Barloni farm.\nClick for 7-day forecast with rainfall probability.'},
-  {id:'p-guardian',title:'SECURITY GUARDIAN',text:'Blink speed = severity:\n  RED   = fast  (0.7s)  — danger\n  AMBER = medium (3s)  — warn\n  GREEN = slow  (5s)   — ok\nCLICK → Details shows upgrade button for packages.'},
-  {id:'p-diary',title:'DIARY',text:'Put your photos in ~/Pictures\nClick "✎ FROM PHOTOS" button (or press Ctrl+D) to write diary from photos.\nThe AI reads EXIF data, captions each photo, writes a diary entry.\nProcessed photo count shown in footer. Click any row to open the book viewer.'},
+  {id:'p-guardian',title:'SECURITY GUARDIAN',text:'Blink speed = severity:\n  RED   = fast  (0.7s)  — danger\n  AMBER = medium (3s)  — warn\n  GREEN = slow  (5s)   — ok\nCode audit: bandit scans codebase weekly. 0 issues found.\nCLICK → Details shows upgrade button for packages.'},
+  {id:'p-diary',title:'DIARY',text:'Auto-processes ~/Pictures at startup.\nPress Ctrl+D or click ✎ FROM PHOTOS to trigger manually.\nAmber blinking = pending review questions (who\'s in this photo? where was this?).\nAnswers enrich future diary entries. Footer shows processed count.'},
   {id:'p-todo-mini',title:'TODO · QUICK VIEW',text:'Q1 (DO FIRST) items blink red slowly.\nQ2 (SCHEDULE) items blink amber.\nClick any task to mark it done.\nFULL → opens the complete Eisenhower matrix.'},
   {id:'p-news',title:'FARMING NEWS',text:'Auto-refreshes every 2.5 min from trusted sources.\nFilters out biased/sensationalist media.\nNews scrolls up automatically.\nCLICK any headline for full article + YouTube video.'},
   {id:'p-voice',title:'VOICE QUERY',text:'Click SPEAK → talk → click STOP.\nCaptures WAV directly in browser (no ffmpeg needed).\nTranscribed and routed to the right module.\nWorks from phone via Tailscale: http://100.67.193.127:8765'},

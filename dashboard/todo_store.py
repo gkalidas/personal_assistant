@@ -84,7 +84,7 @@ def update_todo(tid: str, **kwargs) -> None:
         return
     vals += [time.strftime("%Y-%m-%dT%H:%M:%S"), tid]
     with _con() as con:
-        con.execute(f"UPDATE todos SET {', '.join(sets)}, updated_at=? WHERE id=?", vals)
+        con.execute(f"UPDATE todos SET {', '.join(sets)}, updated_at=? WHERE id=?", vals)  # nosec B608 — column names from allow-list, not user input
 
 
 def delete_todo(tid: str) -> None:

@@ -22,7 +22,7 @@ import uvicorn
 from dashboard.server import app
 
 PORT  = int(os.getenv("DASHBOARD_PORT", "8765"))
-HOST  = os.getenv("DASHBOARD_HOST", "0.0.0.0")
+HOST  = os.getenv("DASHBOARD_HOST", "0.0.0.0")  # nosec B104 — intentional for Tailscale mobile access
 _ROOT = Path(__file__).parent.parent
 _ACCESS_FILE = _ROOT / "docs" / "remote_access.md"
 

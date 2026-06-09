@@ -67,6 +67,16 @@ def init_db() -> None:
                 week         TEXT,
                 processed_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS diary_questions (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                week         TEXT NOT NULL,
+                photo_path   TEXT,
+                question     TEXT NOT NULL,
+                answer       TEXT,
+                asked_at     TEXT NOT NULL,
+                answered_at  TEXT
+            );
         """)
         # Schema migrations: add columns that may be missing in older DBs
         existing = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
@@ -217,3 +227,52 @@ def get_photo_stats(photo_dir: str | None = None) -> dict:
         "by_week": [{"week": r["week"], "count": r["cnt"]} for r in weeks],
         "last_processed_at": latest["processed_at"] if latest else None,
     }
+
+
+# ── Diary questions (photo review) ────────────────────────────────────────────
+
+def add_diary_question(week: str, question: str, photo_path: str | None = None) -> int:
+    """Queue a question about a photo/week for the user to answer."""
+    now = datetime.now().isoformat()
+    with _conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO diary_questions (week, photo_path, question, asked_at) VALUES (?,?,?,?)",
+            (week, photo_path, question, now),
+        )
+        return cur.lastrowid
+
+
+def answer_diary_question(qid: int, answer: str) -> None:
+    """Record the user's answer to a diary question."""
+    now = datetime.now().isoformat()
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE diary_questions SET answer=?, answered_at=? WHERE id=?",
+            (answer, now, qid),
+        )
+
+
+def get_pending_questions(week: str | None = None, limit: int = 10) -> list[dict]:
+    """Return unanswered diary questions, optionally filtered by week."""
+    with _conn() as conn:
+        if week:
+            rows = conn.execute(
+                "SELECT * FROM diary_questions WHERE answer IS NULL AND week=? ORDER BY asked_at DESC LIMIT ?",
+                (week, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM diary_questions WHERE answer IS NULL ORDER BY asked_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_answered_questions(week: str) -> list[dict]:
+    """Return answered questions for a given week (used when regenerating diary entry)."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM diary_questions WHERE answer IS NOT NULL AND week=? ORDER BY asked_at",
+            (week,),
+        ).fetchall()
+    return [dict(r) for r in rows]

@@ -64,8 +64,11 @@ def _run_bandit() -> list[dict]:
              "--exclude", ".venv,envs,__pycache__,.git,logs,inputs,security"],
             capture_output=True, text=True, timeout=60,
         )
-        if result.stdout and result.stdout.strip():
-            data = json.loads(result.stdout)
+        raw = result.stdout or ""
+        # bandit prints a progress bar to stdout before JSON — skip to first '{'
+        json_start = raw.find("{")
+        if json_start >= 0:
+            data = json.loads(raw[json_start:])
             return data.get("results", [])
         return []  # bandit found no issues (exit 0, empty output)
     except FileNotFoundError:
