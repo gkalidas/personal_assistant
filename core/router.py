@@ -36,6 +36,9 @@ Examples:
 "approve diary" -> {{"modules": ["diary"]}}
 "list diary drafts" -> {{"modules": ["diary"]}}
 "diary for 2025-08-03" -> {{"modules": ["diary"]}}
+"weekly summary" -> {{"modules": ["diary"]}}
+"what did I do this week" -> {{"modules": ["diary"]}}
+"week in review" -> {{"modules": ["diary"]}}
 
 Reply format: {{"modules": ["name"]}}"""
 
@@ -47,7 +50,7 @@ def _build_system_prompt(modules: dict[str, BaseModule]) -> str:
         "farming": "crops, weather, spray, soil, disease, farm, harvest, rain, plot, fertilizer, mandi, price, market rate, APMC",
         "health":  "BP, blood pressure, steps, weight, sleep, sugar, glucose, health, walked, kg, hours slept",
         "system":  "system load, CPU, RAM, busy, idle, load pattern, heatmap, security guardian, CVE scan, threat intel, anomaly, audit, background tasks, task schedule",
-        "diary":   "diary, photos, journal, write diary, photo diary, show diary, approve diary, draft, daily log",
+        "diary":   "diary, photos, journal, write diary, photo diary, show diary, approve diary, draft, daily log, weekly summary, week review, this week",
     }
     lines = []
     for name in modules:
