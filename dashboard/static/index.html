@@ -11,15 +11,17 @@
   --green:   #00ff88;
   --amber:   #ffaa00;
   --red:     #ff2255;
+  --orange:  #ff7700;
   --bg:      #030b10;
   --panel:   #060e18;
   --border:  #0c2535;
   --dim:     #1a4a5e;
   --glow-c:  rgba(0, 229, 255, 0.18);
   --glow-g:  rgba(0, 255, 136, 0.25);
+  --glow-r:  rgba(255, 34, 85, 0.25);
+  --glow-a:  rgba(255, 170, 0, 0.25);
 }
 
-/* ── Reset ────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; }
 
@@ -31,7 +33,7 @@ body {
   user-select: none;
 }
 
-/* ── Scanline overlay ─────────────────────────────────────────────────────── */
+/* Scanline overlay */
 body::after {
   content: '';
   position: fixed; inset: 0;
@@ -54,31 +56,15 @@ body::after {
   border-bottom: 1px solid var(--border);
   height: 48px;
 }
-
 .h-title {
   font-size: 15px;
   letter-spacing: 5px;
   color: var(--cyan);
   text-shadow: 0 0 14px var(--glow-c);
 }
-
-.h-title span {
-  color: var(--dim);
-  margin-right: 8px;
-}
-
-.h-right {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-
-#clock {
-  font-size: 13px;
-  letter-spacing: 2px;
-  color: var(--dim);
-}
-
+.h-title span { color: var(--dim); margin-right: 8px; }
+.h-right { display: flex; align-items: center; gap: 24px; }
+#clock { font-size: 13px; letter-spacing: 2px; color: var(--dim); }
 .status-dot {
   width: 8px; height: 8px;
   border-radius: 50%;
@@ -87,10 +73,11 @@ body::after {
   animation: pulse-dot 2.5s infinite;
 }
 
-/* ── Grid ─────────────────────────────────────────────────────────────────── */
+/* ── Grid (2×2) ───────────────────────────────────────────────────────────── */
 #grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
   gap: 12px;
   padding: 12px;
   height: calc(100vh - 48px);
@@ -107,17 +94,16 @@ body::after {
   overflow: hidden;
   transition: border-color 0.25s, box-shadow 0.25s;
 }
-
 .panel:hover {
   border-color: var(--cyan);
   box-shadow: inset 0 0 30px rgba(0,229,255,0.04), 0 0 16px var(--glow-c);
 }
+.panel.danger { border-color: rgba(255,34,85,0.5); }
+.panel.warn   { border-color: rgba(255,170,0,0.4); }
 
-/* corner brackets */
 .panel::before {
   content: '';
-  position: absolute;
-  top: 5px; left: 5px;
+  position: absolute; top: 5px; left: 5px;
   width: 14px; height: 14px;
   border-top: 1px solid var(--cyan);
   border-left: 1px solid var(--cyan);
@@ -125,8 +111,7 @@ body::after {
 }
 .panel::after {
   content: '';
-  position: absolute;
-  bottom: 5px; right: 5px;
+  position: absolute; bottom: 5px; right: 5px;
   width: 14px; height: 14px;
   border-bottom: 1px solid var(--cyan);
   border-right: 1px solid var(--cyan);
@@ -142,7 +127,6 @@ body::after {
   align-items: center;
   gap: 8px;
 }
-
 .panel-label::before {
   content: '';
   display: inline-block;
@@ -150,17 +134,23 @@ body::after {
   border: 1px solid var(--dim);
   transform: rotate(45deg);
 }
-
-/* click hint */
 .click-hint {
   position: absolute;
   bottom: 10px; right: 14px;
-  font-size: 9px;
-  letter-spacing: 2px;
+  font-size: 9px; letter-spacing: 2px;
   color: #0a2535;
   transition: color 0.2s;
 }
 .panel:hover .click-hint { color: var(--dim); }
+
+/* ── Badge ────────────────────────────────────────────────────────────────── */
+.badge {
+  font-size: 9px; letter-spacing: 1px;
+  padding: 2px 6px; border-radius: 2px;
+}
+.badge.ok     { background: rgba(0,255,136,0.1);  color: var(--green);  border: 1px solid rgba(0,255,136,0.25); }
+.badge.warn   { background: rgba(255,170,0,0.1);  color: var(--amber);  border: 1px solid rgba(255,170,0,0.25); }
+.badge.danger { background: rgba(255,34,85,0.1);  color: var(--red);    border: 1px solid rgba(255,34,85,0.25); }
 
 /* ── Network panel ────────────────────────────────────────────────────────── */
 .iface-row {
@@ -170,65 +160,37 @@ body::after {
   gap: 10px;
   margin-bottom: 12px;
 }
-
-.dot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.dot.online  { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse-dot 2s infinite; }
-.dot.noinet  { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
-.dot.down    { background: #1a2530; border: 1px solid var(--border); }
-
+.dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse-dot 2s infinite; }
+.dot.noinet { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+.dot.down   { background: #1a2530; border: 1px solid var(--border); }
 .iface-type { color: #6ab0c0; font-size: 11px; letter-spacing: 1px; }
 .iface-name { color: var(--dim); font-size: 11px; }
 .iface-ip   { color: #0c2535; font-size: 10px; margin-top: 2px; }
-
-.badge {
-  font-size: 9px;
-  letter-spacing: 1px;
-  padding: 2px 6px;
-  border-radius: 2px;
-}
-.badge.ok   { background: rgba(0,255,136,0.1); color: var(--green); border: 1px solid rgba(0,255,136,0.25); }
-.badge.warn { background: rgba(255,170,0,0.1); color: var(--amber); border: 1px solid rgba(255,170,0,0.25); }
-.badge.err  { background: rgba(255,34,85,0.1);  color: var(--red);  border: 1px solid rgba(255,34,85,0.25); }
 
 .speed-block {
   margin-top: 16px;
   border-top: 1px solid var(--border);
   padding-top: 14px;
-  display: flex;
-  gap: 24px;
+  display: flex; gap: 24px;
 }
-
 .speed-item { display: flex; flex-direction: column; gap: 4px; }
 .speed-lbl  { font-size: 9px; letter-spacing: 2px; color: var(--dim); }
 .speed-val  { font-size: 20px; color: var(--cyan); text-shadow: 0 0 10px var(--glow-c); }
 .speed-unit { font-size: 10px; color: var(--dim); margin-left: 2px; }
 
 .failover-alert {
-  margin-top: 12px;
-  padding: 8px 12px;
+  margin-top: 12px; padding: 8px 12px;
   background: rgba(255,34,85,0.08);
   border: 1px solid rgba(255,34,85,0.35);
   border-radius: 2px;
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: var(--red);
+  font-size: 10px; letter-spacing: 2px; color: var(--red);
   animation: blink-alert 1.2s infinite;
 }
 
 /* ── System panel ─────────────────────────────────────────────────────────── */
 .metric { margin-bottom: 18px; }
-
-.metric-header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 6px;
-  font-size: 11px;
-}
-
+.metric-header { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 11px; }
 .metric-name { color: var(--dim); letter-spacing: 2px; }
 .metric-val  { color: var(--cyan); }
 
@@ -240,54 +202,72 @@ body::after {
   overflow: visible;
   position: relative;
 }
-
-.bar-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.6s ease;
-  position: relative;
-}
-
-.bar-fill.normal  { background: linear-gradient(90deg, #003344, var(--cyan)); box-shadow: 2px 0 8px var(--glow-c); }
+.bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; position: relative; }
+.bar-fill.normal  { background: linear-gradient(90deg, #003344, var(--cyan));  box-shadow: 2px 0 8px var(--glow-c); }
 .bar-fill.warn    { background: linear-gradient(90deg, #442200, var(--amber)); box-shadow: 2px 0 8px rgba(255,170,0,0.35); }
 .bar-fill.danger  { background: linear-gradient(90deg, #440010, var(--red));   box-shadow: 2px 0 8px rgba(255,34,85,0.35); }
 
 /* ── Weather panel ────────────────────────────────────────────────────────── */
 .wx-temp {
-  font-size: 52px;
-  line-height: 1;
+  font-size: 52px; line-height: 1;
   color: var(--cyan);
   text-shadow: 0 0 20px var(--glow-c);
   margin: 8px 0 6px;
   letter-spacing: -1px;
 }
 .wx-temp sup { font-size: 22px; color: var(--dim); vertical-align: super; }
-
-.wx-desc {
-  font-size: 11px;
-  letter-spacing: 3px;
-  color: var(--dim);
-  margin-bottom: 18px;
-}
-
+.wx-desc { font-size: 11px; letter-spacing: 3px; color: var(--dim); margin-bottom: 18px; }
 .wx-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: grid; grid-template-columns: 1fr 1fr;
   gap: 10px 24px;
   border-top: 1px solid var(--border);
   padding-top: 14px;
 }
-
 .wx-item { display: flex; flex-direction: column; gap: 3px; }
 .wx-lbl  { font-size: 9px; letter-spacing: 2px; color: #0c2535; }
 .wx-data { font-size: 14px; color: #6ab0c0; }
-
 .wx-age  { font-size: 9px; letter-spacing: 1px; color: #0c2535; margin-top: 12px; }
+
+/* ── Guardian panel ───────────────────────────────────────────────────────── */
+.guardian-status {
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 20px;
+}
+.guardian-icon {
+  font-size: 32px; line-height: 1;
+}
+.guardian-verdict {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.guardian-state {
+  font-size: 18px; letter-spacing: 3px; font-weight: bold;
+}
+.guardian-state.ok     { color: var(--green); text-shadow: 0 0 12px var(--glow-g); }
+.guardian-state.warn   { color: var(--amber); text-shadow: 0 0 12px var(--glow-a); }
+.guardian-state.danger { color: var(--red);   text-shadow: 0 0 12px var(--glow-r); animation: blink-alert 1.5s infinite; }
+
+.guardian-sub { font-size: 10px; letter-spacing: 2px; color: var(--dim); }
+
+.scan-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.scan-item {
+  padding: 10px 12px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+.scan-name { font-size: 9px; letter-spacing: 2px; color: var(--dim); margin-bottom: 6px; }
+.scan-val  { font-size: 13px; }
+.scan-val.ok     { color: var(--green); }
+.scan-val.warn   { color: var(--amber); }
+.scan-val.danger { color: var(--red); }
+.scan-time { font-size: 9px; color: #0c2535; margin-top: 3px; }
 
 /* ── Modal ────────────────────────────────────────────────────────────────── */
 #overlay {
-  display: none;
-  position: fixed; inset: 0;
+  display: none; position: fixed; inset: 0;
   background: rgba(0,0,0,0.7);
   backdrop-filter: blur(2px);
   z-index: 200;
@@ -295,8 +275,7 @@ body::after {
 #overlay.open { display: block; }
 
 .modal {
-  display: none;
-  position: fixed;
+  display: none; position: fixed;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   background: var(--panel);
@@ -304,81 +283,77 @@ body::after {
   box-shadow: 0 0 40px var(--glow-c);
   border-radius: 3px;
   padding: 24px 28px;
-  min-width: 380px;
-  max-width: 90vw;
+  min-width: 380px; max-width: 90vw; max-height: 85vh;
+  overflow-y: auto;
   z-index: 300;
 }
 .modal.open { display: block; }
-
 .modal::before {
-  content: '';
-  position: absolute;
-  top: 6px; left: 6px;
+  content: ''; position: absolute; top: 6px; left: 6px;
   width: 16px; height: 16px;
-  border-top: 1px solid var(--cyan);
-  border-left: 1px solid var(--cyan);
+  border-top: 1px solid var(--cyan); border-left: 1px solid var(--cyan);
 }
 .modal::after {
-  content: '';
-  position: absolute;
-  bottom: 6px; right: 6px;
+  content: ''; position: absolute; bottom: 6px; right: 6px;
   width: 16px; height: 16px;
-  border-bottom: 1px solid var(--cyan);
-  border-right: 1px solid var(--cyan);
+  border-bottom: 1px solid var(--cyan); border-right: 1px solid var(--cyan);
 }
-
 .modal-title {
-  font-size: 10px;
-  letter-spacing: 4px;
-  color: var(--cyan);
+  font-size: 10px; letter-spacing: 4px; color: var(--cyan);
   text-shadow: 0 0 10px var(--glow-c);
   border-bottom: 1px solid var(--border);
-  padding-bottom: 12px;
-  margin-bottom: 18px;
+  padding-bottom: 12px; margin-bottom: 18px;
 }
-
 .modal-close {
-  position: absolute;
-  top: 14px; right: 18px;
-  font-size: 16px;
-  color: var(--dim);
-  cursor: pointer;
-  line-height: 1;
+  position: absolute; top: 14px; right: 18px;
+  font-size: 16px; color: var(--dim); cursor: pointer; line-height: 1;
 }
 .modal-close:hover { color: var(--red); }
-
 .detail-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 7px 0;
-  border-bottom: 1px solid #060e18;
-  font-size: 12px;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 0; border-bottom: 1px solid #060e18; font-size: 12px;
 }
 .detail-key { color: var(--dim); letter-spacing: 1px; }
 .detail-val { color: var(--cyan); }
-
 .detail-section {
-  font-size: 9px;
-  letter-spacing: 3px;
-  color: #0c2535;
+  font-size: 9px; letter-spacing: 3px; color: #0c2535;
   margin: 14px 0 6px;
 }
 
+/* guardian modal schedule table */
+.sched-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+.sched-table th {
+  font-size: 9px; letter-spacing: 2px; color: var(--dim);
+  text-align: left; padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.sched-table td { font-size: 11px; padding: 6px 6px; border-bottom: 1px solid #060e18; }
+.sched-table td:first-child { color: var(--dim); letter-spacing: 1px; }
+.sched-table td.ok     { color: var(--green); }
+.sched-table td.warn   { color: var(--amber); }
+.sched-table td.danger { color: var(--red); }
+
+.issue-row {
+  padding: 8px 10px; margin-bottom: 6px;
+  background: rgba(255,34,85,0.05);
+  border: 1px solid rgba(255,34,85,0.2);
+  border-radius: 2px; font-size: 11px;
+}
+.issue-row .sev  { font-size: 9px; letter-spacing: 2px; margin-bottom: 4px; }
+.issue-row .sev.MEDIUM { color: var(--amber); }
+.issue-row .sev.HIGH   { color: var(--red); }
+.issue-row .sev.CRITICAL { color: var(--red); animation: blink-alert 1s infinite; }
+.issue-row .loc  { color: var(--dim); font-size: 10px; margin-bottom: 3px; }
+.issue-row .msg  { color: #8ab0b8; }
+
 /* ── Animations ───────────────────────────────────────────────────────────── */
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.35; }
-}
-@keyframes blink-alert {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.55; }
-}
+@keyframes pulse-dot  { 0%,100%{opacity:1} 50%{opacity:0.35} }
+@keyframes blink-alert{ 0%,100%{opacity:1} 50%{opacity:0.55} }
 </style>
 </head>
 <body>
 
-<!-- ── Header ─────────────────────────────────────────────────────────────── -->
+<!-- Header -->
 <div id="header">
   <div class="h-title"><span>◈</span> GK PERSONAL ASSISTANT</div>
   <div class="h-right">
@@ -387,7 +362,7 @@ body::after {
   </div>
 </div>
 
-<!-- ── Dashboard grid ─────────────────────────────────────────────────────── -->
+<!-- 2×2 Grid -->
 <div id="grid">
 
   <!-- NETWORK -->
@@ -404,9 +379,7 @@ body::after {
         <span><span class="speed-val" id="ul">--</span><span class="speed-unit">Mbps</span></span>
       </div>
     </div>
-    <div class="failover-alert" id="failover-alert" style="display:none">
-      ⚠ PRIMARY DOWN — CHECKING BACKUP
-    </div>
+    <div class="failover-alert" id="failover-alert" style="display:none">⚠ PRIMARY DOWN — CHECKING BACKUP</div>
     <span class="click-hint">CLICK FOR DETAILS</span>
   </div>
 
@@ -464,9 +437,44 @@ body::after {
     <span class="click-hint">CLICK FOR DETAILS</span>
   </div>
 
+  <!-- GUARDIAN -->
+  <div class="panel" id="p-guardian" onclick="openModal('guardian')">
+    <div class="panel-label">SECURITY GUARDIAN</div>
+    <div class="guardian-status">
+      <div class="guardian-icon" id="g-icon">◈</div>
+      <div class="guardian-verdict">
+        <div class="guardian-state ok" id="g-state">--</div>
+        <div class="guardian-sub" id="g-sub">scanning…</div>
+      </div>
+    </div>
+    <div class="scan-grid">
+      <div class="scan-item">
+        <div class="scan-name">ANOMALY</div>
+        <div class="scan-val ok" id="g-anomaly">--</div>
+        <div class="scan-time" id="g-anomaly-t">--</div>
+      </div>
+      <div class="scan-item">
+        <div class="scan-name">CVE SCAN</div>
+        <div class="scan-val ok" id="g-vuln">--</div>
+        <div class="scan-time" id="g-vuln-t">--</div>
+      </div>
+      <div class="scan-item">
+        <div class="scan-name">THREAT INTEL</div>
+        <div class="scan-val ok" id="g-threat">--</div>
+        <div class="scan-time" id="g-threat-t">--</div>
+      </div>
+      <div class="scan-item">
+        <div class="scan-name">CODE AUDIT</div>
+        <div class="scan-val ok" id="g-audit">--</div>
+        <div class="scan-time" id="g-audit-t">--</div>
+      </div>
+    </div>
+    <span class="click-hint">CLICK FOR DETAILS</span>
+  </div>
+
 </div>
 
-<!-- ── Overlay + modals ────────────────────────────────────────────────────── -->
+<!-- Overlay + Modals -->
 <div id="overlay" onclick="closeModal()"></div>
 
 <div class="modal" id="modal-network">
@@ -487,55 +495,57 @@ body::after {
   <div id="modal-wx-body"></div>
 </div>
 
-<!-- ── Scripts ────────────────────────────────────────────────────────────── -->
+<div class="modal" id="modal-guardian">
+  <span class="modal-close" onclick="closeModal()">✕</span>
+  <div class="modal-title">◈ SECURITY GUARDIAN DETAILS</div>
+  <div id="modal-g-body"></div>
+</div>
+
 <script>
 'use strict';
 
-// ── Clock ──────────────────────────────────────────────────────────────────
+// Clock
 function tick() {
   const n = new Date();
-  const pad = x => String(x).padStart(2,'0');
-  const date = `${pad(n.getDate())}/${pad(n.getMonth()+1)}/${n.getFullYear()}`;
-  const time = `${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
-  document.getElementById('clock').textContent = `${time}  ${date}`;
+  const p = x => String(x).padStart(2,'0');
+  document.getElementById('clock').textContent =
+    `${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}  ${p(n.getDate())}/${p(n.getMonth()+1)}/${n.getFullYear()}`;
 }
-setInterval(tick, 1000);
-tick();
+setInterval(tick, 1000); tick();
 
-// ── State ──────────────────────────────────────────────────────────────────
 let last = {};
 
-// ── WebSocket ──────────────────────────────────────────────────────────────
+// WebSocket
 let ws;
 function connect() {
   ws = new WebSocket(`ws://${location.host}/ws`);
   ws.onopen    = () => console.log('WS connected');
   ws.onmessage = e => { last = JSON.parse(e.data); render(last); };
-  ws.onclose   = () => { console.log('WS closed, retrying…'); setTimeout(connect, 3000); };
+  ws.onclose   = () => { setTimeout(connect, 3000); };
   ws.onerror   = () => ws.close();
 }
 connect();
 
-// ── Render ─────────────────────────────────────────────────────────────────
 function render(d) {
-  if (d.network) renderNetwork(d.network);
-  if (d.system)  renderSystem(d.system);
-  if (d.weather) renderWeather(d.weather);
+  if (d.network)  renderNetwork(d.network);
+  if (d.system)   renderSystem(d.system);
+  if (d.weather)  renderWeather(d.weather);
+  if (d.guardian) renderGuardian(d.guardian);
 }
 
+// ── Network ──────────────────────────────────────────────────────────────────
 function renderNetwork(n) {
   let html = '';
-  for (const iface of n.interfaces) {
-    const dotCls = iface.is_connected ? 'online' : iface.is_up ? 'noinet' : 'down';
-    const badgeTxt = iface.is_connected ? 'ONLINE' : iface.is_up ? 'NO INET' : 'DOWN';
-    const badgeCls = iface.is_connected ? 'ok' : iface.is_up ? 'warn' : 'err';
-    html += `
-      <div class="iface-row">
-        <div class="dot ${dotCls}"></div>
-        <span class="iface-type">${iface.type.toUpperCase()}</span>
-        <span class="iface-name">${iface.name}${iface.ip ? '<br><span class="iface-ip">'+iface.ip+'</span>' : ''}</span>
-        <span class="badge ${badgeCls}">${badgeTxt}</span>
-      </div>`;
+  for (const i of n.interfaces) {
+    const dc = i.is_connected ? 'online' : i.is_up ? 'noinet' : 'down';
+    const bt = i.is_connected ? 'ONLINE' : i.is_up ? 'NO INET' : 'DOWN';
+    const bc = i.is_connected ? 'ok' : i.is_up ? 'warn' : 'danger';
+    html += `<div class="iface-row">
+      <div class="dot ${dc}"></div>
+      <span class="iface-type">${i.type.toUpperCase()}</span>
+      <span class="iface-name">${i.name}${i.ip?'<br><span class="iface-ip">'+i.ip+'</span>':''}</span>
+      <span class="badge ${bc}">${bt}</span>
+    </div>`;
   }
   document.getElementById('iface-list').innerHTML = html;
   document.getElementById('dl').textContent = n.download_mbps.toFixed(1);
@@ -543,109 +553,221 @@ function renderNetwork(n) {
   document.getElementById('failover-alert').style.display = n.failover_alert ? '' : 'none';
 }
 
+// ── System ───────────────────────────────────────────────────────────────────
 function setBar(id, pct) {
-  const bar = document.getElementById(id + '-bar');
-  const val = document.getElementById(id + '-val');
-  bar.style.width = Math.min(pct, 100) + '%';
-  val.textContent = pct + '%';
-  bar.className = 'bar-fill ' + (pct > 85 ? 'danger' : pct > 60 ? 'warn' : 'normal');
+  document.getElementById(id+'-bar').style.width = Math.min(pct,100)+'%';
+  document.getElementById(id+'-val').textContent = pct+'%';
+  document.getElementById(id+'-bar').className = 'bar-fill '+(pct>85?'danger':pct>60?'warn':'normal');
 }
-
 function renderSystem(s) {
-  setBar('cpu',  s.cpu_pct);
-  setBar('ram',  s.ram_pct);
+  setBar('cpu', s.cpu_pct);
+  setBar('ram', s.ram_pct);
   setBar('disk', s.disk_pct);
 }
 
+// ── Weather ──────────────────────────────────────────────────────────────────
 function renderWeather(w) {
   document.getElementById('wx-temp').innerHTML = `${w.temp_c}<sup>°C</sup>`;
-  document.getElementById('wx-desc').textContent = w.description.toUpperCase();
-  document.getElementById('wx-hum').textContent  = w.humidity + '%';
-  document.getElementById('wx-wind').textContent = w.wind_kmh + ' km/h ' + (w.wind_dir || '');
-  document.getElementById('wx-feel').textContent = w.feels_like_c + '°C';
-  document.getElementById('wx-vis').textContent  = w.visibility_km + ' km';
-  document.getElementById('wx-age').textContent  =
-    w.age_min === 0 ? 'UPDATED JUST NOW' : `UPDATED ${w.age_min} MIN AGO`;
+  document.getElementById('wx-desc').textContent  = w.description.toUpperCase();
+  document.getElementById('wx-hum').textContent   = w.humidity+'%';
+  document.getElementById('wx-wind').textContent  = w.wind_kmh+' km/h '+(w.wind_dir||'');
+  document.getElementById('wx-feel').textContent  = w.feels_like_c+'°C';
+  document.getElementById('wx-vis').textContent   = w.visibility_km+' km';
+  document.getElementById('wx-age').textContent   =
+    w.age_min===0 ? 'UPDATED JUST NOW' : `UPDATED ${w.age_min} MIN AGO`;
 }
 
-// ── Modals ─────────────────────────────────────────────────────────────────
+// ── Guardian ─────────────────────────────────────────────────────────────────
+function renderGuardian(g) {
+  const panel = document.getElementById('p-guardian');
+  const state = document.getElementById('g-state');
+  const icon  = document.getElementById('g-icon');
+  const sub   = document.getElementById('g-sub');
+
+  // Overall state
+  panel.className = 'panel ' + g.overall;
+  state.className = 'guardian-state ' + g.overall;
+
+  if (g.overall === 'ok') {
+    icon.textContent  = '◈';
+    state.textContent = 'ALL CLEAR';
+    sub.textContent   = 'No threats detected';
+  } else if (g.overall === 'warn') {
+    icon.textContent  = '⚠';
+    state.textContent = 'ATTENTION';
+    const parts = [];
+    if (g.vuln_count)    parts.push(`${g.vuln_count} CVE`);
+    if (g.audit_issues)  parts.push(`${g.audit_issues} code issue`);
+    sub.textContent = parts.join(' · ') || 'Review needed';
+  } else {
+    icon.textContent  = '✕';
+    state.textContent = 'ALERT';
+    const parts = [];
+    if (g.alert_count)   parts.push(`${g.alert_count} anomaly`);
+    if (g.threat_vulns)  parts.push(`${g.threat_vulns} threat`);
+    if (g.audit_critical)parts.push(`${g.audit_critical} critical`);
+    sub.textContent = parts.join(' · ');
+  }
+
+  // Anomaly
+  const aC = g.anomaly.alerts === 0 ? 'ok' : 'danger';
+  const aT = g.anomaly.alerts === 0 ? `CLEAN (${g.anomaly.checked} events)` : `${g.anomaly.alerts} ALERT(S)`;
+  el('g-anomaly').className = 'scan-val ' + aC;
+  el('g-anomaly').textContent = aT;
+  el('g-anomaly-t').textContent = g.anomaly.at || '--';
+
+  // CVE
+  const vC = g.vuln.total === 0 ? 'ok' : g.vuln_count > 0 ? 'danger' : 'warn';
+  const vT = g.vuln.total === 0 ? `CLEAN (${g.vuln.packages} pkg)` : `${g.vuln.total} VULN`;
+  el('g-vuln').className = 'scan-val ' + vC;
+  el('g-vuln').textContent = vT;
+  el('g-vuln-t').textContent = g.vuln.at || '--';
+
+  // Threat
+  const tC = g.threat.vulns === 0 ? 'ok' : 'danger';
+  const tT = g.threat.vulns === 0 ? `SAFE (${g.threat.tested} tested)` : `${g.threat.vulns} VULNERABLE`;
+  el('g-threat').className = 'scan-val ' + tC;
+  el('g-threat').textContent = tT;
+  el('g-threat-t').textContent = g.threat.at || '--';
+
+  // Audit
+  const auC = g.audit.total === 0 ? 'ok' : g.audit_critical > 0 ? 'danger' : 'warn';
+  const auT = g.audit.total === 0 ? 'CLEAN' : `${g.audit.total} ISSUE${g.audit.total>1?'S':''}`;
+  el('g-audit').className = 'scan-val ' + auC;
+  el('g-audit').textContent = auT;
+  el('g-audit-t').textContent = g.audit.at || '--';
+}
+
+// ── Modals ───────────────────────────────────────────────────────────────────
 function openModal(type) {
   if (type === 'network' && last.network) {
     const n = last.network;
     let rows = '';
     for (const i of n.interfaces) {
-      rows += detailSection(i.name.toUpperCase() + ' (' + i.type.toUpperCase() + ')');
-      rows += detailRow('Status',   i.is_up ? 'UP' : 'DOWN');
-      rows += detailRow('Internet', i.is_connected ? '<span style="color:var(--green)">YES</span>' : '<span style="color:var(--red)">NO</span>');
-      if (i.ip)       rows += detailRow('IP Address', i.ip);
-      if (i.link_mbps) rows += detailRow('Link Speed', i.link_mbps + ' Mbps');
+      rows += sec(i.name.toUpperCase()+' ('+i.type.toUpperCase()+')');
+      rows += row('Status',   i.is_up ? 'UP' : 'DOWN');
+      rows += row('Internet', i.is_connected
+        ? '<span style="color:var(--green)">YES</span>'
+        : '<span style="color:var(--red)">NO</span>');
+      if (i.ip)        rows += row('IP Address', i.ip);
+      if (i.link_mbps) rows += row('Link Speed', i.link_mbps+' Mbps');
     }
-    rows += detailSection('THROUGHPUT (LIVE)');
-    rows += detailRow('Download', n.download_mbps.toFixed(2) + ' Mbps');
-    rows += detailRow('Upload',   n.upload_mbps.toFixed(2) + ' Mbps');
-    rows += detailRow('Primary',  n.primary || 'none');
-    rows += detailRow('Failover', n.failover_alert
+    rows += sec('THROUGHPUT (LIVE)');
+    rows += row('Download',  n.download_mbps.toFixed(2)+' Mbps');
+    rows += row('Upload',    n.upload_mbps.toFixed(2)+' Mbps');
+    rows += row('Primary',   n.primary||'none');
+    rows += row('Failover',  n.failover_alert
       ? '<span style="color:var(--red)">TRIGGERED</span>'
       : '<span style="color:var(--green)">OK</span>');
-    document.getElementById('modal-net-body').innerHTML = rows;
+    el('modal-net-body').innerHTML = rows;
     show('modal-network');
 
   } else if (type === 'system' && last.system) {
     const s = last.system;
-    let rows = '';
-    rows += detailSection('PROCESSOR');
-    rows += detailRow('CPU Usage',  s.cpu_pct + '%');
-    rows += detailRow('Cores',      s.cpu_cores);
-    rows += detailRow('Frequency',  s.cpu_freq_mhz + ' MHz');
-    rows += detailRow('Load Avg',   s.load_avg);
-    rows += detailSection('MEMORY');
-    rows += detailRow('RAM Usage',  s.ram_pct + '%  (' + s.ram_used_gb + ' / ' + s.ram_total_gb + ' GB)');
-    rows += detailSection('STORAGE');
-    rows += detailRow('Disk Usage', s.disk_pct + '%  (' + s.disk_used_gb + ' / ' + s.disk_total_gb + ' GB)');
-    rows += detailSection('SYSTEM');
-    rows += detailRow('Uptime',     s.uptime);
-    document.getElementById('modal-sys-body').innerHTML = rows;
+    let rows = sec('PROCESSOR');
+    rows += row('CPU Usage',  s.cpu_pct+'%');
+    rows += row('Cores',      s.cpu_cores);
+    rows += row('Frequency',  s.cpu_freq_mhz+' MHz');
+    rows += row('Load Avg',   s.load_avg);
+    rows += sec('MEMORY');
+    rows += row('RAM Usage',  s.ram_pct+'%  ('+s.ram_used_gb+' / '+s.ram_total_gb+' GB)');
+    rows += sec('STORAGE');
+    rows += row('Disk Usage', s.disk_pct+'%  ('+s.disk_used_gb+' / '+s.disk_total_gb+' GB)');
+    rows += sec('SYSTEM');
+    rows += row('Uptime',     s.uptime);
+    el('modal-sys-body').innerHTML = rows;
     show('modal-system');
 
   } else if (type === 'weather' && last.weather) {
     const w = last.weather;
-    let rows = '';
-    rows += detailSection('CONDITIONS — ' + w.location.toUpperCase());
-    rows += detailRow('Temperature',  w.temp_c + '°C');
-    rows += detailRow('Feels Like',   w.feels_like_c + '°C');
-    rows += detailRow('Description',  w.description);
-    rows += detailSection('ATMOSPHERE');
-    rows += detailRow('Humidity',     w.humidity + '%');
-    rows += detailRow('Wind',         w.wind_kmh + ' km/h ' + w.wind_dir);
-    rows += detailRow('Visibility',   w.visibility_km + ' km');
-    rows += detailSection('META');
-    rows += detailRow('Last Updated', w.updated_at);
-    rows += detailRow('Data Age',     w.age_min + ' min');
-    rows += detailRow('Source',       'Open-Meteo API');
-    document.getElementById('modal-wx-body').innerHTML = rows;
+    let rows = sec('CONDITIONS — '+w.location.toUpperCase());
+    rows += row('Temperature', w.temp_c+'°C');
+    rows += row('Feels Like',  w.feels_like_c+'°C');
+    rows += row('Description', w.description);
+    rows += sec('ATMOSPHERE');
+    rows += row('Humidity',    w.humidity+'%');
+    rows += row('Wind',        w.wind_kmh+' km/h '+w.wind_dir);
+    rows += row('Visibility',  w.visibility_km+' km');
+    rows += sec('META');
+    rows += row('Last Updated', w.updated_at);
+    rows += row('Data Age',    w.age_min+' min');
+    rows += row('Source',      'Open-Meteo API');
+    el('modal-wx-body').innerHTML = rows;
     show('modal-weather');
+
+  } else if (type === 'guardian' && last.guardian) {
+    const g = last.guardian;
+    let html = '';
+
+    // Scan summaries
+    html += sec('SCAN RESULTS');
+    const aC = g.anomaly.alerts===0?'var(--green)':'var(--red)';
+    html += row('Anomaly Detect',
+      `<span style="color:${aC}">${g.anomaly.alerts===0?'CLEAN':''+g.anomaly.alerts+' ALERT(S)'}</span> · ${g.anomaly.checked} events checked`);
+    html += row('Last run', g.anomaly.at||'--');
+
+    const vC2 = g.vuln.total===0?'var(--green)':'var(--red)';
+    html += row('CVE Scan',
+      `<span style="color:${vC2}">${g.vuln.total===0?'CLEAN':g.vuln.total+' VULNS'}</span> · ${g.vuln.packages} packages`);
+    html += row('Last run', g.vuln.at||'--');
+
+    const tC2 = g.threat.vulns===0?'var(--green)':'var(--red)';
+    html += row('Threat Intel',
+      `<span style="color:${tC2}">${g.threat.vulns===0?'NOT VULNERABLE':g.threat.vulns+' VULNERABLE'}</span> · ${g.threat.tested} threats tested`);
+    html += row('Last run', g.threat.at||'--');
+
+    const auC2 = g.audit.total===0?'var(--green)':g.audit_critical>0?'var(--red)':'var(--amber)';
+    const sev = g.audit.severity;
+    const sevStr = sev ? `CRIT:${sev.CRITICAL||0} HIGH:${sev.HIGH||0} MED:${sev.MEDIUM||0} LOW:${sev.LOW||0}` : '';
+    html += row('Code Audit',
+      `<span style="color:${auC2}">${g.audit.total===0?'CLEAN':g.audit.total+' ISSUE(S)'}</span>${sevStr?' · '+sevStr:''}`);
+    html += row('Last run', g.audit.at||'--');
+
+    // Code audit issues
+    if (g.audit.issues && g.audit.issues.length) {
+      html += sec('CODE ISSUES');
+      for (const iss of g.audit.issues) {
+        html += `<div class="issue-row">
+          <div class="sev ${iss.severity}">${iss.severity}</div>
+          <div class="loc">${iss.file||''}${iss.line?':'+iss.line:''}</div>
+          <div class="msg">${(iss.issue||iss.message||'').substring(0,120)}</div>
+        </div>`;
+      }
+    }
+
+    // Schedule
+    html += sec('TASK SCHEDULE');
+    html += `<table class="sched-table">
+      <tr><th>TASK</th><th>LAST RUN</th><th>NEXT RUN</th></tr>`;
+    for (const t of g.schedule) {
+      html += `<tr>
+        <td>${t.task.replace('_',' ')}</td>
+        <td>${t.last}</td>
+        <td class="${t.next_status}">${t.next}</td>
+      </tr>`;
+    }
+    html += '</table>';
+    html += sec('META');
+    html += row('State file updated', g.updated_at||'--');
+
+    el('modal-g-body').innerHTML = html;
+    show('modal-guardian');
   }
 }
 
 function show(id) {
-  document.getElementById('overlay').classList.add('open');
-  document.getElementById(id).classList.add('open');
+  el('overlay').classList.add('open');
+  el(id).classList.add('open');
 }
-
 function closeModal() {
-  document.getElementById('overlay').classList.remove('open');
+  el('overlay').classList.remove('open');
   document.querySelectorAll('.modal').forEach(m => m.classList.remove('open'));
 }
+function el(id)  { return document.getElementById(id); }
+function row(k,v){ return `<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${v}</span></div>`; }
+function sec(t)  { return `<div class="detail-section">${t}</div>`; }
 
-function detailRow(key, val) {
-  return `<div class="detail-row"><span class="detail-key">${key}</span><span class="detail-val">${val}</span></div>`;
-}
-function detailSection(title) {
-  return `<div class="detail-section">${title}</div>`;
-}
-
-// Close modal on Escape
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => { if(e.key==='Escape') closeModal(); });
 </script>
 </body>
 </html>

@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from dashboard.network import NetworkMonitor
 from dashboard.sysmon import get_system_stats
 from dashboard.weather_widget import WeatherCache
+from dashboard.guardian import get_guardian_status
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ def _build_payload() -> dict[str, Any]:
     wx  = _wx.get()
 
     return {
+        "guardian": get_guardian_status(),
         "network": {
             "interfaces": [
                 {
