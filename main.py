@@ -17,6 +17,7 @@ from core import memory
 from core.config import OLLAMA_URL, TEXT_MODEL
 from core.router import dispatch, ROUTER_MODEL
 from core.sanitizer import sanitize_input, redact_pii
+from core.doc_reader import read_document, describe as doc_describe
 from modules.finance.module import FinanceModule
 from modules.farming.module import FarmingModule
 from modules.health.module import HealthModule
@@ -97,6 +98,28 @@ _FOLLOW_UP_ACTIONS = {
 }
 
 
+_DOC_EXTS = {".pdf", ".docx", ".xlsx", ".txt", ".md", ".csv"}
+_DOC_PATH_RE = __import__("re").compile(r"(?:^|(?<=\s))(/[\w/._~-]+\.(?:pdf|docx|xlsx|txt|md|csv)|~/[\w/._-]+\.(?:pdf|docx|xlsx|txt|md|csv))", __import__("re").IGNORECASE)
+
+
+def _inject_doc_context(query: str) -> str:
+    """
+    Detect file paths in query, extract document text, inject as context.
+    e.g. "summarize /home/ganesh/report.pdf" → "summarize [report.pdf]: <text>"
+    """
+    match = _DOC_PATH_RE.search(query)
+    if not match:
+        return query
+    path = match.group(1)
+    result = read_document(path)
+    if result["error"]:
+        print(f"\n  [doc] {result['error']}")
+        return query
+    print(f"\n  [doc] {doc_describe(result)}")
+    snippet = result["text"][:8000]  # cap context passed to LLM
+    return query.replace(path, f"[document: {__import__('pathlib').Path(path).name}]\n\n{snippet}\n\n")
+
+
 def print_response(responses):
     for r in responses:
         print(f"\nGK [{r.module}]: {r.text}")
@@ -143,6 +166,9 @@ def main():
                 print(f"  [input] {w}")
                 log.warning("sanitizer: %s", w)
         query = san.query   # use cleaned version for LLM
+
+        # Auto-inject document content if query contains a file path
+        query = _inject_doc_context(query)
 
         context = _build_context(profile)
         event_id = memory.log_query_start(redact_pii(query))
