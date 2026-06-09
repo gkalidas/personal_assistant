@@ -27,3 +27,4 @@ psutil          # CPU / RAM / network io_counters / disk
 
 # Storage
 # SQLite is stdlib — no extra package needed
+defusedxml>=0.7
