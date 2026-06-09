@@ -18,7 +18,9 @@ from pathlib import Path
 from typing import Any
 
 from core.base_module import BaseModule, ModuleResponse
-from core.memory import save_diary_draft, get_diary_draft, approve_diary_draft, list_diary_drafts
+from core.memory import (save_diary_draft, get_diary_draft, approve_diary_draft,
+                         list_diary_drafts, mark_photos_processed,
+                         get_processed_photo_paths, get_photo_stats)
 from core.analysis import run_weekly_pipeline, analyse_week, current_iso_week
 from modules.diary.photo_reader import scan_photos, default_photo_dir
 from modules.diary.vision import caption_batch
@@ -98,6 +100,9 @@ def _do_write(query: str, profile: dict) -> tuple[str, dict | None]:
 
     log.info("diary write: dir=%s date_filter=%s", photo_dir, date_filter)
 
+    # Load set of already-processed photo paths
+    already_processed = get_processed_photo_paths()
+
     # Scan photos grouped by date
     by_date = scan_photos(photo_dir)
     if not by_date:
@@ -113,6 +118,29 @@ def _do_write(query: str, profile: dict) -> tuple[str, dict | None]:
                 None,
             )
         by_date = {date_filter: by_date[date_filter]}
+
+    # Count totals for reporting
+    total_in_dir = sum(len(v) for v in by_date.values())
+    skipped_count = 0
+
+    # Filter out already-processed photos unless a specific date was forced
+    if not date_filter:
+        filtered = {}
+        for d, photos in by_date.items():
+            new_photos = [p for p in photos if str(getattr(p, "path", p)) not in already_processed]
+            if new_photos:
+                filtered[d] = new_photos
+            skipped_count += len(photos) - len(new_photos)
+        by_date = filtered
+
+    if not by_date:
+        stats = get_photo_stats()
+        return (
+            f"All {total_in_dir} photos in {photo_dir.name}/ have already been processed "
+            f"({stats['total_processed']} total across {len(stats['by_week'])} weeks).\n"
+            f"To reprocess a specific date, say: \"diary for YYYY-MM-DD\"",
+            None,
+        )
 
     # Process each day
     written_days = []
@@ -132,11 +160,13 @@ def _do_write(query: str, profile: dict) -> tuple[str, dict | None]:
         week_key = _date_to_week(date_str)
         existing = get_diary_draft(week_key)
         if existing and existing.get("draft"):
-            # Append to existing week draft
             combined = existing["draft"] + "\n\n" + format_draft(date_str, entry, len(photos))
             save_diary_draft(week_key, combined)
         else:
             save_diary_draft(week_key, format_draft(date_str, entry, len(photos)))
+
+        # Mark photos as processed so they won't be re-processed next time
+        mark_photos_processed(photos, week_key)
 
         written_days.append(date_str)
         output_lines.append(format_draft(date_str, entry, len(photos)))
@@ -146,6 +176,8 @@ def _do_write(query: str, profile: dict) -> tuple[str, dict | None]:
 
     n = len(written_days)
     header = f"Diary written for {n} day{'s' if n > 1 else ''}: {', '.join(written_days)}\n"
+    if skipped_count:
+        header += f"({skipped_count} already-processed photo{'s' if skipped_count > 1 else ''} skipped — say \"diary for YYYY-MM-DD\" to reprocess a date)\n"
     header += "Draft saved. Say \"approve diary\" when you're happy with it.\n\n"
 
     return header + "\n\n".join(output_lines), {"days_written": written_days}

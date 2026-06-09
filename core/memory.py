@@ -58,6 +58,15 @@ def init_db() -> None:
                 created_at   TEXT NOT NULL,
                 approved_at  TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS processed_photos (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                path         TEXT NOT NULL UNIQUE,
+                size_bytes   INTEGER,
+                date_taken   TEXT,
+                week         TEXT,
+                processed_at TEXT NOT NULL
+            );
         """)
         # Schema migrations: add columns that may be missing in older DBs
         existing = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
@@ -162,3 +171,49 @@ def list_diary_drafts(approved: bool | None = None) -> list[dict]:
                 "SELECT * FROM diary_drafts WHERE approved=? ORDER BY week DESC", (1 if approved else 0,)
             ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ── Photo processing tracker ───────────────────────────────────────────────────
+
+def mark_photos_processed(photos: list, week: str) -> None:
+    """Record which photo files have been processed into diary entries."""
+    now = datetime.now().isoformat()
+    with _conn() as conn:
+        for p in photos:
+            path = str(getattr(p, "path", p))
+            size = None
+            date_taken = getattr(p, "date", None)
+            try:
+                import os
+                size = os.path.getsize(path)
+            except Exception:
+                pass
+            conn.execute(
+                """INSERT OR IGNORE INTO processed_photos
+                   (path, size_bytes, date_taken, week, processed_at) VALUES (?,?,?,?,?)""",
+                (path, size, str(date_taken) if date_taken else None, week, now),
+            )
+
+
+def get_processed_photo_paths() -> set[str]:
+    """Return the set of all photo file paths already processed."""
+    with _conn() as conn:
+        rows = conn.execute("SELECT path FROM processed_photos").fetchall()
+    return {row["path"] for row in rows}
+
+
+def get_photo_stats(photo_dir: str | None = None) -> dict:
+    """Return summary: total processed, by week, latest date."""
+    with _conn() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM processed_photos").fetchone()[0]
+        weeks = conn.execute(
+            "SELECT week, COUNT(*) as cnt FROM processed_photos GROUP BY week ORDER BY week DESC"
+        ).fetchall()
+        latest = conn.execute(
+            "SELECT processed_at FROM processed_photos ORDER BY processed_at DESC LIMIT 1"
+        ).fetchone()
+    return {
+        "total_processed": total,
+        "by_week": [{"week": r["week"], "count": r["cnt"]} for r in weeks],
+        "last_processed_at": latest["processed_at"] if latest else None,
+    }

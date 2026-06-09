@@ -79,8 +79,9 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .dot.online{background:var(--green);box-shadow:0 0 5px var(--green);animation:blink-xslow 7s infinite}
 .dot.noinet{background:var(--amber);box-shadow:0 0 4px var(--amber);animation:blink-med 3s infinite}
 .dot.down  {background:#1a2530;border:1px solid var(--border)}
-/* Fixed-width type label — prevents layout shift during icon/name toggle */
-.iface-type-cell{width:38px;flex-shrink:0;font-size:8px;font-weight:bold;letter-spacing:1px;text-align:center;padding:1px 3px;border-radius:2px;margin:0 5px}
+/* Fixed-width type icon cell — prevents layout shift during icon/name toggle */
+.iface-type-cell{width:38px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;text-align:center;padding:2px 3px;border-radius:2px;margin:0 5px}
+.iface-type-cell svg{display:block}
 .iface-type-cell.t-wifi{color:var(--cyan);  border:1px solid rgba(0,229,255,0.3);background:rgba(0,229,255,0.06)}
 .iface-type-cell.t-lan {color:var(--green); border:1px solid rgba(0,255,136,0.3);background:rgba(0,255,136,0.05)}
 .iface-type-cell.t-vpn {color:var(--amber); border:1px solid rgba(255,170,0,0.3);background:rgba(255,170,0,0.05)}
@@ -89,12 +90,10 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .iface-name-cell.showing-iface{color:var(--amber);font-size:8px;letter-spacing:0}
 .failover-alert{margin-top:6px;padding:4px 8px;background:rgba(255,34,85,0.08);border:1px solid rgba(255,34,85,0.35);border-radius:2px;font-size:9px;letter-spacing:2px;color:var(--red);animation:blink-fast 0.7s infinite}
 
-/* WiFi signal bars (CSS only) */
-.wifi-bars{display:inline-flex;align-items:flex-end;gap:1px;height:11px;margin:0 2px}
-.wifi-bars span{display:inline-block;width:3px;border-radius:1px 1px 0 0;background:currentColor}
-.wifi-bars span:nth-child(1){height:35%}
-.wifi-bars span:nth-child(2){height:65%}
-.wifi-bars span:nth-child(3){height:100%}
+/* diary write button */
+.diary-write-btn{font-size:8px;letter-spacing:2px;padding:2px 6px;background:rgba(210,168,255,0.08);border:1px solid rgba(210,168,255,0.25);color:#d2a8ff;border-radius:2px;cursor:pointer;flex-shrink:0}
+.diary-write-btn:hover{background:rgba(210,168,255,0.15);border-color:#d2a8ff}
+.diary-photo-stat{font-size:8px;letter-spacing:1px;color:#5a3a7a;margin-top:2px}
 
 /* ── System panel ─────────────────────────────────────────────────────────── */
 .metric{margin-bottom:7px}
@@ -371,9 +370,13 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 
   <!-- DIARY — row 2, col 1-3 -->
   <div class="panel clickable" id="p-diary" style="grid-column:1/4;grid-row:2;display:flex;flex-direction:column" onclick="openDiaryBook(null)">
-    <div class="panel-label">DIARY</div>
+    <div class="panel-label" style="justify-content:space-between">
+      DIARY
+      <button class="diary-write-btn" id="diary-write-btn" title="Write diary from ~/Pictures (Ctrl+D)" onclick="event.stopPropagation();writeDiaryFromPhotos()">✎ FROM PHOTOS</button>
+    </div>
     <div class="diary-list" id="diary-list"><div style="font-size:10px;letter-spacing:2px;color:#0c2535;padding:4px">loading…</div></div>
     <div class="diary-footer" id="diary-footer">—</div>
+    <div class="diary-photo-stat" id="diary-photo-stat"></div>
     <span class="click-hint">CLICK TO OPEN BOOK</span>
   </div>
 
@@ -487,14 +490,32 @@ function render(d){
 }
 
 // ── Network ───────────────────────────────────────────────────────────────────
-// Type → fixed 2-char label that always shows in the fixed-width cell
-const _TYPE_LABELS = {
-  wifi:'Wi-Fi', wireless:'Wi-Fi', wlan:'Wi-Fi',
-  lan:'LAN',    eth:'LAN',
-  vpn:'VPN',    tun:'VPN',
-};
+// SVG icons for each connection type — rendered inside fixed-width type cell
+const _SVG_WIFI=`<svg viewBox="0 0 22 16" width="22" height="13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="11" cy="14" r="1.6" fill="currentColor" stroke="none"/>
+  <path d="M7,10.5 Q11,7 15,10.5" stroke-width="1.8"/>
+  <path d="M3.5,7 Q11,1.5 18.5,7" stroke-width="1.8"/>
+</svg>`;
+const _SVG_LAN=`<svg viewBox="0 0 22 16" width="22" height="13" fill="none" stroke="currentColor" stroke-linecap="round">
+  <rect x="3" y="2" width="16" height="10" rx="1.5" stroke-width="1.6"/>
+  <line x1="7" y1="12" x2="7" y2="15" stroke-width="1.6"/>
+  <line x1="15" y1="12" x2="15" y2="15" stroke-width="1.6"/>
+  <rect x="6.5" y="4.5" width="2.5" height="3.5" rx="0.5" fill="currentColor" stroke="none"/>
+  <rect x="9.75" y="4.5" width="2.5" height="3.5" rx="0.5" fill="currentColor" stroke="none"/>
+  <rect x="13" y="4.5" width="2.5" height="3.5" rx="0.5" fill="currentColor" stroke="none"/>
+</svg>`;
+const _SVG_VPN=`<svg viewBox="0 0 18 20" width="16" height="15" fill="none" stroke="currentColor" stroke-linecap="round">
+  <rect x="2" y="9" width="14" height="10" rx="2" stroke-width="1.7"/>
+  <path d="M5.5,9 L5.5,5.5 Q5.5,1.5 9,1.5 Q12.5,1.5 12.5,5.5 L12.5,9" stroke-width="1.7"/>
+  <circle cx="9" cy="14.5" r="1.8" fill="currentColor" stroke="none"/>
+</svg>`;
 
-function _typeLabel(type){ return _TYPE_LABELS[type.toLowerCase()]||type.toUpperCase().slice(0,5); }
+function _typeIcon(type){
+  const t=type.toLowerCase();
+  if(t==='wifi'||t==='wireless'||t==='wlan')return _SVG_WIFI;
+  if(t==='vpn'||t==='tun')return _SVG_VPN;
+  return _SVG_LAN;
+}
 function _typeCls(type){
   const t=type.toLowerCase();
   if(t==='wifi'||t==='wireless'||t==='wlan')return 't-wifi';
@@ -530,11 +551,11 @@ function renderNetwork(n){
   for(const i of n.interfaces){
     const isVpn=i.type==='vpn'||i.type==='tun';
     const dc=i.is_connected?'online':i.is_up?(isVpn?'online':'noinet'):'down';
-    const lbl=_typeLabel(i.type);
+    const icon=_typeIcon(i.type);
     const cls=_typeCls(i.type);
     const nameText=_showIfaceNames?i.name:(i.ip||'—');
     const nameCls=_showIfaceNames?'iface-name-cell showing-iface':'iface-name-cell';
-    html+=`<div class="iface-row"><div class="dot ${dc}"></div><span class="iface-type-cell ${cls}">${lbl}</span><span class="${nameCls}">${nameText}</span></div>`;
+    html+=`<div class="iface-row"><div class="dot ${dc}"></div><span class="iface-type-cell ${cls}">${icon}</span><span class="${nameCls}">${nameText}</span></div>`;
   }
   el('iface-list').innerHTML=html;
   el('failover-alert').style.display=n.failover_alert?'':'none';
@@ -726,7 +747,10 @@ function el(id){return document.getElementById(id)}
 function row(k,v){return `<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${v}</span></div>`}
 function sec(t){return `<div class="detail-section">${t}</div>`}
 
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeNewsModal()}});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){closeModal();closeNewsModal();}
+  if(e.ctrlKey&&e.key==='d'){e.preventDefault();writeDiaryFromPhotos();}
+});
 
 // ── Weather refresh ────────────────────────────────────────────────────────────
 async function refreshWeather(){
@@ -777,6 +801,33 @@ let _diaryDrafts=[],_bookPages=[],_bookPage=0;
 async function loadDiaryList(){
   try{const r=await fetch('/api/diary/drafts');_diaryDrafts=await r.json();renderDiaryPanel()}
   catch(e){el('diary-footer').textContent='unavailable'}
+  // Load photo processing stats separately (non-blocking)
+  try{
+    const rs=await fetch('/api/diary/photo-stats');
+    const ps=await rs.json();
+    const stat=el('diary-photo-stat');
+    if(stat){
+      const last=ps.last_processed_at?(ps.last_processed_at||'').slice(0,10):'never';
+      stat.textContent=ps.total_processed?`${ps.total_processed} photos processed · last: ${last}`:'no photos processed yet';
+    }
+  }catch(e){}
+}
+
+async function writeDiaryFromPhotos(){
+  const btn=el('diary-write-btn');
+  if(!btn)return;
+  btn.disabled=true;btn.textContent='WRITING…';
+  try{
+    const r=await fetch('/api/diary/write-photos',{method:'POST'});
+    const d=await r.json();
+    btn.textContent='STARTED ✓';
+    // Show brief toast
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;bottom:20px;right:20px;background:#1a0e2a;border:1px solid #d2a8ff;color:#d2a8ff;font-size:10px;letter-spacing:2px;padding:8px 14px;border-radius:2px;z-index:999';
+    t.textContent='DIARY: writing from ~/Pictures…';
+    document.body.appendChild(t);
+    setTimeout(()=>{document.body.removeChild(t);btn.textContent='✎ FROM PHOTOS';btn.disabled=false;loadDiaryList()},4000);
+  }catch(e){btn.textContent='✎ FROM PHOTOS';btn.disabled=false;}
 }
 function renderDiaryPanel(){
   const list=el('diary-list'),footer=el('diary-footer');
@@ -1015,11 +1066,11 @@ setInterval(loadMiniTodo,30*1000);
 // ── Tour ───────────────────────────────────────────────────────────────────────
 const TOUR=[
   {id:null,title:'WELCOME',text:'GK Personal Assistant — your private AI on your own hardware.\nAll panels update live every 2 seconds via WebSocket.\nAll your data stays on your machine.'},
-  {id:'p-network',title:'NETWORK MONITOR',text:'Type label toggles between IP address and actual interface name (wlp3s0, enp2s0, tailscale0) every 2.5s.\nSpeed shown live in panel header. Colors: cyan=WiFi, green=LAN, amber=VPN.'},
+  {id:'p-network',title:'NETWORK MONITOR',text:'SVG icons show connection type: WiFi arcs=wireless, port+pins=LAN, padlock=VPN. IP/interface name alternates every 2.5s.\nSpeed shown live in panel header. Colors: cyan=WiFi, green=LAN, amber=VPN.'},
   {id:'p-system',title:'SYSTEM RESOURCES',text:'4-level color coding:\n  GREEN  = 0–30%  (healthy)\n  CYAN   = 30–60% (normal)\n  AMBER  = 60–85% (watch)\n  RED    = 85%+   (critical)\nClick for full details.'},
   {id:'p-weather',title:'WEATHER WIDGET',text:'Live weather from Open-Meteo for Barloni farm.\nClick for 7-day forecast with rainfall probability.'},
   {id:'p-guardian',title:'SECURITY GUARDIAN',text:'Blink speed = severity:\n  RED   = fast  (0.7s)  — danger\n  AMBER = medium (3s)  — warn\n  GREEN = slow  (5s)   — ok\nCLICK → Details shows upgrade button for packages.'},
-  {id:'p-diary',title:'DIARY',text:'Put your photos in ~/Pictures\nThen say: "write diary from my photos"\nThe AI reads EXIF data, captions each photo, writes a diary entry.\nClick any row to open the book viewer.'},
+  {id:'p-diary',title:'DIARY',text:'Put your photos in ~/Pictures\nClick "✎ FROM PHOTOS" button (or press Ctrl+D) to write diary from photos.\nThe AI reads EXIF data, captions each photo, writes a diary entry.\nProcessed photo count shown in footer. Click any row to open the book viewer.'},
   {id:'p-todo-mini',title:'TODO · QUICK VIEW',text:'Q1 (DO FIRST) items blink red slowly.\nQ2 (SCHEDULE) items blink amber.\nClick any task to mark it done.\nFULL → opens the complete Eisenhower matrix.'},
   {id:'p-news',title:'FARMING NEWS',text:'Auto-refreshes every 2.5 min from trusted sources.\nFilters out biased/sensationalist media.\nNews scrolls up automatically.\nCLICK any headline for full article + YouTube video.'},
   {id:'p-voice',title:'VOICE QUERY',text:'Click SPEAK → talk → click STOP.\nCaptures WAV directly in browser (no ffmpeg needed).\nTranscribed and routed to the right module.\nWorks from phone via Tailscale: http://100.67.193.127:8765'},

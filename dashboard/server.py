@@ -402,6 +402,32 @@ async def api_stats():
     return JSONResponse({"endpoints": result, "snapshot_at": datetime.now().isoformat()})
 
 
+@app.get("/api/diary/photo-stats")
+async def diary_photo_stats():
+    """Return processed-photos summary: total count, by-week breakdown, last run."""
+    try:
+        from core.memory import get_photo_stats
+        return JSONResponse(get_photo_stats())
+    except Exception as e:
+        log.error("photo stats error: %s", e)
+        return JSONResponse({"total_processed": 0, "by_week": [], "last_processed_at": None})
+
+
+@app.post("/api/diary/write-photos")
+async def diary_write_photos():
+    """Trigger diary write from ~/Pictures in background; return immediately."""
+    def _run():
+        try:
+            mods = _get_query_modules()
+            diary = mods.get("diary")
+            if diary:
+                diary.handle("write diary from my photos", {})
+        except Exception as e:
+            log.error("diary write-photos error: %s", e)
+    threading.Thread(target=_run, daemon=True, name="diary-write-photos").start()
+    return JSONResponse({"status": "started", "message": "Writing diary from ~/Pictures — check voice panel for results"})
+
+
 @app.get("/api/diary/drafts")
 async def diary_drafts_list():
     """List all diary draft metadata (no full text — avoids large payloads)."""
