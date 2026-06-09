@@ -545,9 +545,10 @@ function render(d) {
 function renderNetwork(n) {
   let html = '';
   for (const i of n.interfaces) {
-    const dc = i.is_connected ? 'online' : i.is_up ? 'noinet' : 'down';
-    const bt = i.is_connected ? 'ONLINE' : i.is_up ? 'NO INET' : 'DOWN';
-    const bc = i.is_connected ? 'ok' : i.is_up ? 'warn' : 'danger';
+    const isVpn = i.type === 'vpn';
+    const dc = i.is_connected ? 'online' : i.is_up ? (isVpn ? 'online' : 'noinet') : 'down';
+    const bt = i.is_connected ? 'ONLINE'  : i.is_up ? (isVpn ? 'ACTIVE' : 'NO INET') : 'DOWN';
+    const bc = i.is_connected ? 'ok'      : i.is_up ? (isVpn ? 'ok'     : 'warn')    : 'danger';
     html += `<div class="iface-row">
       <div class="dot ${dc}"></div>
       <span class="iface-type">${i.type.toUpperCase()}</span>

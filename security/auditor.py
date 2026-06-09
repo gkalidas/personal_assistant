@@ -64,9 +64,10 @@ def _run_bandit() -> list[dict]:
              "--exclude", ".venv,envs,__pycache__,.git,logs,inputs,security"],
             capture_output=True, text=True, timeout=60,
         )
-        if result.stdout:
+        if result.stdout and result.stdout.strip():
             data = json.loads(result.stdout)
             return data.get("results", [])
+        return []  # bandit found no issues (exit 0, empty output)
     except FileNotFoundError:
         log.warning("bandit not installed — skipping static analysis. Install: pip install bandit")
     except Exception as e:

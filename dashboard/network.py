@@ -19,19 +19,21 @@ import psutil
 
 log = logging.getLogger(__name__)
 
-_PRIORITY = ["lan", "wifi", "tethering", "unknown"]
+_PRIORITY = ["lan", "wifi", "tethering", "vpn", "unknown"]
 
 _LAN_RE  = re.compile(r"^(eth|enp|eno|ens|em|enx)\d")
 _WIFI_RE = re.compile(r"^(wlan|wlp|wlo|wls)\d")
 _BT_RE   = re.compile(r"^(bnep|pan|bt)\d")
 _USB_RE  = re.compile(r"^(usb|rndis|ncm)\d")
+_VPN_RE  = re.compile(r"^(tun|tap|wg|tailscale|vpn)\d*")
 
 
 def _iface_type(name: str) -> str:
     n = name.lower()
-    if _LAN_RE.match(n):           return "lan"
-    if _WIFI_RE.match(n):          return "wifi"
+    if _LAN_RE.match(n):                     return "lan"
+    if _WIFI_RE.match(n):                    return "wifi"
     if _BT_RE.match(n) or _USB_RE.match(n): return "tethering"
+    if _VPN_RE.match(n):                     return "vpn"
     return "unknown"
 
 
