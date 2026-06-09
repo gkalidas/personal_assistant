@@ -1,6 +1,7 @@
 from datetime import datetime, date
 from typing import Any
 from modules.finance.db import conn
+from core.crypto import encrypt, decrypt
 
 
 # ── Transactions ──────────────────────────────────────────────────────────────
@@ -16,7 +17,7 @@ def add_transaction(
     with conn() as c:
         cur = c.execute(
             "INSERT INTO transactions (ts, amount, type, category, description) VALUES (?,?,?,?,?)",
-            (ts, amount, type_, category, description),
+            (ts, amount, type_, category, encrypt(description)),
         )
         return {"id": cur.lastrowid, "amount": amount, "type": type_, "category": category}
 
@@ -45,7 +46,12 @@ def get_transactions(
     base = base + " ORDER BY ts DESC LIMIT ?"
     with conn() as c:
         rows = c.execute(base, params).fetchall()
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["description"] = decrypt(d.get("description"))
+        result.append(d)
+    return result
 
 
 # ── Summary ───────────────────────────────────────────────────────────────────

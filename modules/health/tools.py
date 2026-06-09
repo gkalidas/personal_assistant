@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from modules.health.db import conn
+from core.crypto import encrypt, decrypt
 
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -19,7 +20,7 @@ def log_reading(
                (date, time, type, value1, value2, unit, meal_state, notes)
                VALUES (?,?,?,?,?,?,?,?)""",
             (now.date().isoformat(), now.strftime("%H:%M"),
-             type_, value1, value2, unit, meal_state, notes),
+             type_, value1, value2, unit, meal_state, encrypt(notes)),
         )
         return {
             "id": cur.lastrowid,
@@ -33,13 +34,19 @@ def log_reading(
 
 # ── Queries ───────────────────────────────────────────────────────────────────
 
+def _decrypt_row(row) -> dict:
+    d = dict(row)
+    d["notes"] = decrypt(d.get("notes"))
+    return d
+
+
 def get_latest(type_: str) -> dict | None:
     with conn() as c:
         row = c.execute(
             "SELECT * FROM health_readings WHERE type=? ORDER BY date DESC, time DESC LIMIT 1",
             (type_,),
         ).fetchone()
-        return dict(row) if row else None
+        return _decrypt_row(row) if row else None
 
 
 def get_history(type_: str, days: int = 7) -> list[dict]:
@@ -50,7 +57,7 @@ def get_history(type_: str, days: int = 7) -> list[dict]:
                ORDER BY date DESC, time DESC""",
             (type_, f"-{days} days"),
         ).fetchall()
-        return [dict(r) for r in rows]
+        return [_decrypt_row(r) for r in rows]
 
 
 def today_summary() -> dict:
