@@ -357,6 +357,7 @@ body::after {
 <div id="header">
   <div class="h-title"><span>◈</span> GK PERSONAL ASSISTANT</div>
   <div class="h-right">
+    <a href="/mindmap" style="font-size:10px;letter-spacing:3px;color:var(--dim);text-decoration:none;border:1px solid var(--border);padding:3px 10px;border-radius:2px;" onmouseover="this.style.color='var(--cyan)';this.style.borderColor='var(--cyan)'" onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">MIND MAP</a>
     <div id="clock">--:--:-- --/--/----</div>
     <div class="status-dot" title="Live"></div>
   </div>
@@ -399,6 +400,13 @@ body::after {
         <span class="metric-val" id="ram-val">--%</span>
       </div>
       <div class="bar-track"><div class="bar-fill normal" id="ram-bar" style="width:0%"></div></div>
+    </div>
+    <div class="metric">
+      <div class="metric-header">
+        <span class="metric-name">SWAP</span>
+        <span class="metric-val" id="swap-val">--%</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill normal" id="swap-bar" style="width:0%"></div></div>
     </div>
     <div class="metric">
       <div class="metric-header">
@@ -560,8 +568,9 @@ function setBar(id, pct) {
   document.getElementById(id+'-bar').className = 'bar-fill '+(pct>85?'danger':pct>60?'warn':'normal');
 }
 function renderSystem(s) {
-  setBar('cpu', s.cpu_pct);
-  setBar('ram', s.ram_pct);
+  setBar('cpu',  s.cpu_pct);
+  setBar('ram',  s.ram_pct);
+  setBar('swap', s.swap_pct);
   setBar('disk', s.disk_pct);
 }
 
@@ -671,6 +680,7 @@ function openModal(type) {
     rows += row('Load Avg',   s.load_avg);
     rows += sec('MEMORY');
     rows += row('RAM Usage',  s.ram_pct+'%  ('+s.ram_used_gb+' / '+s.ram_total_gb+' GB)');
+    rows += row('Swap Usage', s.swap_pct+'%  ('+s.swap_used_gb+' / '+s.swap_total_gb+' GB)');
     rows += sec('STORAGE');
     rows += row('Disk Usage', s.disk_pct+'%  ('+s.disk_used_gb+' / '+s.disk_total_gb+' GB)');
     rows += sec('SYSTEM');
