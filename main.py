@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Voice-input commands that trigger mic recording
+_VOICE_TRIGGERS = {"/voice", "/mic", "/speak", "/v"}
+
 from core.log import setup_logging
 setup_logging()
 
@@ -151,6 +154,25 @@ def main():
         if query.lower() in GOODBYE:
             print("GK: Goodbye.")
             break
+
+        # ── Voice input ───────────────────────────────────────────────────────
+        parts = query.split()
+        if parts[0].lower() in _VOICE_TRIGGERS:
+            try:
+                secs = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 5
+            except (IndexError, ValueError):
+                secs = 5
+            from core.audio import record_and_transcribe, is_available as audio_ok
+            if not audio_ok():
+                print("  [voice] whisper not installed — run: pip install openai-whisper")
+                continue
+            print(f"  [voice] recording {secs}s … speak now")
+            transcribed = record_and_transcribe(seconds=secs)
+            if not transcribed:
+                print("  [voice] nothing transcribed")
+                continue
+            print(f"  [voice] → {transcribed}")
+            query = transcribed
 
         # ── Follow-up confirmation ─────────────────────────────────────────────
         if query.lower() in _CONFIRMATIONS and pending_follow_up:

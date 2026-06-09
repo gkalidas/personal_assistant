@@ -93,16 +93,22 @@ def _profile_summary(context: dict) -> str:
     name = profile.get("name") or profile.get("alias") or "Ganesh"
     lines = [f"Farmer: {name}"]
     if farm:
+        owner = farm.get("owner") or name
+        label = farm.get("label", "")
+        owner_str = f" (owner: {owner})" if owner.lower() != name.lower() else ""
         lines.append(
-            f"Default farm: {farm.get('primary_location', '')}, {farm.get('district', '')}, "
-            f"{farm.get('state', '')} — {farm.get('area_acres', '?')} acres, "
-            f"{farm.get('soil_type', '')} soil, {farm.get('irrigation_type', '')} irrigation"
+            f"Active farm: {label}{owner_str} — {farm.get('primary_location', '')}, "
+            f"{farm.get('district', '')}, {farm.get('state', '')} — "
+            f"{farm.get('area_acres', '?')} acres, {farm.get('soil_type', '')} soil, "
+            f"{farm.get('irrigation_type', '')} irrigation"
         )
         crops = [farm.get("primary_crop")] + (farm.get("other_crops") or [])
         lines.append(f"Crops: {', '.join(c for c in crops if c)}")
     farms = profile.get("farms", [])
-    if len(farms) > 1:
-        lines.append(f"Other farms: {', '.join(f['label'] for f in farms[1:])}")
+    active_label = farm.get("label") if farm else None
+    other = [f["label"] for f in farms if f["label"] != active_label]
+    if other:
+        lines.append(f"Other farms: {', '.join(other)}")
     return "\n".join(lines)
 
 
@@ -176,8 +182,33 @@ _PERSONAL_REFS = {
     "field", "my field", "plot", "my plot",
     "location", "my location", "current location",
     "barloni farm", "gk farm",
-    "mugdha farm", "mugdha's farm", "mugdhas farm",
 }
+
+# Farm label / owner words that resolve to a specific farm in the profile
+_FARM_OWNER_WORDS = {
+    # populated at import time from profile — see _resolve_named_farm()
+}
+
+
+def _resolve_named_farm(query: str, profile: dict) -> dict | None:
+    """Return a farm dict from profile if the query names that farm explicitly.
+
+    Matches on farm label (e.g. 'mugdha_farm') or on the owner's first name
+    when the owner differs from the default farmer name.
+    """
+    q = query.lower()
+    farmer_name = (profile.get("name") or profile.get("alias") or "gk").lower()
+    default_label = (profile.get("preferences", {}).get("default_farm") or "").lower()
+    for farm in profile.get("farms", []):
+        label = farm["label"].lower().replace("_", " ")
+        owner = (farm.get("owner") or "").lower()
+        is_default = farm["label"].lower() == default_label
+        if label in q:
+            return farm
+        # Match owner name only for non-default farms whose owner differs from GK
+        if not is_default and owner and owner != farmer_name and owner in q:
+            return farm
+    return None
 
 
 def _loc(
@@ -483,6 +514,12 @@ class FarmingModule(BaseModule):
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
         t0 = time.monotonic()
+        # Switch farm context when the query explicitly names another farm/owner
+        named = _resolve_named_farm(query, context.get("profile", {}))
+        if named and named.get("label") != context.get("default_farm", {}).get("label"):
+            context = dict(context)
+            context["default_farm"] = named
+            log.info("farm context → %s (query named it)", named["label"])
         try:
             action = _call_llm(query, context)
         except Exception as e:
