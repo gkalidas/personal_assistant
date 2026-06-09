@@ -176,7 +176,10 @@ body::after {
 }
 .speed-item { display: flex; flex-direction: column; gap: 4px; }
 .speed-lbl  { font-size: 9px; letter-spacing: 2px; color: var(--dim); }
+.speed-row  { display: flex; align-items: baseline; gap: 8px; }
 .speed-val  { font-size: 20px; color: var(--cyan); text-shadow: 0 0 10px var(--glow-c); }
+.speed-val2 { font-size: 13px; color: #4a8fa0; }
+.speed-sep  { font-size: 11px; color: var(--border); }
 .speed-unit { font-size: 10px; color: var(--dim); margin-left: 2px; }
 
 .failover-alert {
@@ -387,11 +390,19 @@ body::after {
     <div class="speed-block">
       <div class="speed-item">
         <span class="speed-lbl">DOWNLOAD</span>
-        <span><span class="speed-val" id="dl">--</span><span class="speed-unit">Mbps</span></span>
+        <div class="speed-row">
+          <span><span class="speed-val" id="dl">--</span><span class="speed-unit">Mbps</span></span>
+          <span class="speed-sep">·</span>
+          <span><span class="speed-val2" id="dl-k">--</span><span class="speed-unit">Kbps</span></span>
+        </div>
       </div>
       <div class="speed-item">
         <span class="speed-lbl">UPLOAD</span>
-        <span><span class="speed-val" id="ul">--</span><span class="speed-unit">Mbps</span></span>
+        <div class="speed-row">
+          <span><span class="speed-val" id="ul">--</span><span class="speed-unit">Mbps</span></span>
+          <span class="speed-sep">·</span>
+          <span><span class="speed-val2" id="ul-k">--</span><span class="speed-unit">Kbps</span></span>
+        </div>
       </div>
     </div>
     <div class="failover-alert" id="failover-alert" style="display:none">⚠ PRIMARY DOWN — CHECKING BACKUP</div>
@@ -589,8 +600,11 @@ function renderNetwork(n) {
     </div>`;
   }
   document.getElementById('iface-list').innerHTML = html;
-  document.getElementById('dl').textContent = n.download_mbps.toFixed(1);
-  document.getElementById('ul').textContent = n.upload_mbps.toFixed(1);
+  const dlM = n.download_mbps, ulM = n.upload_mbps;
+  el('dl').textContent   = dlM.toFixed(2);
+  el('dl-k').textContent = Math.round(dlM * 1000).toLocaleString();
+  el('ul').textContent   = ulM.toFixed(2);
+  el('ul-k').textContent = Math.round(ulM * 1000).toLocaleString();
   document.getElementById('failover-alert').style.display = n.failover_alert ? '' : 'none';
 }
 
