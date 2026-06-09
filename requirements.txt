@@ -31,3 +31,8 @@ psutil          # CPU / RAM / network io_counters / disk
 # SQLite is stdlib — no extra package needed
 defusedxml>=0.7
 cryptography       # Field-level encryption for finance + health DBs
+
+# Semantic embedding router (fast query routing, no PyTorch)
+fastembed          # ONNX-based text embeddings (BAAI/bge-small-en-v1.5, 33 MB)
+hnswlib            # In-memory ANN index for cosine similarity search
+# turbovec         # Future: Google TurboQuant (ICLR 2026) for >1 M vector storage

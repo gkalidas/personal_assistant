@@ -67,6 +67,17 @@ def _build_system_prompt(modules: dict[str, BaseModule]) -> str:
 
 def route(query: str, modules: dict[str, BaseModule]) -> list[str]:
     """Return list of module names that should handle this query."""
+    # Fast path: embedding router (~1 ms, no LLM call)
+    try:
+        from core.embedding_router import fast_route
+        fast_module = fast_route(query)
+        if fast_module and fast_module in modules:
+            log.info("embed-route → %s  q=%r", fast_module, query[:80])
+            return [fast_module]
+    except Exception as e:
+        log.debug("embed fast-path skip: %s", e)
+
+    # Fall back to LLM router
     system = _build_system_prompt(modules)
     payload = {
         "model": ROUTER_MODEL,

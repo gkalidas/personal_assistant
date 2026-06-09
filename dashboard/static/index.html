@@ -51,20 +51,20 @@ body::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 20px;
+  padding: 8px 16px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
-  height: 48px;
+  height: 44px;
 }
 .h-title {
-  font-size: 15px;
+  font-size: 14px;
   letter-spacing: 5px;
   color: var(--cyan);
   text-shadow: 0 0 14px var(--glow-c);
 }
 .h-title span { color: var(--dim); margin-right: 8px; }
-.h-right { display: flex; align-items: center; gap: 24px; }
-#clock { font-size: 13px; letter-spacing: 2px; color: var(--dim); }
+.h-right { display: flex; align-items: center; gap: 18px; }
+#clock { font-size: 12px; letter-spacing: 2px; color: var(--dim); }
 .status-dot {
   width: 8px; height: 8px;
   border-radius: 50%;
@@ -73,14 +73,14 @@ body::after {
   animation: pulse-dot 2.5s infinite;
 }
 
-/* ── Grid (3 col × 2 row — Diary spans col 2-3 in row 2) ─────────────────── */
+/* ── Grid: 4 col × 3 row ──────────────────────────────────────────────────── */
 #grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 12px;
-  padding: 12px;
-  height: calc(100vh - 48px);
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  grid-template-rows: 150px 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+  height: calc(100vh - 44px);
 }
 
 /* ── Panel ────────────────────────────────────────────────────────────────── */
@@ -88,7 +88,7 @@ body::after {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 3px;
-  padding: 18px 20px;
+  padding: 14px 16px;
   cursor: pointer;
   position: relative;
   overflow: hidden;
@@ -103,41 +103,42 @@ body::after {
 
 .panel::before {
   content: '';
-  position: absolute; top: 5px; left: 5px;
-  width: 14px; height: 14px;
+  position: absolute; top: 4px; left: 4px;
+  width: 10px; height: 10px;
   border-top: 1px solid var(--cyan);
   border-left: 1px solid var(--cyan);
-  opacity: 0.6;
+  opacity: 0.5;
 }
 .panel::after {
   content: '';
-  position: absolute; bottom: 5px; right: 5px;
-  width: 14px; height: 14px;
+  position: absolute; bottom: 4px; right: 4px;
+  width: 10px; height: 10px;
   border-bottom: 1px solid var(--cyan);
   border-right: 1px solid var(--cyan);
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .panel-label {
-  font-size: 10px;
-  letter-spacing: 4px;
+  font-size: 9px;
+  letter-spacing: 3px;
   color: var(--dim);
-  margin-bottom: 18px;
+  margin-bottom: 10px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 .panel-label::before {
   content: '';
   display: inline-block;
-  width: 4px; height: 4px;
+  width: 3px; height: 3px;
   border: 1px solid var(--dim);
   transform: rotate(45deg);
+  flex-shrink: 0;
 }
 .click-hint {
   position: absolute;
-  bottom: 10px; right: 14px;
-  font-size: 9px; letter-spacing: 2px;
+  bottom: 8px; right: 12px;
+  font-size: 8px; letter-spacing: 2px;
   color: #0a2535;
   transition: color 0.2s;
 }
@@ -155,51 +156,51 @@ body::after {
 /* ── Network panel ────────────────────────────────────────────────────────── */
 .iface-row {
   display: grid;
-  grid-template-columns: 12px 60px 1fr auto;
+  grid-template-columns: 8px 50px 1fr auto;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 6px;
 }
-.dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse-dot 2s infinite; }
-.dot.noinet { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse-dot 2s infinite; }
+.dot.noinet { background: var(--amber); box-shadow: 0 0 5px var(--amber); }
 .dot.down   { background: #1a2530; border: 1px solid var(--border); }
-.iface-type { color: #6ab0c0; font-size: 11px; letter-spacing: 1px; }
-.iface-name { color: var(--dim); font-size: 11px; }
-.iface-ip   { color: #0c2535; font-size: 10px; margin-top: 2px; }
+.iface-type { color: #6ab0c0; font-size: 10px; letter-spacing: 1px; }
+.iface-name { color: var(--dim); font-size: 10px; }
+.iface-ip   { color: #0c2535; font-size: 9px; margin-top: 1px; }
 
 .speed-block {
-  margin-top: 16px;
+  margin-top: 8px;
   border-top: 1px solid var(--border);
-  padding-top: 14px;
-  display: flex; gap: 24px;
+  padding-top: 8px;
+  display: flex; gap: 18px;
 }
-.speed-item { display: flex; flex-direction: column; gap: 4px; }
-.speed-lbl  { font-size: 9px; letter-spacing: 2px; color: var(--dim); }
-.speed-row  { display: flex; align-items: baseline; gap: 8px; }
-.speed-val  { font-size: 20px; color: var(--cyan); text-shadow: 0 0 10px var(--glow-c); }
-.speed-val2 { font-size: 13px; color: #4a8fa0; }
-.speed-sep  { font-size: 11px; color: var(--border); }
-.speed-unit { font-size: 10px; color: var(--dim); margin-left: 2px; }
+.speed-item { display: flex; flex-direction: column; gap: 2px; }
+.speed-lbl  { font-size: 8px; letter-spacing: 2px; color: var(--dim); }
+.speed-row  { display: flex; align-items: baseline; gap: 5px; }
+.speed-val  { font-size: 16px; color: var(--cyan); text-shadow: 0 0 8px var(--glow-c); }
+.speed-val2 { font-size: 11px; color: #4a8fa0; }
+.speed-sep  { font-size: 10px; color: var(--border); }
+.speed-unit { font-size: 9px; color: var(--dim); margin-left: 1px; }
 
 .failover-alert {
-  margin-top: 12px; padding: 8px 12px;
+  margin-top: 8px; padding: 5px 10px;
   background: rgba(255,34,85,0.08);
   border: 1px solid rgba(255,34,85,0.35);
   border-radius: 2px;
-  font-size: 10px; letter-spacing: 2px; color: var(--red);
+  font-size: 9px; letter-spacing: 2px; color: var(--red);
   animation: blink-alert 1.2s infinite;
 }
 
 /* ── System panel ─────────────────────────────────────────────────────────── */
-.metric { margin-bottom: 18px; }
-.metric-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; font-size: 11px; }
+.metric { margin-bottom: 10px; }
+.metric-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; font-size: 10px; }
 .metric-name { color: var(--dim); letter-spacing: 2px; }
 .metric-val  { color: var(--cyan); }
-.metric-sub  { font-size: 9px; color: var(--dim); margin-left: 6px; opacity: 0.7; }
+.metric-sub  { font-size: 8px; color: var(--dim); margin-left: 4px; opacity: 0.7; }
 
 .bar-track {
-  height: 3px;
+  height: 2px;
   background: #060e18;
   border: 1px solid var(--border);
   border-radius: 2px;
@@ -207,67 +208,73 @@ body::after {
   position: relative;
 }
 .bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; position: relative; }
-.bar-fill.normal  { background: linear-gradient(90deg, #003344, var(--cyan));  box-shadow: 2px 0 8px var(--glow-c); }
-.bar-fill.warn    { background: linear-gradient(90deg, #442200, var(--amber)); box-shadow: 2px 0 8px rgba(255,170,0,0.35); }
-.bar-fill.danger  { background: linear-gradient(90deg, #440010, var(--red));   box-shadow: 2px 0 8px rgba(255,34,85,0.35); }
+.bar-fill.normal  { background: linear-gradient(90deg, #003344, var(--cyan));  box-shadow: 2px 0 6px var(--glow-c); }
+.bar-fill.warn    { background: linear-gradient(90deg, #442200, var(--amber)); box-shadow: 2px 0 6px rgba(255,170,0,0.35); }
+.bar-fill.danger  { background: linear-gradient(90deg, #440010, var(--red));   box-shadow: 2px 0 6px rgba(255,34,85,0.35); }
 
 /* ── Weather panel ────────────────────────────────────────────────────────── */
 .wx-temp {
-  font-size: 52px; line-height: 1;
+  font-size: 36px; line-height: 1;
   color: var(--cyan);
-  text-shadow: 0 0 20px var(--glow-c);
-  margin: 8px 0 6px;
+  text-shadow: 0 0 16px var(--glow-c);
+  margin: 4px 0 4px;
   letter-spacing: -1px;
 }
-.wx-temp sup { font-size: 22px; color: var(--dim); vertical-align: super; }
-.wx-desc { font-size: 11px; letter-spacing: 3px; color: var(--dim); margin-bottom: 18px; }
+.wx-temp sup { font-size: 16px; color: var(--dim); vertical-align: super; }
+.wx-desc { font-size: 10px; letter-spacing: 3px; color: var(--dim); margin-bottom: 10px; }
 .wx-grid {
   display: grid; grid-template-columns: 1fr 1fr;
-  gap: 10px 24px;
+  gap: 6px 16px;
   border-top: 1px solid var(--border);
-  padding-top: 14px;
+  padding-top: 8px;
 }
-.wx-item { display: flex; flex-direction: column; gap: 3px; }
-.wx-lbl  { font-size: 9px; letter-spacing: 2px; color: #0c2535; }
-.wx-data { font-size: 14px; color: #6ab0c0; }
-.wx-age  { font-size: 9px; letter-spacing: 1px; color: #0c2535; margin-top: 12px; }
+.wx-item { display: flex; flex-direction: column; gap: 2px; }
+.wx-lbl  { font-size: 8px; letter-spacing: 2px; color: #0c2535; }
+.wx-data { font-size: 12px; color: #6ab0c0; }
+.wx-age  { font-size: 8px; letter-spacing: 1px; color: #0c2535; margin-top: 8px; }
 
 /* ── Guardian panel ───────────────────────────────────────────────────────── */
 .guardian-status {
-  display: flex; align-items: center; gap: 14px;
-  margin-bottom: 20px;
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 10px;
 }
-.guardian-icon {
-  font-size: 32px; line-height: 1;
-}
-.guardian-verdict {
-  display: flex; flex-direction: column; gap: 4px;
-}
-.guardian-state {
-  font-size: 18px; letter-spacing: 3px; font-weight: bold;
-}
-.guardian-state.ok     { color: var(--green); text-shadow: 0 0 12px var(--glow-g); }
-.guardian-state.warn   { color: var(--amber); text-shadow: 0 0 12px var(--glow-a); }
-.guardian-state.danger { color: var(--red);   text-shadow: 0 0 12px var(--glow-r); animation: blink-alert 1.5s infinite; }
-
-.guardian-sub { font-size: 10px; letter-spacing: 2px; color: var(--dim); }
+.guardian-icon { font-size: 22px; line-height: 1; }
+.guardian-verdict { display: flex; flex-direction: column; gap: 3px; }
+.guardian-state { font-size: 14px; letter-spacing: 3px; font-weight: bold; }
+.guardian-state.ok     { color: var(--green); text-shadow: 0 0 10px var(--glow-g); }
+.guardian-state.warn   { color: var(--amber); text-shadow: 0 0 10px var(--glow-a); }
+.guardian-state.danger { color: var(--red);   text-shadow: 0 0 10px var(--glow-r); animation: blink-alert 1.5s infinite; }
+.guardian-sub { font-size: 9px; letter-spacing: 2px; color: var(--dim); }
 
 .scan-grid {
   display: grid; grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 6px;
 }
 .scan-item {
-  padding: 10px 12px;
+  padding: 6px 8px;
   background: rgba(0,0,0,0.3);
   border: 1px solid var(--border);
   border-radius: 2px;
 }
-.scan-name { font-size: 9px; letter-spacing: 2px; color: var(--dim); margin-bottom: 6px; }
-.scan-val  { font-size: 13px; }
+.scan-name { font-size: 8px; letter-spacing: 2px; color: var(--dim); margin-bottom: 4px; }
+.scan-val  { font-size: 11px; }
 .scan-val.ok     { color: var(--green); }
 .scan-val.warn   { color: var(--amber); }
 .scan-val.danger { color: var(--red); }
-.scan-time { font-size: 9px; color: #0c2535; margin-top: 3px; }
+.scan-time { font-size: 8px; color: #0c2535; margin-top: 2px; }
+
+/* ── Action buttons ───────────────────────────────────────────────────────── */
+.panel-btn {
+  font-size: 8px; letter-spacing: 2px;
+  padding: 2px 7px; border-radius: 2px; cursor: pointer;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--dim); font-family: inherit;
+  transition: color 0.15s, border-color 0.15s;
+  margin-left: auto;
+}
+.panel-btn:hover:not(:disabled) { color: var(--cyan); border-color: var(--cyan); }
+.panel-btn:disabled { opacity: 0.4; cursor: default; }
+.panel-btn.scanning { color: var(--amber); border-color: var(--amber); animation: blink-alert 1s infinite; }
 
 /* ── Modal ────────────────────────────────────────────────────────────────── */
 #overlay {
@@ -350,19 +357,6 @@ body::after {
 .issue-row .loc  { color: var(--dim); font-size: 10px; margin-bottom: 3px; }
 .issue-row .msg  { color: #8ab0b8; }
 
-/* ── Action buttons (refresh / scan) ──────────────────────────────────────── */
-.panel-btn {
-  font-size: 9px; letter-spacing: 2px;
-  padding: 3px 8px; border-radius: 2px; cursor: pointer;
-  border: 1px solid var(--border); background: transparent;
-  color: var(--dim); font-family: inherit;
-  transition: color 0.15s, border-color 0.15s;
-  margin-left: auto;
-}
-.panel-btn:hover:not(:disabled) { color: var(--cyan); border-color: var(--cyan); }
-.panel-btn:disabled { opacity: 0.4; cursor: default; }
-.panel-btn.scanning { color: var(--amber); border-color: var(--amber); animation: blink-alert 1s infinite; }
-
 /* ── Forecast table ───────────────────────────────────────────────────────── */
 .forecast-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px; }
 .forecast-table th { font-size: 9px; letter-spacing: 2px; color: var(--dim); text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
@@ -406,23 +400,19 @@ body::after {
 .tour-btn.primary { border-color: var(--cyan); color: var(--cyan); }
 .tour-btn:hover { border-color: var(--cyan); color: var(--cyan); }
 #tour-float-btn {
-  position: fixed; bottom: 20px; right: 20px;
-  font-size: 9px; letter-spacing: 3px; padding: 7px 14px; border-radius: 3px;
+  position: fixed; bottom: 18px; right: 18px;
+  font-size: 8px; letter-spacing: 3px; padding: 6px 12px; border-radius: 3px;
   cursor: pointer; border: 1px solid var(--border); background: var(--panel);
   color: var(--dim); font-family: inherit; z-index: 7000;
   transition: all 0.2s;
 }
 #tour-float-btn:hover { border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 12px var(--glow-c); }
 
-/* ── Animations ───────────────────────────────────────────────────────────── */
-@keyframes pulse-dot  { 0%,100%{opacity:1} 50%{opacity:0.35} }
-@keyframes blink-alert{ 0%,100%{opacity:1} 50%{opacity:0.55} }
-
 /* ── Diary panel ──────────────────────────────────────────────────────────── */
-.diary-list { margin-bottom: 8px; }
+.diary-list { margin-bottom: 6px; flex: 1; overflow-y: auto; }
 .diary-entry-row {
   display: flex; align-items: center; gap: 10px;
-  padding: 6px 8px; margin-bottom: 4px;
+  padding: 5px 7px; margin-bottom: 4px;
   border: 1px solid var(--border); border-radius: 2px;
   cursor: pointer; font-size: 11px;
   transition: border-color 0.15s, background 0.15s;
@@ -431,7 +421,76 @@ body::after {
 .diary-entry-row .d-week { letter-spacing: 2px; color: var(--dim); flex: 1; }
 .diary-entry-row .d-status { font-size: 9px; letter-spacing: 1px; }
 .diary-entry-row .d-date  { font-size: 9px; color: #0c2535; }
-.diary-footer { font-size: 10px; letter-spacing: 2px; color: var(--dim); }
+.diary-footer { font-size: 9px; letter-spacing: 2px; color: var(--dim); margin-top: auto; flex-shrink: 0; }
+
+/* ── News panel ───────────────────────────────────────────────────────────── */
+.news-scroll {
+  flex: 1; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.news-card {
+  display: block; text-decoration: none;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: rgba(0,0,0,0.2);
+  transition: border-color 0.15s, background 0.15s;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.news-card:hover { border-color: var(--cyan); background: rgba(0,229,255,0.04); }
+.news-card-title { font-size: 11px; color: #9ab8c4; line-height: 1.4; margin-bottom: 4px; }
+.news-card-meta  { font-size: 9px; letter-spacing: 1px; color: #0c2535; }
+.news-card-meta span { color: var(--dim); }
+.news-footer { font-size: 9px; letter-spacing: 2px; color: var(--dim); margin-top: 6px; flex-shrink: 0; }
+
+/* ── Voice panel ──────────────────────────────────────────────────────────── */
+.voice-btn {
+  width: 100%; padding: 10px;
+  font-size: 10px; letter-spacing: 3px;
+  border: 1px solid var(--border); border-radius: 3px;
+  background: rgba(0,0,0,0.3);
+  color: var(--dim); font-family: inherit; cursor: pointer;
+  transition: all 0.2s; margin-bottom: 10px;
+}
+.voice-btn:hover:not(:disabled) { border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 12px var(--glow-c); }
+.voice-btn.recording { border-color: var(--red); color: var(--red); animation: blink-alert 1s infinite; }
+.voice-btn:disabled { opacity: 0.4; cursor: default; }
+.voice-status { font-size: 9px; letter-spacing: 2px; color: var(--dim); margin-bottom: 10px; }
+.voice-transcript {
+  font-size: 10px; letter-spacing: 1px; color: var(--amber);
+  padding: 6px 8px; border: 1px solid rgba(255,170,0,0.2);
+  border-radius: 2px; background: rgba(255,170,0,0.04);
+  margin-bottom: 8px; display: none; line-height: 1.5;
+}
+.voice-response {
+  flex: 1; overflow-y: auto;
+  font-size: 11px; color: #9ab8c4; line-height: 1.6;
+  padding: 6px 8px; border: 1px solid var(--border);
+  border-radius: 2px; background: rgba(0,0,0,0.2);
+  display: none;
+}
+
+/* ── Mini-todo panel ──────────────────────────────────────────────────────── */
+.todo-mini-section { font-size: 8px; letter-spacing: 3px; color: var(--dim); margin: 8px 0 5px; }
+.todo-mini-item {
+  display: flex; align-items: flex-start; gap: 7px;
+  padding: 5px 6px; margin-bottom: 4px;
+  border: 1px solid var(--border); border-radius: 2px;
+  font-size: 10px; letter-spacing: 0.5px;
+  cursor: pointer; transition: border-color 0.15s;
+}
+.todo-mini-item:hover { border-color: var(--cyan); }
+.todo-mini-item .ti-dot { flex-shrink: 0; margin-top: 1px; font-size: 9px; }
+.todo-mini-item .ti-text { flex: 1; color: #9ab8c4; line-height: 1.4; }
+.todo-mini-item.done .ti-text { text-decoration: line-through; color: var(--dim); opacity: 0.6; }
+.todo-mini-link {
+  font-size: 8px; letter-spacing: 3px; color: var(--dim);
+  text-decoration: none; border: 1px solid var(--border);
+  padding: 2px 7px; border-radius: 2px;
+  transition: all 0.15s; margin-left: auto;
+}
+.todo-mini-link:hover { color: var(--amber); border-color: var(--amber); }
 
 /* ── Book modal ───────────────────────────────────────────────────────────── */
 .book-modal {
@@ -517,6 +576,10 @@ body::after {
 .book-nav-btn:hover:not(:disabled) { color: var(--cyan); border-color: var(--cyan); }
 .book-nav-btn:disabled { opacity: 0.2; cursor: default; }
 .book-counter { font-size: 9px; letter-spacing: 3px; color: var(--dim); }
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
+@keyframes pulse-dot  { 0%,100%{opacity:1} 50%{opacity:0.35} }
+@keyframes blink-alert{ 0%,100%{opacity:1} 50%{opacity:0.55} }
 </style>
 </head>
 <body>
@@ -525,16 +588,18 @@ body::after {
 <div id="header">
   <div class="h-title"><span>◈</span> GK PERSONAL ASSISTANT</div>
   <div class="h-right">
-    <a href="/mindmap" style="font-size:10px;letter-spacing:3px;color:var(--dim);text-decoration:none;border:1px solid var(--border);padding:3px 10px;border-radius:2px;" onmouseover="this.style.color='var(--cyan)';this.style.borderColor='var(--cyan)'" onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">MIND MAP</a>
-    <a href="/todo"    style="font-size:10px;letter-spacing:3px;color:var(--dim);text-decoration:none;border:1px solid var(--border);padding:3px 10px;border-radius:2px;" onmouseover="this.style.color='var(--amber)';this.style.borderColor='var(--amber)'" onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">TODO</a>
-    <a href="/guide"   style="font-size:10px;letter-spacing:3px;color:var(--dim);text-decoration:none;border:1px solid var(--border);padding:3px 10px;border-radius:2px;" onmouseover="this.style.color='var(--green)';this.style.borderColor='var(--green)'" onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">GUIDE</a>
+    <a href="/mindmap" style="font-size:9px;letter-spacing:3px;color:var(--dim);text-decoration:none;border:1px solid var(--border);padding:2px 8px;border-radius:2px;" onmouseover="this.style.color='var(--cyan)';this.style.borderColor='var(--cyan)'" onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">MIND MAP</a>
+    <a href="/todo"    style="font-size:9px;letter-spacing:3px;color:var(--dim);text-decoration:none;border:1px solid var(--border);padding:2px 8px;border-radius:2px;" onmouseover="this.style.color='var(--amber)';this.style.borderColor='var(--amber)'" onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">TODO</a>
+    <a href="/guide"   style="font-size:9px;letter-spacing:3px;color:var(--dim);text-decoration:none;border:1px solid var(--border);padding:2px 8px;border-radius:2px;" onmouseover="this.style.color='var(--green)';this.style.borderColor='var(--green)'" onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">GUIDE</a>
     <div id="clock">--:--:-- --/--/----</div>
     <div class="status-dot" title="Live"></div>
   </div>
 </div>
 
-<!-- 2×2 Grid -->
+<!-- 4-col × 3-row grid -->
 <div id="grid">
+
+  <!-- ROW 1: compact status panels ─────────────────────────────────────────── -->
 
   <!-- NETWORK -->
   <div class="panel" id="p-network" onclick="openModal('network')">
@@ -542,24 +607,24 @@ body::after {
     <div id="iface-list"></div>
     <div class="speed-block">
       <div class="speed-item">
-        <span class="speed-lbl">DOWNLOAD</span>
+        <span class="speed-lbl">DOWN</span>
         <div class="speed-row">
-          <span><span class="speed-val" id="dl">--</span><span class="speed-unit">Mbps</span></span>
+          <span><span class="speed-val" id="dl">--</span><span class="speed-unit">M</span></span>
           <span class="speed-sep">·</span>
-          <span><span class="speed-val2" id="dl-k">--</span><span class="speed-unit">Kbps</span></span>
+          <span><span class="speed-val2" id="dl-k">--</span><span class="speed-unit">K</span></span>
         </div>
       </div>
       <div class="speed-item">
-        <span class="speed-lbl">UPLOAD</span>
+        <span class="speed-lbl">UP</span>
         <div class="speed-row">
-          <span><span class="speed-val" id="ul">--</span><span class="speed-unit">Mbps</span></span>
+          <span><span class="speed-val" id="ul">--</span><span class="speed-unit">M</span></span>
           <span class="speed-sep">·</span>
-          <span><span class="speed-val2" id="ul-k">--</span><span class="speed-unit">Kbps</span></span>
+          <span><span class="speed-val2" id="ul-k">--</span><span class="speed-unit">K</span></span>
         </div>
       </div>
     </div>
-    <div class="failover-alert" id="failover-alert" style="display:none">⚠ PRIMARY DOWN — CHECKING BACKUP</div>
-    <span class="click-hint">CLICK FOR DETAILS</span>
+    <div class="failover-alert" id="failover-alert" style="display:none">⚠ PRIMARY DOWN</div>
+    <span class="click-hint">DETAILS</span>
   </div>
 
   <!-- SYSTEM -->
@@ -568,81 +633,56 @@ body::after {
     <div class="metric">
       <div class="metric-header">
         <span class="metric-name">CPU</span>
-        <span style="display:flex;align-items:baseline;gap:0">
-          <span class="metric-val" id="cpu-val">--%</span>
-          <span class="metric-sub" id="cpu-sub"></span>
-        </span>
+        <span><span class="metric-val" id="cpu-val">--%</span><span class="metric-sub" id="cpu-sub"></span></span>
       </div>
       <div class="bar-track"><div class="bar-fill normal" id="cpu-bar" style="width:0%"></div></div>
     </div>
     <div class="metric">
       <div class="metric-header">
         <span class="metric-name">RAM</span>
-        <span style="display:flex;align-items:baseline;gap:0">
-          <span class="metric-val" id="ram-val">--%</span>
-          <span class="metric-sub" id="ram-sub"></span>
-        </span>
+        <span><span class="metric-val" id="ram-val">--%</span><span class="metric-sub" id="ram-sub"></span></span>
       </div>
       <div class="bar-track"><div class="bar-fill normal" id="ram-bar" style="width:0%"></div></div>
     </div>
     <div class="metric">
       <div class="metric-header">
         <span class="metric-name">SWAP</span>
-        <span style="display:flex;align-items:baseline;gap:0">
-          <span class="metric-val" id="swap-val">--%</span>
-          <span class="metric-sub" id="swap-sub"></span>
-        </span>
+        <span><span class="metric-val" id="swap-val">--%</span><span class="metric-sub" id="swap-sub"></span></span>
       </div>
       <div class="bar-track"><div class="bar-fill normal" id="swap-bar" style="width:0%"></div></div>
     </div>
     <div class="metric">
       <div class="metric-header">
         <span class="metric-name">DISK</span>
-        <span style="display:flex;align-items:baseline;gap:0">
-          <span class="metric-val" id="disk-val">--%</span>
-          <span class="metric-sub" id="disk-sub"></span>
-        </span>
+        <span><span class="metric-val" id="disk-val">--%</span><span class="metric-sub" id="disk-sub"></span></span>
       </div>
       <div class="bar-track"><div class="bar-fill normal" id="disk-bar" style="width:0%"></div></div>
     </div>
-    <span class="click-hint">CLICK FOR DETAILS</span>
+    <span class="click-hint">DETAILS</span>
   </div>
 
   <!-- WEATHER -->
   <div class="panel" id="p-weather" onclick="openModal('weather')">
     <div class="panel-label" style="justify-content:space-between">
       WEATHER · BARLONI
-      <button class="panel-btn" id="wx-refresh-btn" onclick="event.stopPropagation();refreshWeather()" title="Force refresh weather">↻ REFRESH</button>
+      <button class="panel-btn" id="wx-refresh-btn" onclick="event.stopPropagation();refreshWeather()">↻</button>
     </div>
     <div class="wx-temp" id="wx-temp">--<sup>°C</sup></div>
     <div class="wx-desc" id="wx-desc">-- --</div>
     <div class="wx-grid">
-      <div class="wx-item">
-        <span class="wx-lbl">HUMIDITY</span>
-        <span class="wx-data" id="wx-hum">--%</span>
-      </div>
-      <div class="wx-item">
-        <span class="wx-lbl">WIND</span>
-        <span class="wx-data" id="wx-wind">-- km/h</span>
-      </div>
-      <div class="wx-item">
-        <span class="wx-lbl">FEELS LIKE</span>
-        <span class="wx-data" id="wx-feel">--°C</span>
-      </div>
-      <div class="wx-item">
-        <span class="wx-lbl">VISIBILITY</span>
-        <span class="wx-data" id="wx-vis">-- km</span>
-      </div>
+      <div class="wx-item"><span class="wx-lbl">HUMIDITY</span><span class="wx-data" id="wx-hum">--%</span></div>
+      <div class="wx-item"><span class="wx-lbl">WIND</span><span class="wx-data" id="wx-wind">-- km/h</span></div>
+      <div class="wx-item"><span class="wx-lbl">FEELS</span><span class="wx-data" id="wx-feel">--°C</span></div>
+      <div class="wx-item"><span class="wx-lbl">VIS</span><span class="wx-data" id="wx-vis">-- km</span></div>
     </div>
-    <div class="wx-age" id="wx-age">UPDATED --</div>
-    <span class="click-hint">CLICK FOR DETAILS</span>
+    <span class="click-hint">7-DAY FORECAST</span>
   </div>
 
   <!-- GUARDIAN -->
   <div class="panel" id="p-guardian" onclick="openModal('guardian')">
     <div class="panel-label" style="justify-content:space-between">
-      SECURITY GUARDIAN
-      <button class="panel-btn" id="g-scan-btn" onclick="event.stopPropagation();triggerUpdate()" title="Auto-patch HIGH+ CVEs (same major version)">⬆ UPDATE</button>
+      GUARDIAN
+      <button class="panel-btn" id="g-scan-btn" onclick="event.stopPropagation();triggerUpdate()" title="Auto-patch HIGH+ CVEs">⬆ UPDATE</button>
     </div>
     <div class="guardian-status">
       <div class="guardian-icon" id="g-icon">◈</div>
@@ -658,33 +698,67 @@ body::after {
         <div class="scan-time" id="g-anomaly-t">--</div>
       </div>
       <div class="scan-item">
-        <div class="scan-name">CVE SCAN</div>
+        <div class="scan-name">CVE</div>
         <div class="scan-val ok" id="g-vuln">--</div>
         <div class="scan-time" id="g-vuln-t">--</div>
       </div>
       <div class="scan-item">
-        <div class="scan-name">THREAT INTEL</div>
+        <div class="scan-name">THREAT</div>
         <div class="scan-val ok" id="g-threat">--</div>
         <div class="scan-time" id="g-threat-t">--</div>
       </div>
       <div class="scan-item">
-        <div class="scan-name">CODE AUDIT</div>
+        <div class="scan-name">AUDIT</div>
         <div class="scan-val ok" id="g-audit">--</div>
         <div class="scan-time" id="g-audit-t">--</div>
       </div>
     </div>
-    <span class="click-hint">CLICK FOR DETAILS</span>
+    <span class="click-hint">DETAILS</span>
   </div>
 
-  <!-- DIARY — spans columns 2-3 in row 2 -->
-  <div class="panel" id="p-diary" style="grid-column:2/4" onclick="openDiaryBook(null)">
+  <!-- ROW 2: Diary + Mini-Todo ─────────────────────────────────────────────── -->
+
+  <!-- DIARY — spans col 1-3 -->
+  <div class="panel" id="p-diary" style="grid-column:1/4;grid-row:2;display:flex;flex-direction:column" onclick="openDiaryBook(null)">
     <div class="panel-label">DIARY</div>
     <div class="diary-list" id="diary-list"><div style="font-size:10px;letter-spacing:2px;color:#0c2535;padding:4px">loading…</div></div>
     <div class="diary-footer" id="diary-footer">—</div>
     <span class="click-hint">CLICK TO OPEN BOOK</span>
   </div>
 
-</div>
+  <!-- MINI-TODO — col 4, row 2 -->
+  <div class="panel" id="p-todo-mini" style="grid-column:4/5;grid-row:2;display:flex;flex-direction:column;cursor:default" onclick="">
+    <div class="panel-label" style="justify-content:space-between">
+      TODO
+      <a href="/todo" class="todo-mini-link">FULL →</a>
+    </div>
+    <div id="todo-mini-list" style="flex:1;overflow-y:auto"></div>
+  </div>
+
+  <!-- ROW 3: News + Voice ──────────────────────────────────────────────────── -->
+
+  <!-- NEWS — spans col 1-3, row 3 -->
+  <div class="panel" id="p-news" style="grid-column:1/4;grid-row:3;display:flex;flex-direction:column;cursor:default">
+    <div class="panel-label" style="justify-content:space-between">
+      NEWS · FARMING · INDIA
+      <button class="panel-btn" id="news-refresh-btn" onclick="refreshNews()">↻ REFRESH</button>
+    </div>
+    <div class="news-scroll" id="news-list">
+      <div style="font-size:10px;letter-spacing:2px;color:#0c2535;padding:8px">loading news…</div>
+    </div>
+    <div class="news-footer" id="news-footer">—</div>
+  </div>
+
+  <!-- VOICE QUERY — col 4, row 3 -->
+  <div class="panel" id="p-voice" style="grid-column:4/5;grid-row:3;display:flex;flex-direction:column;cursor:default">
+    <div class="panel-label">VOICE QUERY</div>
+    <div class="voice-status" id="voice-status">READY · CLICK TO SPEAK</div>
+    <button class="voice-btn" id="voice-btn" onclick="voiceToggle()">🎤 SPEAK</button>
+    <div class="voice-transcript" id="voice-transcript"></div>
+    <div class="voice-response"   id="voice-response"></div>
+  </div>
+
+</div><!-- #grid -->
 
 <!-- Overlay + Modals -->
 <div id="overlay" onclick="closeModal()"></div>
@@ -734,10 +808,10 @@ body::after {
   </div>
 </div>
 
-<!-- Tour elements (always in DOM, hidden until tour starts) -->
+<!-- Tour elements -->
 <div id="tour-highlight"></div>
 <div id="tour-card">
-  <div class="tour-step-label" id="tour-step-lbl">STEP 1 / 9</div>
+  <div class="tour-step-label" id="tour-step-lbl">STEP 1 / 11</div>
   <div class="tour-title"     id="tour-title">WELCOME</div>
   <div class="tour-text"      id="tour-text"></div>
   <div class="tour-btns">
@@ -760,7 +834,7 @@ function tick() {
 setInterval(tick, 1000); tick();
 
 let last = {};
-let _openModal = null;   // tracks which regular modal is open for live refresh
+let _openModal = null;
 
 // WebSocket
 let ws;
@@ -770,10 +844,9 @@ function connect() {
   ws.onmessage = e => {
     last = JSON.parse(e.data);
     render(last);
-    // Keep open modals current — modal HTML is rebuilt from fresh `last` data
     if (_openModal) openModal(_openModal);
   };
-  ws.onclose   = () => { setTimeout(connect, 3000); };
+  ws.onclose   = () => setTimeout(connect, 3000);
   ws.onerror   = () => ws.close();
 }
 connect();
@@ -796,7 +869,7 @@ function renderNetwork(n) {
     html += `<div class="iface-row">
       <div class="dot ${dc}"></div>
       <span class="iface-type">${i.type.toUpperCase()}</span>
-      <span class="iface-name">${i.name}${i.ip?'<br><span class="iface-ip">'+i.ip+'</span>':''}</span>
+      <span class="iface-name">${i.name}</span>
       <span class="badge ${bc}">${bt}</span>
     </div>`;
   }
@@ -811,10 +884,10 @@ function renderNetwork(n) {
 
 // ── System ───────────────────────────────────────────────────────────────────
 function setBar(id, pct, sub) {
-  document.getElementById(id+'-bar').style.width = Math.min(pct,100)+'%';
-  document.getElementById(id+'-val').textContent = pct+'%';
-  document.getElementById(id+'-bar').className = 'bar-fill '+(pct>85?'danger':pct>60?'warn':'normal');
-  const subEl = document.getElementById(id+'-sub');
+  el(id+'-bar').style.width = Math.min(pct,100)+'%';
+  el(id+'-val').textContent = pct+'%';
+  el(id+'-bar').className = 'bar-fill '+(pct>85?'danger':pct>60?'warn':'normal');
+  const subEl = el(id+'-sub');
   if (subEl) subEl.textContent = sub || '';
 }
 function renderSystem(s) {
@@ -822,81 +895,64 @@ function renderSystem(s) {
     ? ` · ${s.cpu_physical}C/${s.cpu_cores}T`
     : s.cpu_cores ? ` · ${s.cpu_cores}T` : '';
   setBar('cpu',  s.cpu_pct,  coreStr);
-  setBar('ram',  s.ram_pct,  s.ram_used_gb  != null ? ` · ${s.ram_used_gb}/${s.ram_total_gb} GiB`  : '');
-  setBar('swap', s.swap_pct, s.swap_used_gb != null ? ` · ${s.swap_used_gb}/${s.swap_total_gb} GiB` : '');
-  setBar('disk', s.disk_pct, s.disk_used_gb != null ? ` · ${s.disk_used_gb}/${s.disk_total_gb} GiB` : '');
+  setBar('ram',  s.ram_pct,  s.ram_used_gb  != null ? ` · ${s.ram_used_gb}/${s.ram_total_gb}G`  : '');
+  setBar('swap', s.swap_pct, s.swap_used_gb != null ? ` · ${s.swap_used_gb}/${s.swap_total_gb}G` : '');
+  setBar('disk', s.disk_pct, s.disk_used_gb != null ? ` · ${s.disk_used_gb}/${s.disk_total_gb}G` : '');
 }
 
 // ── Weather ──────────────────────────────────────────────────────────────────
 function renderWeather(w) {
-  document.getElementById('wx-temp').innerHTML = `${w.temp_c}<sup>°C</sup>`;
-  document.getElementById('wx-desc').textContent  = w.description.toUpperCase();
-  document.getElementById('wx-hum').textContent   = w.humidity+'%';
-  document.getElementById('wx-wind').textContent  = w.wind_kmh+' km/h '+(w.wind_dir||'');
-  document.getElementById('wx-feel').textContent  = w.feels_like_c+'°C';
-  document.getElementById('wx-vis').textContent   = w.visibility_km+' km';
-  document.getElementById('wx-age').textContent   =
-    w.age_min===0 ? 'UPDATED JUST NOW' : `UPDATED ${w.age_min} MIN AGO`;
+  el('wx-temp').innerHTML  = `${w.temp_c}<sup>°C</sup>`;
+  el('wx-desc').textContent = w.description.toUpperCase();
+  el('wx-hum').textContent  = w.humidity+'%';
+  el('wx-wind').textContent = w.wind_kmh+' km/h';
+  el('wx-feel').textContent = w.feels_like_c+'°C';
+  el('wx-vis').textContent  = w.visibility_km+' km';
 }
 
 // ── Guardian ─────────────────────────────────────────────────────────────────
 function renderGuardian(g) {
-  const panel = document.getElementById('p-guardian');
-  const state = document.getElementById('g-state');
-  const icon  = document.getElementById('g-icon');
-  const sub   = document.getElementById('g-sub');
-
-  // Overall state
+  const panel = el('p-guardian');
+  const state = el('g-state');
+  const icon  = el('g-icon');
+  const sub   = el('g-sub');
   panel.className = 'panel ' + g.overall;
   state.className = 'guardian-state ' + g.overall;
-
   if (g.overall === 'ok') {
     icon.textContent  = '◈';
     state.textContent = 'ALL CLEAR';
-    sub.textContent   = 'No threats detected';
+    sub.textContent   = 'No threats';
   } else if (g.overall === 'warn') {
     icon.textContent  = '⚠';
     state.textContent = 'ATTENTION';
     const parts = [];
-    if (g.vuln_count)    parts.push(`${g.vuln_count} CVE`);
-    if (g.audit_issues)  parts.push(`${g.audit_issues} code issue`);
+    if (g.vuln_count)   parts.push(`${g.vuln_count} CVE`);
+    if (g.audit_issues) parts.push(`${g.audit_issues} code`);
     sub.textContent = parts.join(' · ') || 'Review needed';
   } else {
     icon.textContent  = '✕';
     state.textContent = 'ALERT';
     const parts = [];
-    if (g.alert_count)   parts.push(`${g.alert_count} anomaly`);
-    if (g.threat_vulns)  parts.push(`${g.threat_vulns} threat`);
-    if (g.audit_critical)parts.push(`${g.audit_critical} critical`);
+    if (g.alert_count)    parts.push(`${g.alert_count} anomaly`);
+    if (g.threat_vulns)   parts.push(`${g.threat_vulns} threat`);
+    if (g.audit_critical) parts.push(`${g.audit_critical} critical`);
     sub.textContent = parts.join(' · ');
   }
-
-  // Anomaly
   const aC = g.anomaly.alerts === 0 ? 'ok' : 'danger';
-  const aT = g.anomaly.alerts === 0 ? `CLEAN (${g.anomaly.checked} events)` : `${g.anomaly.alerts} ALERT(S)`;
   el('g-anomaly').className = 'scan-val ' + aC;
-  el('g-anomaly').textContent = aT;
+  el('g-anomaly').textContent = g.anomaly.alerts === 0 ? 'CLEAN' : `${g.anomaly.alerts} ALERT`;
   el('g-anomaly-t').textContent = g.anomaly.at || '--';
-
-  // CVE
-  const vC = g.vuln.total === 0 ? 'ok' : g.vuln_count > 0 ? 'danger' : 'warn';
-  const vT = g.vuln.total === 0 ? `CLEAN (${g.vuln.packages} pkg)` : `${g.vuln.total} VULN`;
+  const vC = g.vuln.total === 0 ? 'ok' : 'danger';
   el('g-vuln').className = 'scan-val ' + vC;
-  el('g-vuln').textContent = vT;
+  el('g-vuln').textContent = g.vuln.total === 0 ? 'CLEAN' : `${g.vuln.total} VULN`;
   el('g-vuln-t').textContent = g.vuln.at || '--';
-
-  // Threat
   const tC = g.threat.vulns === 0 ? 'ok' : 'danger';
-  const tT = g.threat.vulns === 0 ? `SAFE (${g.threat.tested} tested)` : `${g.threat.vulns} VULNERABLE`;
   el('g-threat').className = 'scan-val ' + tC;
-  el('g-threat').textContent = tT;
+  el('g-threat').textContent = g.threat.vulns === 0 ? 'SAFE' : `${g.threat.vulns} VULN`;
   el('g-threat-t').textContent = g.threat.at || '--';
-
-  // Audit
   const auC = g.audit.total === 0 ? 'ok' : g.audit_critical > 0 ? 'danger' : 'warn';
-  const auT = g.audit.total === 0 ? 'CLEAN' : `${g.audit.total} ISSUE${g.audit.total>1?'S':''}`;
   el('g-audit').className = 'scan-val ' + auC;
-  el('g-audit').textContent = auT;
+  el('g-audit').textContent = g.audit.total === 0 ? 'CLEAN' : `${g.audit.total} ISSUE`;
   el('g-audit-t').textContent = g.audit.at || '--';
 }
 
@@ -916,8 +972,8 @@ function openModal(type) {
       if (i.link_mbps) rows += row('Link Speed', i.link_mbps+' Mbps');
     }
     rows += sec('THROUGHPUT (LIVE)');
-    rows += row('Download',  n.download_mbps.toFixed(2)+' Mbps');
-    rows += row('Upload',    n.upload_mbps.toFixed(2)+' Mbps');
+    rows += row('Download',  n.download_mbps.toFixed(2)+' Mbps · '+(n.download_mbps*1000).toFixed(0)+' Kbps');
+    rows += row('Upload',    n.upload_mbps.toFixed(2)+' Mbps · '+(n.upload_mbps*1000).toFixed(0)+' Kbps');
     rows += row('Primary',   n.primary||'none');
     rows += row('Failover',  n.failover_alert
       ? '<span style="color:var(--red)">TRIGGERED</span>'
@@ -940,7 +996,7 @@ function openModal(type) {
     rows += sec('STORAGE');
     rows += row('Disk Usage', s.disk_pct+'%  ('+s.disk_used_gb+' / '+s.disk_total_gb+' GiB)');
     rows += sec('SYSTEM');
-    rows += row('Uptime',     s.uptime);
+    rows += row('Uptime', s.uptime);
     el('modal-sys-body').innerHTML = rows;
     show('modal-system');
 
@@ -954,8 +1010,6 @@ function openModal(type) {
     rows += row('Humidity',    w.humidity+'%');
     rows += row('Wind',        w.wind_kmh+' km/h '+w.wind_dir);
     rows += row('Visibility',  w.visibility_km+' km');
-
-    // 7-day forecast table
     if (w.forecast && w.forecast.length) {
       rows += sec('7-DAY FORECAST');
       rows += `<table class="forecast-table">
@@ -966,11 +1020,10 @@ function openModal(type) {
         const d = new Date(f.date);
         const dayLabel = isToday ? 'TODAY' :
           ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()] + ' ' + f.date.slice(5);
-        const rainCls = f.rain_pct >= 70 ? 'fc-rain' : f.rain_pct >= 40 ? 'fc-rain' : '';
+        const rainCls = f.rain_pct >= 40 ? 'fc-rain' : '';
         const maxCls  = f.t_max !== '--' && f.t_max > 38 ? 'fc-hot' : 'fc-cool';
         rows += `<tr class="${isToday?'fc-today':''}">
-          <td>${dayLabel}</td>
-          <td class="fc-desc">${f.desc}</td>
+          <td>${dayLabel}</td><td class="fc-desc">${f.desc}</td>
           <td class="${maxCls}">${f.t_max}°</td>
           <td style="color:#6ab0c0">${f.t_min}°</td>
           <td class="${rainCls}">${f.rain_pct}%</td>
@@ -980,7 +1033,6 @@ function openModal(type) {
       }
       rows += '</table>';
     }
-
     rows += sec('META');
     rows += row('Last Updated', w.updated_at);
     rows += row('Data Age',    w.age_min+' min');
@@ -990,33 +1042,25 @@ function openModal(type) {
 
   } else if (type === 'guardian' && last.guardian) {
     const g = last.guardian;
-    let html = '';
-
-    // Scan summaries
-    html += sec('SCAN RESULTS');
+    let html = sec('SCAN RESULTS');
     const aC = g.anomaly.alerts===0?'var(--green)':'var(--red)';
     html += row('Anomaly Detect',
-      `<span style="color:${aC}">${g.anomaly.alerts===0?'CLEAN':''+g.anomaly.alerts+' ALERT(S)'}</span> · ${g.anomaly.checked} events checked`);
+      `<span style="color:${aC}">${g.anomaly.alerts===0?'CLEAN':''+g.anomaly.alerts+' ALERT(S)'}</span> · ${g.anomaly.checked} events`);
     html += row('Last run', g.anomaly.at||'--');
-
     const vC2 = g.vuln.total===0?'var(--green)':'var(--red)';
     html += row('CVE Scan',
       `<span style="color:${vC2}">${g.vuln.total===0?'CLEAN':g.vuln.total+' VULNS'}</span> · ${g.vuln.packages} packages`);
     html += row('Last run', g.vuln.at||'--');
-
     const tC2 = g.threat.vulns===0?'var(--green)':'var(--red)';
     html += row('Threat Intel',
-      `<span style="color:${tC2}">${g.threat.vulns===0?'NOT VULNERABLE':g.threat.vulns+' VULNERABLE'}</span> · ${g.threat.tested} threats tested`);
+      `<span style="color:${tC2}">${g.threat.vulns===0?'NOT VULNERABLE':g.threat.vulns+' VULNERABLE'}</span> · ${g.threat.tested} threats`);
     html += row('Last run', g.threat.at||'--');
-
     const auC2 = g.audit.total===0?'var(--green)':g.audit_critical>0?'var(--red)':'var(--amber)';
     const sev = g.audit.severity;
-    const sevStr = sev ? `CRIT:${sev.CRITICAL||0} HIGH:${sev.HIGH||0} MED:${sev.MEDIUM||0} LOW:${sev.LOW||0}` : '';
+    const sevStr = sev ? `CRIT:${sev.CRITICAL||0} HIGH:${sev.HIGH||0} MED:${sev.MEDIUM||0}` : '';
     html += row('Code Audit',
       `<span style="color:${auC2}">${g.audit.total===0?'CLEAN':g.audit.total+' ISSUE(S)'}</span>${sevStr?' · '+sevStr:''}`);
     html += row('Last run', g.audit.at||'--');
-
-    // Code audit issues
     if (g.audit.issues && g.audit.issues.length) {
       html += sec('CODE ISSUES');
       for (const iss of g.audit.issues) {
@@ -1027,22 +1071,14 @@ function openModal(type) {
         </div>`;
       }
     }
-
-    // Schedule
     html += sec('TASK SCHEDULE');
-    html += `<table class="sched-table">
-      <tr><th>TASK</th><th>LAST RUN</th><th>NEXT RUN</th></tr>`;
+    html += `<table class="sched-table"><tr><th>TASK</th><th>LAST RUN</th><th>NEXT RUN</th></tr>`;
     for (const t of g.schedule) {
-      html += `<tr>
-        <td>${t.task.replace('_',' ')}</td>
-        <td>${t.last}</td>
-        <td class="${t.next_status}">${t.next}</td>
-      </tr>`;
+      html += `<tr><td>${t.task.replace('_',' ')}</td><td>${t.last}</td><td class="${t.next_status}">${t.next}</td></tr>`;
     }
     html += '</table>';
     html += sec('META');
     html += row('State file updated', g.updated_at||'--');
-
     el('modal-g-body').innerHTML = html;
     show('modal-guardian');
   }
@@ -1068,17 +1104,16 @@ document.addEventListener('keydown', e => { if(e.key==='Escape') closeModal(); }
 // ── Weather refresh ──────────────────────────────────────────────────────────
 async function refreshWeather() {
   const btn = el('wx-refresh-btn');
-  btn.disabled = true;
-  btn.textContent = '↻ …';
+  btn.disabled = true; btn.textContent = '↻';
   try {
     const r = await fetch('/api/weather/refresh', {method:'POST'});
     const data = await r.json();
     renderWeather(data);
-    btn.textContent = '↻ DONE';
-    setTimeout(() => { btn.textContent = '↻ REFRESH'; btn.disabled = false; }, 1500);
+    btn.textContent = '✓';
+    setTimeout(() => { btn.textContent = '↻'; btn.disabled = false; }, 1500);
   } catch(e) {
-    btn.textContent = '↻ ERR';
-    setTimeout(() => { btn.textContent = '↻ REFRESH'; btn.disabled = false; }, 2000);
+    btn.textContent = '!';
+    setTimeout(() => { btn.textContent = '↻'; btn.disabled = false; }, 2000);
   }
 }
 
@@ -1106,7 +1141,7 @@ function renderDiaryPanel() {
     return;
   }
   let html = '';
-  for (const d of _diaryDrafts.slice(0, 5)) {
+  for (const d of _diaryDrafts.slice(0, 6)) {
     const ap = d.approved
       ? '<span style="color:var(--green)">✓ APPROVED</span>'
       : '<span style="color:var(--dim)">○ DRAFT</span>';
@@ -1136,8 +1171,6 @@ async function openDiaryBook(week) {
 
 function _buildBook(draft) {
   const raw = (draft.draft || '').trim();
-  // Section header format: "── Sunday, 03 August 2025 (12 photos) ──"
-  // Also handles legacy "## YYYY-MM-DD" format.
   const sections = raw.split(/(?=^(?:──|##)\s)/m).filter(s => s.trim());
   _bookPages = sections.length
     ? sections.map(s => {
@@ -1150,18 +1183,15 @@ function _buildBook(draft) {
       })
     : [{ title: draft.week, body: raw || '(no content)' }];
   _bookPage = 0;
-
   el('book-week-label').textContent = draft.week || '—';
   el('book-status-badge').innerHTML = draft.approved
     ? '<span class="badge ok">APPROVED</span>'
     : '<span class="badge warn">DRAFT</span>';
-
   let ch = '';
   _bookPages.forEach((p, i) => {
     ch += `<div class="chapter-item${i===0?' active':''}" id="ch-${i}" onclick="bookGoTo(${i})">${p.title}</div>`;
   });
   el('book-chapters').innerHTML = ch;
-
   el('book-page-active').innerHTML = _formatPage(_bookPages[0]);
   _updateBookNav();
 }
@@ -1203,17 +1233,12 @@ function _animatePage(direction) {
   newPage.id = 'book-page-active';
   newPage.innerHTML = _formatPage(_bookPages[_bookPage]);
   area.appendChild(newPage);
-
   const enterFrom = direction === 'next' ? '110%'  : '-110%';
   const exitTo    = direction === 'next' ? '-110%' : '110%';
   const tiltIn    = direction === 'next' ? '6deg'  : '-6deg';
   const tiltOut   = direction === 'next' ? '-6deg' : '6deg';
   const T = 'transform 0.35s ease, opacity 0.35s ease';
-
-  // Position new page off-screen, no transition yet
   newPage.style.cssText = `transform:translateX(${enterFrom}) rotateY(${tiltIn});opacity:0;`;
-
-  // Double rAF ensures the initial off-screen position is painted before animating
   requestAnimationFrame(() => requestAnimationFrame(() => {
     if (oldPage) {
       oldPage.style.transition = T;
@@ -1224,28 +1249,23 @@ function _animatePage(direction) {
     newPage.style.transform  = 'translateX(0) rotateY(0)';
     newPage.style.opacity    = '1';
   }));
-
-  // Remove old page after animation completes
   if (oldPage) {
-    const OLD = oldPage;
-    OLD.id = '';
+    const OLD = oldPage; OLD.id = '';
     setTimeout(() => OLD.parentNode && OLD.parentNode.removeChild(OLD), 400);
   }
   _updateBookNav();
 }
 
-// Load diary list on page init
 loadDiaryList();
 
-// ── Guardian update (auto-patch HIGH+ CVEs) ───────────────────────────────────
+// ── Guardian update ───────────────────────────────────────────────────────────
 async function triggerUpdate() {
   const btn = el('g-scan-btn');
   btn.disabled = true;
   btn.className = 'panel-btn scanning';
-  btn.textContent = '⬆ PATCHING…';
+  btn.textContent = '⬆ …';
   try {
     await fetch('/api/guardian/patch', {method:'POST'});
-    // Patching takes longer than a scan — poll after 18 s
     setTimeout(async () => {
       try {
         const r = await fetch('/api/data');
@@ -1263,24 +1283,193 @@ async function triggerUpdate() {
   }
 }
 
-// ── Tour system ────────────────────────────────────────────────────────────────
+// ── News ──────────────────────────────────────────────────────────────────────
+async function loadNews() {
+  try {
+    const r = await fetch('/api/news');
+    const data = await r.json();
+    renderNews(data);
+  } catch(e) {
+    el('news-footer').textContent = 'unavailable';
+  }
+}
+
+function renderNews(data) {
+  const items = data.items || [];
+  const ageText = items.length
+    ? `${items.length} articles · ${data.age_min === 0 ? 'just fetched' : data.age_min + ' min ago'}`
+    : 'no articles';
+  el('news-footer').textContent = ageText;
+  if (!items.length) {
+    el('news-list').innerHTML = '<div style="font-size:10px;letter-spacing:2px;color:#0c2535;padding:8px">No articles — click ↻ REFRESH to fetch</div>';
+    return;
+  }
+  el('news-list').innerHTML = items.map(a => `
+    <a href="${a.url}" target="_blank" rel="noopener" class="news-card" onclick="event.stopPropagation()">
+      <div class="news-card-title">${a.title}</div>
+      <div class="news-card-meta"><span>${a.source}</span> · ${a.date}</div>
+    </a>
+  `).join('');
+}
+
+async function refreshNews() {
+  const btn = el('news-refresh-btn');
+  btn.disabled = true; btn.textContent = '↻ …';
+  try {
+    const r = await fetch('/api/news/refresh', {method:'POST'});
+    const data = await r.json();
+    renderNews(data);
+    btn.textContent = '↻ DONE';
+    setTimeout(() => { btn.textContent = '↻ REFRESH'; btn.disabled = false; }, 1500);
+  } catch(e) {
+    btn.textContent = '↻ ERR';
+    setTimeout(() => { btn.textContent = '↻ REFRESH'; btn.disabled = false; }, 2000);
+  }
+}
+
+// Auto-refresh news every 15 min
+loadNews();
+setInterval(loadNews, 15 * 60 * 1000);
+
+// ── Voice recording ───────────────────────────────────────────────────────────
+let _mediaRec    = null;
+let _audioChunks = [];
+let _voiceActive = false;
+
+async function voiceToggle() {
+  if (_voiceActive) { voiceStop(); return; }
+  await voiceStart();
+}
+
+async function voiceStart() {
+  if (!navigator.mediaDevices) {
+    el('voice-status').textContent = 'MICROPHONE NOT AVAILABLE (HTTPS REQUIRED ON REMOTE)';
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    _audioChunks = [];
+    _mediaRec    = new MediaRecorder(stream);
+    _mediaRec.ondataavailable = e => { if (e.data.size > 0) _audioChunks.push(e.data); };
+    _mediaRec.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(_audioChunks, {type: 'audio/webm'});
+      voiceSend(blob);
+    };
+    _mediaRec.start();
+    _voiceActive = true;
+    const btn = el('voice-btn');
+    btn.textContent = '⏹ STOP';
+    btn.classList.add('recording');
+    el('voice-status').textContent = 'RECORDING…';
+    el('voice-transcript').style.display = 'none';
+    el('voice-response').style.display   = 'none';
+  } catch(e) {
+    el('voice-status').textContent = 'MIC ERROR: ' + (e.message || e);
+  }
+}
+
+function voiceStop() {
+  if (_mediaRec && _voiceActive) {
+    _mediaRec.stop();
+    _voiceActive = false;
+    const btn = el('voice-btn');
+    btn.textContent = '🎤 SPEAK';
+    btn.classList.remove('recording');
+    btn.disabled = true;
+    el('voice-status').textContent = 'PROCESSING…';
+  }
+}
+
+async function voiceSend(blob) {
+  try {
+    el('voice-status').textContent = 'TRANSCRIBING…';
+    const fd = new FormData();
+    fd.append('audio', blob, 'voice.webm');
+    const r    = await fetch('/api/voice/query', {method:'POST', body:fd});
+    const data = await r.json();
+    el('voice-btn').disabled = false;
+    if (data.error) {
+      el('voice-status').textContent = 'ERROR: ' + data.error;
+      return;
+    }
+    el('voice-status').textContent = 'MODULE: ' + (data.module || '—').toUpperCase();
+    const tr = el('voice-transcript');
+    tr.textContent = '"' + (data.transcript || '') + '"';
+    tr.style.display = 'block';
+    const rsp = el('voice-response');
+    rsp.textContent = data.response || '';
+    rsp.style.display = data.response ? 'block' : 'none';
+  } catch(e) {
+    el('voice-btn').disabled = false;
+    el('voice-status').textContent = 'ERROR: ' + (e.message || e);
+  }
+}
+
+// ── Mini-todo ─────────────────────────────────────────────────────────────────
+function renderMiniTodo() {
+  const list = el('todo-mini-list');
+  try {
+    const tasks = JSON.parse(localStorage.getItem('gk_tasks') || '[]');
+    const q1 = tasks.filter(t => !t.done && t.quad === 'q1');
+    const q2 = tasks.filter(t => !t.done && t.quad === 'q2');
+    if (!q1.length && !q2.length) {
+      list.innerHTML = `<div style="font-size:10px;letter-spacing:2px;color:#0c2535;padding:8px 0">No active tasks</div>`;
+      return;
+    }
+    let html = '';
+    if (q1.length) {
+      html += '<div class="todo-mini-section" style="color:var(--red)">DO FIRST</div>';
+      for (const t of q1.slice(0,4)) {
+        html += `<div class="todo-mini-item" onclick="miniToggle('${t.id}')">
+          <span class="ti-dot" style="color:var(--red)">◆</span>
+          <span class="ti-text">${t.text}</span>
+        </div>`;
+      }
+    }
+    if (q2.length) {
+      html += '<div class="todo-mini-section" style="color:var(--amber)">SCHEDULE</div>';
+      for (const t of q2.slice(0,3)) {
+        html += `<div class="todo-mini-item" onclick="miniToggle('${t.id}')">
+          <span class="ti-dot" style="color:var(--amber)">◆</span>
+          <span class="ti-text">${t.text}</span>
+        </div>`;
+      }
+    }
+    list.innerHTML = html;
+  } catch(e) {
+    list.innerHTML = '<div style="font-size:10px;color:#0c2535">error loading tasks</div>';
+  }
+}
+
+function miniToggle(id) {
+  try {
+    const tasks = JSON.parse(localStorage.getItem('gk_tasks') || '[]');
+    const t = tasks.find(x => x.id === id);
+    if (t) { t.done = true; localStorage.setItem('gk_tasks', JSON.stringify(tasks)); }
+    renderMiniTodo();
+  } catch(e) {}
+}
+
+renderMiniTodo();
+
+// ── Tour ──────────────────────────────────────────────────────────────────────
 const TOUR = [
-  { id: null,         title: 'WELCOME',             text: 'GK Personal Assistant — your private AI on your own hardware.\nAll panels update live every 2 seconds via WebSocket.\nPress NEXT to tour each feature.' },
-  { id: 'p-network',  title: 'NETWORK MONITOR',     text: 'Shows all active interfaces (WiFi, LAN, VPN/Tailscale), connectivity status, and real-time download/upload speeds in both Mbps and Kbps.' },
-  { id: 'p-system',   title: 'SYSTEM RESOURCES',    text: 'CPU, RAM, Swap, Disk — values in GiB match system monitors exactly.\nClick the panel to see frequency, logical cores, load averages, and full storage breakdown.' },
-  { id: 'p-weather',  title: 'WEATHER WIDGET',      text: 'Live weather from Open-Meteo for Barloni farm.\nClick to see a 7-day forecast with rain probability, wind, and precipitation.\nUse ↻ REFRESH to force an immediate re-fetch.' },
-  { id: 'p-guardian', title: 'SECURITY GUARDIAN',   text: 'Monitors CVEs (OSV.dev), code quality (bandit), threat intel (NVD + CISA KEV), and log anomalies hourly.\nCLICK UPDATE to auto-patch packages with HIGH+ CVEs at the same major version.' },
-  { id: 'p-diary',    title: 'DIARY',               text: 'Lists your diary entries by week.\nClick any entry to open the book viewer — navigate between day entries with a smooth page-slide animation.\nSay "write diary from my photos" in the CLI to create entries.' },
-  { id: null,         title: 'TEXT INPUT (CLI)',     text: 'Run:  python main.py\n\nThen type any query:\n  "show my farm weather"\n  "log expense 500 groceries"\n  "log BP 120/80"\n  "mandi price pomegranate"\n  "search latest farming news"' },
-  { id: null,         title: 'VOICE INPUT (CLI)',    text: 'In the CLI type:  /voice 5\nThis records 5 seconds from your microphone (faster-whisper transcription).\n\nMarathi and Hindi are auto-detected — just type in Devanagari script and the AI replies in the same language.' },
-  { id: null,         title: 'NAVIGATION',           text: 'MIND MAP — visual graph of all modules with live GraphQL data\nTODO — Eisenhower priority matrix with drag & drop\nGUIDE — full feature list with input examples\n\nTailscale: access from phone at http://100.67.193.127:8765' },
+  { id: null,          title: 'WELCOME',             text: 'GK Personal Assistant — your private AI on your own hardware.\nAll panels update live every 2 seconds via WebSocket.\nPress NEXT to tour each feature.' },
+  { id: 'p-network',   title: 'NETWORK MONITOR',     text: 'All active interfaces (WiFi, LAN, VPN/Tailscale), connectivity status, and real-time speeds in Mbps and Kbps.\nClick for full details including IP, link speed, and failover status.' },
+  { id: 'p-system',    title: 'SYSTEM RESOURCES',    text: 'CPU, RAM, Swap, Disk — values match your system monitor exactly.\nClick for full breakdown: frequency, logical cores, load averages, storage.' },
+  { id: 'p-weather',   title: 'WEATHER WIDGET',      text: 'Live weather from Open-Meteo for Barloni farm.\nClick for a 7-day forecast with rain probability, wind, and precipitation totals.\nUse ↻ to force a refresh.' },
+  { id: 'p-guardian',  title: 'SECURITY GUARDIAN',   text: 'Monitors CVEs (OSV.dev), code quality (bandit), threat intel (NVD + CISA KEV), and log anomalies.\nClick UPDATE to auto-patch packages with HIGH+ CVEs within the same major version.' },
+  { id: 'p-diary',     title: 'DIARY',               text: 'Lists your diary entries by week.\nClick any row to open the book viewer with a smooth page-slide animation.\nSay "write diary from my photos" in the CLI to create new entries.' },
+  { id: 'p-todo-mini', title: 'TODO · QUICK VIEW',   text: 'Shows your most urgent tasks from the Eisenhower matrix.\nDO FIRST (red) = urgent + important.\nSCHEDULE (amber) = important but not urgent.\nClick FULL → for the complete matrix with drag & drop.' },
+  { id: 'p-news',      title: 'FARMING NEWS',        text: 'Live agriculture and India news from DuckDuckGo.\nCovers farming subsidies, mandi prices, Maharashtra krushi news.\nCached 15 minutes — click ↻ REFRESH for latest.' },
+  { id: 'p-voice',     title: 'VOICE QUERY',         text: 'Speak into your browser mic — click 🎤 SPEAK, talk, then ⏹ STOP.\nFaster-Whisper transcribes locally, routes to the correct module, and shows the response here.\nMarathi/Hindi auto-detected.' },
+  { id: null,          title: 'TEXT INPUT (CLI)',     text: 'Run:  python main.py\n\nThen type any query:\n  "show my farm weather"\n  "log expense 500 groceries"\n  "log BP 120/80"\n  "mandi price pomegranate"\n  "search latest farming news"' },
+  { id: null,          title: 'NAVIGATION',           text: 'MIND MAP — visual graph of all modules with live GraphQL data\nTODO — full Eisenhower matrix with drag & drop tasks\nGUIDE — complete feature list with examples\n\nTailscale: http://100.67.193.127:8765' },
 ];
 let _tourIdx = 0;
 
-function tourStart() {
-  _tourIdx = 0;
-  _tourShow();
-}
+function tourStart() { _tourIdx = 0; _tourShow(); }
 function tourNext() {
   _tourIdx++;
   if (_tourIdx >= TOUR.length) { tourSkip(); return; }
@@ -1295,26 +1484,21 @@ function _tourShow() {
   el('tour-step-lbl').textContent = `STEP ${_tourIdx + 1} / ${TOUR.length}`;
   el('tour-title').textContent    = step.title;
   el('tour-text').textContent     = step.text;
-  el(document.getElementById('tour-card').querySelector('.tour-btn.primary')?'tour-card':'tour-card')
-    .querySelector('.tour-btn.primary').textContent =
-      _tourIdx === TOUR.length - 1 ? 'FINISH ✓' : 'NEXT →';
-
+  el('tour-card').querySelector('.tour-btn.primary').textContent =
+    _tourIdx === TOUR.length - 1 ? 'FINISH ✓' : 'NEXT →';
   const hl = el('tour-highlight');
   const tc = el('tour-card');
-
   if (step.id) {
     const target = document.getElementById(step.id);
     if (target) {
       const r = target.getBoundingClientRect();
       const pad = 6;
       hl.style.cssText = `display:block;top:${r.top-pad}px;left:${r.left-pad}px;width:${r.width+pad*2}px;height:${r.height+pad*2}px;`;
-      // Position card below or above the highlight
-      const cardTop = r.bottom + pad + 16;
+      const cardTop  = r.bottom + pad + 16;
       const cardLeft = Math.min(r.left, window.innerWidth - 380);
-      tc.style.cssText = `display:block;top:${Math.min(cardTop, window.innerHeight - 200)}px;left:${Math.max(10, cardLeft)}px;`;
+      tc.style.cssText = `display:block;top:${Math.min(cardTop, window.innerHeight - 220)}px;left:${Math.max(10, cardLeft)}px;`;
     }
   } else {
-    // No target — center the card, no highlight
     hl.style.display = 'none';
     tc.style.cssText = `display:block;top:50%;left:50%;transform:translate(-50%,-50%);`;
   }

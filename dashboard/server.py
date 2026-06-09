@@ -12,6 +12,8 @@ GET  /graphql    → GraphQL playground (browser)
 
 import asyncio
 import logging
+import tempfile
+import threading
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
@@ -19,12 +21,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.responses import Response
 from strawberry.fastapi import GraphQLRouter
 
 from dashboard.network import NetworkMonitor
+from dashboard.news_widget import NewsCache
 from dashboard.sysmon import get_system_stats
 from dashboard.weather_widget import WeatherCache
 from dashboard.guardian import get_guardian_status
@@ -34,8 +37,34 @@ log = logging.getLogger(__name__)
 
 _STATIC = Path(__file__).parent / "static"
 
-_net = NetworkMonitor()
-_wx  = WeatherCache()
+_net  = NetworkMonitor()
+_wx   = WeatherCache()
+_news = NewsCache()
+
+# ── Lazy module pipeline (only loaded on first voice query) ────────────────────
+_query_modules     = None
+_query_modules_lck = threading.Lock()
+
+def _get_query_modules() -> dict:
+    global _query_modules
+    if _query_modules is None:
+        with _query_modules_lck:
+            if _query_modules is None:
+                from modules.finance.module import FinanceModule
+                from modules.farming.module import FarmingModule
+                from modules.health.module import HealthModule
+                from modules.system.module import SystemModule
+                from modules.diary.module import DiaryModule
+                from modules.search.module import SearchModule
+                _query_modules = {
+                    "finance": FinanceModule(),
+                    "farming": FarmingModule(),
+                    "health":  HealthModule(),
+                    "system":  SystemModule(),
+                    "diary":   DiaryModule(),
+                    "search":  SearchModule(),
+                }
+    return _query_modules
 
 # ── API request tracking ───────────────────────────────────────────────────────
 # Keyed by "METHOD /path". WebSocket upgrades (101) are excluded.
@@ -383,6 +412,79 @@ async def weather_refresh():
     _wx._fetched_at = 0.0
     data = await asyncio.get_event_loop().run_in_executor(None, _wx.get)
     return JSONResponse(data)
+
+
+@app.get("/api/news")
+async def api_news():
+    """Return cached agriculture/India news (15-min TTL)."""
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(None, _news.get)
+    return JSONResponse(data)
+
+
+@app.post("/api/news/refresh")
+async def api_news_refresh():
+    """Force a fresh news fetch."""
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(None, _news.refresh)
+    return JSONResponse(data)
+
+
+@app.post("/api/voice/query")
+async def api_voice_query(audio: UploadFile = File(...)):
+    """
+    Accept webm/opus audio from the browser, transcribe with faster-whisper,
+    route through the module pipeline, and return the response.
+    """
+    def _process(tmp_path: str) -> dict:
+        # Transcribe
+        try:
+            from faster_whisper import WhisperModel
+            model = WhisperModel("base", device="cpu", compute_type="int8")
+            segs, _ = model.transcribe(tmp_path, beam_size=5)
+            transcript = " ".join(s.text.strip() for s in segs).strip()
+        except Exception as e:
+            return {"error": f"transcription failed: {e}"}
+
+        if not transcript:
+            return {"error": "no speech detected"}
+
+        # Route + dispatch
+        try:
+            from core.router import route, dispatch
+            mods = _get_query_modules()
+            ctx  = {}
+            chosen = route(transcript, mods)
+            responses = []
+            for name in chosen:
+                if name in mods:
+                    r = mods[name].handle(transcript, ctx)
+                    responses.append(r.text if hasattr(r, "text") else str(r))
+            response_text = "\n\n".join(responses) if responses else "No response"
+            return {
+                "transcript": transcript,
+                "module":     chosen[0] if chosen else "unknown",
+                "response":   response_text,
+            }
+        except Exception as e:
+            return {"transcript": transcript, "error": f"dispatch failed: {e}"}
+
+    suffix = ".webm"
+    loop = asyncio.get_event_loop()
+    try:
+        content = await audio.read()
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+            f.write(content)
+            tmp_path = f.name
+        result = await loop.run_in_executor(None, _process, tmp_path)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    finally:
+        try:
+            Path(tmp_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+    return JSONResponse(result)
 
 
 @app.websocket("/ws")
