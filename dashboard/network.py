@@ -187,7 +187,12 @@ class NetworkMonitor:
 
     def _do_speed_sample(self):
         with self._lock:
-            active = [i.name for i in self._status.interfaces if i.is_up]
+            # Exclude VPN tunnels — they re-encapsulate traffic that already
+            # appears on the underlying physical interface, causing double-counting.
+            active = [
+                i.name for i in self._status.interfaces
+                if i.is_up and i.type != "vpn"
+            ]
         dl, ul = _measure_speed(active, duration=self.SPEED_INTERVAL)
         with self._lock:
             self._status.download_mbps = dl

@@ -18,6 +18,7 @@ from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import Response
 from strawberry.fastapi import GraphQLRouter
 
 from dashboard.network import NetworkMonitor
@@ -223,6 +224,30 @@ async def api_data():
 @app.get("/api/mindmap")
 async def api_mindmap():
     return JSONResponse({"branches": _MINDMAP_BRANCHES})
+
+
+@app.post("/api/guardian/scan")
+async def guardian_scan():
+    """Trigger an on-demand anomaly scan in background and return result."""
+    def _run():
+        try:
+            import sys, os
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            from security.guardian import task_anomaly_detect
+            task_anomaly_detect()
+        except Exception as e:
+            log.error("on-demand scan failed: %s", e)
+    import threading
+    threading.Thread(target=_run, daemon=True, name="on-demand-scan").start()
+    return JSONResponse({"status": "scanning"})
+
+
+@app.post("/api/weather/refresh")
+async def weather_refresh():
+    """Force a fresh weather fetch by clearing the cache TTL."""
+    _wx._fetched_at = 0.0
+    data = await asyncio.get_event_loop().run_in_executor(None, _wx.get)
+    return JSONResponse(data)
 
 
 @app.websocket("/ws")

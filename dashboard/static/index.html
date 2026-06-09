@@ -190,9 +190,10 @@ body::after {
 
 /* ── System panel ─────────────────────────────────────────────────────────── */
 .metric { margin-bottom: 18px; }
-.metric-header { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 11px; }
+.metric-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; font-size: 11px; }
 .metric-name { color: var(--dim); letter-spacing: 2px; }
 .metric-val  { color: var(--cyan); }
+.metric-sub  { font-size: 9px; color: var(--dim); margin-left: 6px; opacity: 0.7; }
 
 .bar-track {
   height: 3px;
@@ -346,6 +347,19 @@ body::after {
 .issue-row .loc  { color: var(--dim); font-size: 10px; margin-bottom: 3px; }
 .issue-row .msg  { color: #8ab0b8; }
 
+/* ── Action buttons (refresh / scan) ──────────────────────────────────────── */
+.panel-btn {
+  font-size: 9px; letter-spacing: 2px;
+  padding: 3px 8px; border-radius: 2px; cursor: pointer;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--dim); font-family: inherit;
+  transition: color 0.15s, border-color 0.15s;
+  margin-left: auto;
+}
+.panel-btn:hover:not(:disabled) { color: var(--cyan); border-color: var(--cyan); }
+.panel-btn:disabled { opacity: 0.4; cursor: default; }
+.panel-btn.scanning { color: var(--amber); border-color: var(--amber); animation: blink-alert 1s infinite; }
+
 /* ── Animations ───────────────────────────────────────────────────────────── */
 @keyframes pulse-dot  { 0%,100%{opacity:1} 50%{opacity:0.35} }
 @keyframes blink-alert{ 0%,100%{opacity:1} 50%{opacity:0.55} }
@@ -390,28 +404,40 @@ body::after {
     <div class="metric">
       <div class="metric-header">
         <span class="metric-name">CPU</span>
-        <span class="metric-val" id="cpu-val">--%</span>
+        <span style="display:flex;align-items:baseline;gap:0">
+          <span class="metric-val" id="cpu-val">--%</span>
+          <span class="metric-sub" id="cpu-sub"></span>
+        </span>
       </div>
       <div class="bar-track"><div class="bar-fill normal" id="cpu-bar" style="width:0%"></div></div>
     </div>
     <div class="metric">
       <div class="metric-header">
         <span class="metric-name">RAM</span>
-        <span class="metric-val" id="ram-val">--%</span>
+        <span style="display:flex;align-items:baseline;gap:0">
+          <span class="metric-val" id="ram-val">--%</span>
+          <span class="metric-sub" id="ram-sub"></span>
+        </span>
       </div>
       <div class="bar-track"><div class="bar-fill normal" id="ram-bar" style="width:0%"></div></div>
     </div>
     <div class="metric">
       <div class="metric-header">
         <span class="metric-name">SWAP</span>
-        <span class="metric-val" id="swap-val">--%</span>
+        <span style="display:flex;align-items:baseline;gap:0">
+          <span class="metric-val" id="swap-val">--%</span>
+          <span class="metric-sub" id="swap-sub"></span>
+        </span>
       </div>
       <div class="bar-track"><div class="bar-fill normal" id="swap-bar" style="width:0%"></div></div>
     </div>
     <div class="metric">
       <div class="metric-header">
         <span class="metric-name">DISK</span>
-        <span class="metric-val" id="disk-val">--%</span>
+        <span style="display:flex;align-items:baseline;gap:0">
+          <span class="metric-val" id="disk-val">--%</span>
+          <span class="metric-sub" id="disk-sub"></span>
+        </span>
       </div>
       <div class="bar-track"><div class="bar-fill normal" id="disk-bar" style="width:0%"></div></div>
     </div>
@@ -420,7 +446,10 @@ body::after {
 
   <!-- WEATHER -->
   <div class="panel" id="p-weather" onclick="openModal('weather')">
-    <div class="panel-label">WEATHER · BARLONI</div>
+    <div class="panel-label" style="justify-content:space-between">
+      WEATHER · BARLONI
+      <button class="panel-btn" id="wx-refresh-btn" onclick="event.stopPropagation();refreshWeather()" title="Force refresh weather">↻ REFRESH</button>
+    </div>
     <div class="wx-temp" id="wx-temp">--<sup>°C</sup></div>
     <div class="wx-desc" id="wx-desc">-- --</div>
     <div class="wx-grid">
@@ -447,7 +476,10 @@ body::after {
 
   <!-- GUARDIAN -->
   <div class="panel" id="p-guardian" onclick="openModal('guardian')">
-    <div class="panel-label">SECURITY GUARDIAN</div>
+    <div class="panel-label" style="justify-content:space-between">
+      SECURITY GUARDIAN
+      <button class="panel-btn" id="g-scan-btn" onclick="event.stopPropagation();triggerScan()" title="Run anomaly scan now">⟳ SCAN NOW</button>
+    </div>
     <div class="guardian-status">
       <div class="guardian-icon" id="g-icon">◈</div>
       <div class="guardian-verdict">
@@ -563,16 +595,18 @@ function renderNetwork(n) {
 }
 
 // ── System ───────────────────────────────────────────────────────────────────
-function setBar(id, pct) {
+function setBar(id, pct, sub) {
   document.getElementById(id+'-bar').style.width = Math.min(pct,100)+'%';
   document.getElementById(id+'-val').textContent = pct+'%';
   document.getElementById(id+'-bar').className = 'bar-fill '+(pct>85?'danger':pct>60?'warn':'normal');
+  const subEl = document.getElementById(id+'-sub');
+  if (subEl) subEl.textContent = sub || '';
 }
 function renderSystem(s) {
-  setBar('cpu',  s.cpu_pct);
-  setBar('ram',  s.ram_pct);
-  setBar('swap', s.swap_pct);
-  setBar('disk', s.disk_pct);
+  setBar('cpu',  s.cpu_pct,  s.cpu_cores ? ` · ${s.cpu_cores} cores` : '');
+  setBar('ram',  s.ram_pct,  s.ram_used_gb  != null ? ` · ${s.ram_used_gb}/${s.ram_total_gb} GB`  : '');
+  setBar('swap', s.swap_pct, s.swap_used_gb != null ? ` · ${s.swap_used_gb}/${s.swap_total_gb} GB` : '');
+  setBar('disk', s.disk_pct, s.disk_used_gb != null ? ` · ${s.disk_used_gb}/${s.disk_total_gb} GB` : '');
 }
 
 // ── Weather ──────────────────────────────────────────────────────────────────
@@ -779,6 +813,49 @@ function row(k,v){ return `<div class="detail-row"><span class="detail-key">${k}
 function sec(t)  { return `<div class="detail-section">${t}</div>`; }
 
 document.addEventListener('keydown', e => { if(e.key==='Escape') closeModal(); });
+
+// ── Weather refresh ──────────────────────────────────────────────────────────
+async function refreshWeather() {
+  const btn = el('wx-refresh-btn');
+  btn.disabled = true;
+  btn.textContent = '↻ …';
+  try {
+    const r = await fetch('/api/weather/refresh', {method:'POST'});
+    const data = await r.json();
+    renderWeather(data);
+    btn.textContent = '↻ DONE';
+    setTimeout(() => { btn.textContent = '↻ REFRESH'; btn.disabled = false; }, 1500);
+  } catch(e) {
+    btn.textContent = '↻ ERR';
+    setTimeout(() => { btn.textContent = '↻ REFRESH'; btn.disabled = false; }, 2000);
+  }
+}
+
+// ── Guardian scan now ────────────────────────────────────────────────────────
+async function triggerScan() {
+  const btn = el('g-scan-btn');
+  btn.disabled = true;
+  btn.className = 'panel-btn scanning';
+  btn.textContent = '⟳ SCANNING…';
+  try {
+    await fetch('/api/guardian/scan', {method:'POST'});
+    // Poll for updated status after ~8 seconds (anomaly scan is fast)
+    setTimeout(async () => {
+      try {
+        const r = await fetch('/api/data');
+        const d = await r.json();
+        if (d.guardian) { last.guardian = d.guardian; renderGuardian(d.guardian); }
+      } catch(_) {}
+      btn.className = 'panel-btn';
+      btn.textContent = '⟳ DONE';
+      setTimeout(() => { btn.textContent = '⟳ SCAN NOW'; btn.disabled = false; }, 1500);
+    }, 8000);
+  } catch(e) {
+    btn.className = 'panel-btn';
+    btn.textContent = '⟳ ERR';
+    setTimeout(() => { btn.textContent = '⟳ SCAN NOW'; btn.disabled = false; }, 2000);
+  }
+}
 </script>
 </body>
 </html>
