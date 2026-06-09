@@ -39,6 +39,11 @@ Examples:
 "weekly summary" -> {{"modules": ["diary"]}}
 "what did I do this week" -> {{"modules": ["diary"]}}
 "week in review" -> {{"modules": ["diary"]}}
+"latest news about farming subsidies" -> {{"modules": ["search"]}}
+"what is the PM-KISAN scheme?" -> {{"modules": ["search"]}}
+"search for pomegranate export prices" -> {{"modules": ["search"]}}
+"today's gold price in India" -> {{"modules": ["search"]}}
+"who is the agriculture minister?" -> {{"modules": ["search"]}}
 
 Reply format: {{"modules": ["name"]}}"""
 
@@ -51,6 +56,7 @@ def _build_system_prompt(modules: dict[str, BaseModule]) -> str:
         "health":  "BP, blood pressure, steps, weight, sleep, sugar, glucose, health, walked, kg, hours slept",
         "system":  "system load, CPU, RAM, busy, idle, load pattern, heatmap, security guardian, CVE scan, threat intel, anomaly, audit, background tasks, task schedule",
         "diary":   "diary, photos, journal, write diary, photo diary, show diary, approve diary, draft, daily log, weekly summary, week review, this week",
+        "search":  "search, news, latest, current events, what is, who is, government scheme, policy, regulation, internet, web, find out, look up",
     }
     lines = []
     for name in modules:

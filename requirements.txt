@@ -17,8 +17,8 @@ faster-whisper  # Local audio transcription (CTranslate2 backend; no PyTorch nee
 # Knowledge graph / people
 # insightface   # Face recognition — uncomment when building people graph
 
-# Web search (privacy proxy)
-# searxng is self-hosted — no Python package needed
+# Web search (privacy-first, no API key required)
+ddgs            # DuckDuckGo search (text + news)
 
 # Dashboard
 matplotlib      # Weather chart generation

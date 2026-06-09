@@ -10,6 +10,9 @@ load_dotenv()
 # Voice-input commands that trigger mic recording
 _VOICE_TRIGGERS = {"/voice", "/mic", "/speak", "/v"}
 
+# Devanagari Unicode block: U+0900–U+097F (used for Hindi + Marathi)
+_DEVANAGARI_RE = __import__("re").compile(r"[ऀ-ॿ]")
+
 from core.log import setup_logging
 setup_logging()
 
@@ -26,6 +29,7 @@ from modules.farming.module import FarmingModule
 from modules.health.module import HealthModule
 from modules.system.module import SystemModule
 from modules.diary.module import DiaryModule
+from modules.search.module import SearchModule
 
 
 MODULES = {
@@ -34,6 +38,7 @@ MODULES = {
     "health":  HealthModule(),
     "system":  SystemModule(),
     "diary":   DiaryModule(),
+    "search":  SearchModule(),
 }
 
 
@@ -192,6 +197,10 @@ def main():
 
         # Auto-inject document content if query contains a file path
         query = _inject_doc_context(query)
+
+        # Language hint: prepend instruction when user writes in Devanagari (Marathi/Hindi)
+        if _DEVANAGARI_RE.search(query):
+            query = "[Respond in the same language as the user's message — Marathi or Hindi]\n" + query
 
         context = _build_context(profile)
         event_id = memory.log_query_start(redact_pii(query))
