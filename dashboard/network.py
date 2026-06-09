@@ -97,7 +97,7 @@ class NetworkMonitor:
     """
 
     CHECK_INTERVAL = 60   # connectivity re-check
-    SPEED_INTERVAL = 5    # throughput sample window
+    SPEED_INTERVAL = 2    # throughput sample window — matches WS push rate
 
     def __init__(self):
         self._status = NetworkStatus()

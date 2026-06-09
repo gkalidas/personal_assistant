@@ -617,10 +617,13 @@ function setBar(id, pct, sub) {
   if (subEl) subEl.textContent = sub || '';
 }
 function renderSystem(s) {
-  setBar('cpu',  s.cpu_pct,  s.cpu_cores ? ` · ${s.cpu_cores} cores` : '');
-  setBar('ram',  s.ram_pct,  s.ram_used_gb  != null ? ` · ${s.ram_used_gb}/${s.ram_total_gb} GB`  : '');
-  setBar('swap', s.swap_pct, s.swap_used_gb != null ? ` · ${s.swap_used_gb}/${s.swap_total_gb} GB` : '');
-  setBar('disk', s.disk_pct, s.disk_used_gb != null ? ` · ${s.disk_used_gb}/${s.disk_total_gb} GB` : '');
+  const coreStr = s.cpu_physical
+    ? ` · ${s.cpu_physical}C/${s.cpu_cores}T`
+    : s.cpu_cores ? ` · ${s.cpu_cores}T` : '';
+  setBar('cpu',  s.cpu_pct,  coreStr);
+  setBar('ram',  s.ram_pct,  s.ram_used_gb  != null ? ` · ${s.ram_used_gb}/${s.ram_total_gb} GiB`  : '');
+  setBar('swap', s.swap_pct, s.swap_used_gb != null ? ` · ${s.swap_used_gb}/${s.swap_total_gb} GiB` : '');
+  setBar('disk', s.disk_pct, s.disk_used_gb != null ? ` · ${s.disk_used_gb}/${s.disk_total_gb} GiB` : '');
 }
 
 // ── Weather ──────────────────────────────────────────────────────────────────
@@ -724,14 +727,16 @@ function openModal(type) {
     const s = last.system;
     let rows = sec('PROCESSOR');
     rows += row('CPU Usage',  s.cpu_pct+'%');
-    rows += row('Cores',      s.cpu_cores);
+    rows += row('Cores',      s.cpu_physical
+      ? `${s.cpu_physical} physical · ${s.cpu_cores} logical (HT)`
+      : s.cpu_cores);
     rows += row('Frequency',  s.cpu_freq_mhz+' MHz');
     rows += row('Load Avg',   s.load_avg);
     rows += sec('MEMORY');
-    rows += row('RAM Usage',  s.ram_pct+'%  ('+s.ram_used_gb+' / '+s.ram_total_gb+' GB)');
-    rows += row('Swap Usage', s.swap_pct+'%  ('+s.swap_used_gb+' / '+s.swap_total_gb+' GB)');
+    rows += row('RAM Usage',  s.ram_pct+'%  ('+s.ram_used_gb+' / '+s.ram_total_gb+' GiB)');
+    rows += row('Swap Usage', s.swap_pct+'%  ('+s.swap_used_gb+' / '+s.swap_total_gb+' GiB)');
     rows += sec('STORAGE');
-    rows += row('Disk Usage', s.disk_pct+'%  ('+s.disk_used_gb+' / '+s.disk_total_gb+' GB)');
+    rows += row('Disk Usage', s.disk_pct+'%  ('+s.disk_used_gb+' / '+s.disk_total_gb+' GiB)');
     rows += sec('SYSTEM');
     rows += row('Uptime',     s.uptime);
     el('modal-sys-body').innerHTML = rows;
