@@ -46,16 +46,18 @@ BRANCHES = [
         "Spray log & observation diary",
         "Soil data (pH, N, clay via SoilGrids)",
         "Disease KB: Pomegranate · Sugarcane · Banana",
+        "Fuzzy symptom → disease matching",
+        "Mandi prices (APMC · data.gov.in · daily)",
         "Photo diagnosis (farming vision server)",
     ]),
-    ( 50, "Finance Module",   "finance", [
+    ( 45, "Finance Module",   "finance", [
         "Log income & expenses (category-tagged)",
         "Monthly summary (income vs spend vs net)",
         "Budget tracker (cap per category)",
         "Spending breakdown by category",
         "Financial goals (target + deadline)",
     ]),
-    (105, "Health Module",    "health", [
+    ( 90, "Health Module",    "health", [
         "Blood pressure (6 risk levels incl. crisis → call 108)",
         "Step count vs daily goal",
         "Weight tracking",
@@ -64,41 +66,49 @@ BRANCHES = [
         "7–14 day trends for any metric",
         "Goal setting (steps, weight, sleep)",
     ]),
-    (158, "System Module",    "core", [
-        "Live load: CPU · RAM · Disk I/O",
-        "Idle detection (score 0-100)",
-        "24-hour usage pattern heatmap",
-        "Predicted idle hours (pattern-based)",
-        "Security guardian status",
-        "Task schedule & overdue tracker",
+    (135, "Diary Module",     "eval", [
+        "Photo EXIF extraction (timestamp · GPS · device)",
+        "Vision captions via moondream (local, no cloud)",
+        "LLM diary entry writer (qwen3:1.7b)",
+        "Weekly auto-draft from query history",
+        "Draft → review → approve workflow",
+        "Stored in SQLite (queryable + markdown)",
     ]),
-    (212, "Security Guardian","security", [
-        "CVE scan — OSV.dev (29 packages, daily)",
-        "Code audit — bandit + 15 custom patterns",
+    (180, "Dashboard",        "llm", [
+        "Live system: CPU · RAM · Disk I/O",
+        "Network interfaces: LAN · WiFi · Tethering",
+        "Internet speed (download / upload Mbps)",
+        "Multi-connection failover alerting",
+        "Live weather widget (Barloni, Solapur)",
+        "WebSocket push every 2s",
+        "Phone access via Tailscale (fixed IP)",
+    ]),
+    (225, "Security Guardian","security", [
+        "CVE scan — OSV.dev (daily)",
+        "Code audit — bandit + custom patterns",
         "Threat intel — NVD · GitHub Advisory · CISA KEV · Arxiv",
-        "Attack replication (sanitizer / package / code tests)",
-        "Alert with fix — NEVER auto-fixes critical vulns",
-        "Injection pattern updates (NVD → patterns.json)",
         "Log anomaly detection (hourly)",
         "Auto-patch safe upgrades (same major, HIGH+ CVE)",
         "Idle-aware scheduler (one task at a time)",
         "Auto-starts on boot (systemd + linger)",
     ]),
-    (262, "Core Layer",       "llm", [
+    (270, "Core Layer",       "core", [
         "Router — qwen2.5:0.5b (intent → module)",
+        "Config — single source (OLLAMA_URL · models)",
         "Sanitizer — 45 injection patterns + PII redact",
         "Memory — SQLite events log + user_profile.json",
         "Guardrails — web content injection defense",
-        "First-principles reasoning (all modules)",
         "Action schema validation (type-safe JSON)",
         "Follow-up suggestion engine",
+        "System module — load · pattern · guardian",
     ]),
-    (308, "External APIs",    "apis", [
+    (315, "External APIs",    "apis", [
         "Open-Meteo (weather · forecast · ERA5 archive)",
+        "Open-Meteo Geocoding (location → lat/lon)",
         "SoilGrids / ISRIC (soil pH · N · clay · sand)",
-        "Nominatim / OSM (geocoding — no key needed)",
+        "data.gov.in APMC (live mandi prices)",
         "OSV.dev (Google — 20+ CVE databases)",
-        "NVD (NIST — CVE search + LLM attacks)",
+        "NVD / NIST (CVE search + LLM attacks)",
         "GitHub Advisory API (pip ecosystem)",
         "CISA KEV (actively exploited CVEs)",
         "Arxiv cs.CR RSS (AI security papers)",
@@ -206,16 +216,16 @@ def build(fig, ax):
     # ── LLM stack badge (bottom-center) ──
     ax.text(0, -10.5,
             "LLM Stack (fully local):  qwen3:1.7b  ·  qwen2.5:0.5b  |  "
-            "Ollama  ·  SQLite  ·  Python 3.12",
+            "Ollama  ·  SQLite  ·  Python 3.10",
             ha="center", va="center", fontsize=8, color=C["sub_text"])
 
     # ── Stats badges ──
     stats = [
-        ("4 Modules",     -6.5, 10.2, C["farming"]),
-        ("7 Core files",  -3.2, 10.2, C["llm"]),
-        ("8 Free APIs",    0.0, 10.2, C["apis"]),
-        ("45 Sec patterns",3.2, 10.2, C["security"]),
-        ("10K Test cases", 6.5, 10.2, C["eval"]),
+        ("5 Modules",      -6.5, 10.2, C["farming"]),
+        ("10 Core files",  -3.2, 10.2, C["llm"]),
+        ("9 Free APIs",     0.0, 10.2, C["apis"]),
+        ("45 Sec patterns", 3.2, 10.2, C["security"]),
+        ("384 Tests",       6.5, 10.2, C["eval"]),
     ]
     for label, sx, sy, sc in stats:
         ax.text(sx, sy, label, ha="center", va="center", fontsize=8,
