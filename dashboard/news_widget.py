@@ -7,8 +7,10 @@ log = logging.getLogger(__name__)
 
 _TOPICS = [
     "india farming agriculture news today",
-    "pomegranate solapur mandi market",
-    "maharashtra kisan krushi",
+    "pomegranate solapur mandi market price",
+    "maharashtra kisan krushi farmer",
+    "india monsoon rainfall 2026 farmer forecast",
+    "MSP minimum support price india farmer 2026",
 ]
 
 
@@ -34,14 +36,16 @@ class NewsCache:
         try:
             from ddgs import DDGS
             articles: list[dict] = []
-            for topic in _TOPICS[:2]:
+            for topic in _TOPICS[:3]:
                 try:
-                    for r in DDGS().news(topic, max_results=5):
+                    for r in DDGS().news(topic, max_results=4):
                         articles.append({
-                            "title":  (r.get("title") or "")[:120],
+                            "title":  (r.get("title") or "")[:160],
                             "source": r.get("source") or "",
                             "url":    r.get("url") or "",
                             "date":   (r.get("date") or "")[:10],
+                            "body":   (r.get("body") or "")[:600],
+                            "image":  r.get("image") or "",
                         })
                 except Exception as e:
                     log.debug("news topic %r: %s", topic, e)

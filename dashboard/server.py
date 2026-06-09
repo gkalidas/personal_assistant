@@ -74,9 +74,33 @@ _api_stats: dict[str, dict] = defaultdict(lambda: {
 })
 
 
+# ── Whisper model singleton ────────────────────────────────────────────────────
+# Loaded once in background at startup; avoids 2-3s delay on first voice query
+_whisper_model = None
+_whisper_lock  = threading.Lock()
+
+def _load_whisper():
+    global _whisper_model
+    if _whisper_model is not None:
+        return _whisper_model
+    with _whisper_lock:
+        if _whisper_model is None:
+            try:
+                from faster_whisper import WhisperModel
+                log.info("loading faster-whisper 'tiny' model…")
+                _whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8")
+                log.info("faster-whisper ready")
+            except Exception as e:
+                log.error("faster-whisper load failed: %s", e)
+    return _whisper_model
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    asyncio.get_event_loop().run_in_executor(None, _wx.get)
+    # Warm up weather + whisper in background
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, _wx.get)
+    loop.run_in_executor(None, _load_whisper)
     yield
 
 
@@ -444,57 +468,64 @@ async def api_news_refresh():
 @app.post("/api/voice/query")
 async def api_voice_query(audio: UploadFile = File(...)):
     """
-    Accept webm/opus audio from the browser, transcribe with faster-whisper,
-    route through the module pipeline, and return the response.
+    Accept WAV (or webm) audio from the browser.
+    Browser sends 16kHz mono WAV (PCM) — no ffmpeg required.
+    Transcribes with faster-whisper, routes through module pipeline.
     """
+    # Detect file format from filename or content-type
+    fname    = (audio.filename or "voice.wav").lower()
+    ctype    = (audio.content_type or "").lower()
+    suffix   = ".wav" if (fname.endswith(".wav") or "wav" in ctype) else ".webm"
+
     def _process(tmp_path: str) -> dict:
-        # Transcribe
+        model = _load_whisper()
+        if model is None:
+            return {"error": "Whisper model not available — check server logs"}
         try:
-            from faster_whisper import WhisperModel
-            model = WhisperModel("base", device="cpu", compute_type="int8")
-            segs, _ = model.transcribe(tmp_path, beam_size=5)
+            segs, info = model.transcribe(tmp_path, beam_size=3, language=None)
             transcript = " ".join(s.text.strip() for s in segs).strip()
+            log.info("voice transcribed: lang=%s  %r", info.language, transcript[:80])
         except Exception as e:
+            log.error("transcribe failed: %s", e, exc_info=True)
             return {"error": f"transcription failed: {e}"}
 
         if not transcript:
-            return {"error": "no speech detected"}
+            return {"error": "no speech detected — speak closer to the mic"}
 
-        # Route + dispatch
         try:
-            from core.router import route, dispatch
+            from core.router import route
             mods = _get_query_modules()
-            ctx  = {}
             chosen = route(transcript, mods)
             responses = []
             for name in chosen:
                 if name in mods:
-                    r = mods[name].handle(transcript, ctx)
+                    r = mods[name].handle(transcript, {})
                     responses.append(r.text if hasattr(r, "text") else str(r))
-            response_text = "\n\n".join(responses) if responses else "No response"
             return {
                 "transcript": transcript,
                 "module":     chosen[0] if chosen else "unknown",
-                "response":   response_text,
+                "response":   "\n\n".join(responses) if responses else "No response",
             }
         except Exception as e:
+            log.error("voice dispatch failed: %s", e)
             return {"transcript": transcript, "error": f"dispatch failed: {e}"}
 
-    suffix = ".webm"
+    tmp_path = ""
     loop = asyncio.get_event_loop()
     try:
         content = await audio.read()
+        if not content:
+            return JSONResponse({"error": "empty audio received"}, status_code=400)
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
             f.write(content)
             tmp_path = f.name
         result = await loop.run_in_executor(None, _process, tmp_path)
     except Exception as e:
+        log.error("voice query error: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
     finally:
-        try:
+        if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)
-        except Exception:
-            pass
     return JSONResponse(result)
 
 
