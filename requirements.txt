@@ -12,7 +12,7 @@ python-docx     # Document processing (DOCX)
 pypdf2          # PDF processing
 openpyxl        # XLSX / Excel processing
 strawberry-graphql[fastapi]  # GraphQL API for dashboard
-openai-whisper  # Local audio transcription (also needs: sudo apt install ffmpeg)
+faster-whisper  # Local audio transcription (CTranslate2 backend; no PyTorch needed)
 
 # Knowledge graph / people
 # insightface   # Face recognition — uncomment when building people graph
