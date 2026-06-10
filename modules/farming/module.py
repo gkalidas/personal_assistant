@@ -232,272 +232,279 @@ def _loc(
     return canon, lat, lon
 
 
+# ── Action handlers (one per farming action) ──────────────────────────────────
+
+def _h_add_plot(action, _lat, _lon, _name):
+    loc = action.get("location", "")
+    lat = lon = None
+    if loc:
+        coords = resolve(loc)
+        if coords:
+            lat, lon, _ = coords
+    r = tools.add_plot(action["name"], action.get("area_acres"), action.get("soil_type"), lat, lon)
+    area = f" ({action['area_acres']} acres)" if action.get("area_acres") else ""
+    loc_str = f" — {loc}" if loc else ""
+    return f"Plot added: {action['name']}{area}{loc_str}", r
+
+def _h_list_plots(action, _lat, _lon, _name):
+    plots = tools.list_plots()
+    if not plots:
+        return "No plots yet. Try: 'add my north field, 3 acres, black soil, Solapur'", None
+    lines = ["Your plots:"]
+    for p in plots:
+        area = f" — {p['area_acres']} acres" if p.get("area_acres") else ""
+        soil = f", {p['soil_type']}" if p.get("soil_type") else ""
+        lines.append(f"  {p['name']}{area}{soil}")
+    return "\n".join(lines), plots
+
+def _h_plant_crop(action, _lat, _lon, _name):
+    r = tools.plant_crop(action["plot"], action["crop"], action.get("variety"),
+                         action.get("planted_date"), action.get("expected_harvest"))
+    if "error" in r:
+        return r["error"], None
+    harvest = f", harvest expected {action['expected_harvest']}" if action.get("expected_harvest") else ""
+    return f"Planted {action['crop']} in {action['plot']} on {r['planted']}{harvest}", r
+
+def _h_list_crops(action, _lat, _lon, _name):
+    crops = tools.list_crops(action.get("plot"))
+    if not crops:
+        return "No active crops found.", None
+    lines = ["Active crops:"]
+    for c in crops:
+        h = f" (harvest: {c['expected_harvest']})" if c.get("expected_harvest") else ""
+        v = f" / {c['variety']}" if c.get("variety") else ""
+        lines.append(f"  {c['plot_name']} → {c['crop_name']}{v}{h}")
+    return "\n".join(lines), crops
+
+def _h_harvest_crop(action, _lat, _lon, _name):
+    r = tools.update_crop_status(action["crop_id"], "harvested", action.get("yield_kg"))
+    yield_str = f" — {action['yield_kg']}kg yield" if action.get("yield_kg") else ""
+    return f"Crop #{action['crop_id']} marked as harvested{yield_str}", r
+
+def _h_log_spray(action, _lat, _lon, _name):
+    r = tools.log_spray(action["plot"], action["chemical"], action.get("quantity"), action.get("reason"))
+    if "error" in r:
+        return r["error"], None
+    qty = f" ({action['quantity']})" if action.get("quantity") else ""
+    reason = f" — {action['reason']}" if action.get("reason") else ""
+    return f"Spray logged: {action['chemical']}{qty} on {action['plot']}{reason}", r
+
+def _h_spray_history(action, _lat, _lon, _name):
+    logs = tools.spray_history(action.get("plot", ""))
+    if not logs:
+        return "No spray logs found.", None
+    lines = [f"Spray history — {action.get('plot', '')}:"]
+    for s in logs[:10]:
+        qty = f" ({s['quantity']})" if s.get("quantity") else ""
+        lines.append(f"  {s['date']}: {s['chemical']}{qty}")
+    return "\n".join(lines), logs
+
+def _h_log_observation(action, _lat, _lon, _name):
+    r = tools.log_observation(action["plot"], action["type"], action["description"],
+                              action.get("severity"))
+    if "error" in r:
+        return r["error"], None
+    sev = f" [{action['severity']}]" if action.get("severity") else ""
+    return f"Observation logged on {action['plot']}: {action['type']}{sev}", r
+
+def _h_open_observations(action, _lat, _lon, _name):
+    obs = tools.open_observations(action.get("plot"))
+    if not obs:
+        return "No open observations.", None
+    lines = ["Open observations:"]
+    for o in obs:
+        sev = f" [{o['severity']}]" if o.get("severity") else ""
+        lines.append(f"  {o['date']} | {o['plot_name']} | {o['type']}{sev}: {o['description'][:80]}")
+    return "\n".join(lines), obs
+
+def _h_mandi_price(action, _lat, _lon, _name):
+    crop = action.get("commodity") or action.get("crop")
+    if not crop:
+        known = list_crops_with_kb()
+        return (
+            f"Which crop price do you want? e.g. pomegranate, onion, sugarcane.\n"
+            f"Crops I know: {', '.join(known)}"
+        ), None
+    data = get_prices(crop, district=action.get("district") or None)
+    return format_prices(data), data
+
+def _h_ndvi_health(action, _lat, _lon, _name):
+    loc_raw = action.get("location") or "barloni"
+    name, lat, lon = _loc(loc_raw, _lat, _lon, _name)
+    if lat is None or lon is None:
+        from modules.farming.geocode import _LOCAL_MAP
+        lat, lon, name = _LOCAL_MAP.get("barloni", (18.1617, 75.4218, "Barloni"))
+    data = get_ndvi(lat=lat, lon=lon)
+    return format_ndvi_report(data, plot_name=name or "Barloni farm"), data
+
+def _h_disease_info(action, _lat, _lon, _name):
+    crop = action.get("crop") or None
+    if not crop:
+        known = list_crops_with_kb()
+        return (
+            f"Which crop are you asking about? I have disease information for: {', '.join(known) or 'pomegranate'}.\n"
+            "You can also share a photo for diagnosis."
+        ), None
+    condition = action.get("condition", "")
+    if condition:
+        return format_disease_summary(crop, condition), None
+    kb = kb_context_for_llm(crop)
+    return (kb if kb else f"No knowledge base found for {crop}."), None
+
+def _h_diagnose_photo(action, _lat, _lon, _name):
+    if not farming_server_running():
+        kb = kb_context_for_llm(action.get("crop", "pomegranate"))
+        return (
+            "Farming server not running — can't analyse photos right now.\n"
+            f"Start it: cd /home/ganesh/projects/farming && python main.py\n\n"
+            f"Meanwhile, here's the disease KB:\n{kb[:500]}..."
+        ), None
+    plot = tools.get_plot(action.get("plot", "")) if action.get("plot") else None
+    result = analyse_photo(
+        action["image_path"], action.get("crop", "pomegranate"),
+        location="", plot_id=plot["id"] if plot else None,
+    )
+    return format_diagnosis(result), result
+
+def _h_weather_now(action, _lat, _lon, _name):
+    loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
+    data = wx.current_conditions(lat=lat, lon=lon, name=loc)
+    return (
+        f"Current weather at {data['location']}:\n"
+        f"  {data['description']}, {data['temperature_c']}°C\n"
+        f"  Humidity: {data['humidity_pct']}%  |  Wind: {data['wind_kmh']} km/h  |  Rain: {data['rain_mm']}mm"
+    ), data
+
+def _h_weather_forecast(action, _lat, _lon, _name):
+    loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
+    days = action.get("days", 7)
+    fc = wx.forecast(lat=lat, lon=lon, days=days, name=loc)
+    lines = [f"Weather forecast — {fc['location']} ({days} days):", _fmt_forecast(fc["days"])]
+    if fc.get("soil_moisture_now") is not None:
+        lines.append(f"\nSoil moisture: {fc['soil_moisture_now']:.3f} m³/m³")
+    return "\n".join(lines), fc
+
+def _h_spray_safe_tomorrow(action, _lat, _lon, _name):
+    loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
+    result = wx.spray_safe_tomorrow(lat=lat, lon=lon, name=loc)
+    status = "SAFE to spray" if result["safe_to_spray"] else "NOT safe to spray"
+    lines = [f"Tomorrow ({result['date']}): {status}", f"  {chr(10).join(result['reasons'])}",
+             f"\n  Total rain expected: {result['rain_mm']}mm"]
+    rainy = result.get("rainy_hours", [])
+    dry   = result.get("dry_windows", [])
+    if rainy:
+        lines.append(f"  Rain expected: {', '.join(rainy)}")
+    if dry:
+        morning   = [h for h in dry if h < "12:00"]
+        afternoon = [h for h in dry if "12:00" <= h < "17:00"]
+        evening   = [h for h in dry if h >= "17:00"]
+        windows   = []
+        if morning:   windows.append(f"morning ({morning[0]}–{morning[-1]})")
+        if afternoon: windows.append(f"afternoon ({afternoon[0]}–{afternoon[-1]})")
+        if evening:   windows.append(f"evening ({evening[0]}–{evening[-1]})")
+        lines.append(f"  Dry windows: {', '.join(windows) if windows else 'none'}")
+    hourly = result.get("hourly_rain", [])
+    if hourly:
+        peak = max(hourly, key=lambda h: h.get("rain_mm") or 0)
+        if (peak.get("rain_mm") or 0) > 0:
+            lines.append(f"  Peak rain: {peak['rain_mm']}mm at {peak['hour']}")
+    return "\n".join(lines), result
+
+def _h_rainfall_history(action, _lat, _lon, _name):
+    loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
+    r = wx.historical_rainfall(lat=lat, lon=lon, name=loc,
+                               start=action.get("start"), end=action.get("end"))
+    lines = [f"Rainfall — {r['location']} ({r['start']} to {r['end']}) — total: {r['total_mm']}mm"]
+    for month, mm in r["monthly_mm"].items():
+        lines.append(f"  {month}: {mm}mm")
+    return "\n".join(lines), r
+
+def _h_crop_history(action, _lat, _lon, _name):
+    plot = tools.get_plot(action.get("plot", ""))
+    if not plot:
+        return f"Plot '{action.get('plot')}' not found.", None
+    if not plot.get("lat") or not plot.get("lon"):
+        return f"Plot '{plot['name']}' has no coordinates. Add it with a location name.", None
+    crops = tools.list_crops(plot["name"])
+    if not crops:
+        return f"No active crops on {plot['name']} to get history for.", None
+    planted = crops[0].get("planted_date")
+    if not planted:
+        return f"No planting date recorded for crops on {plot['name']}.", None
+    h = wx.crop_history(plot["lat"], plot["lon"], planted, plot["name"])
+    return (
+        f"Weather history for {plot['name']} since planting ({planted}, {h['days_since_plant']} days ago):\n"
+        f"  Total rain: {h['total_rain_mm']}mm\n"
+        f"  Avg max temp: {h['avg_max_temp_c']}°C\n"
+        f"  High-humidity days (>80%): {h['humid_days_over80']}\n"
+        f"  Heavy rain days (>20mm): {h['heavy_rain_days_over20mm']}\n"
+        f"  Last 7 days: {h['last_7d_rain_mm']}mm rain, {h['last_7d_humid_days']} humid days"
+    ), h
+
+def _h_soil_data(action, _lat, _lon, _name):
+    plot_name = action.get("plot")
+    if plot_name:
+        plot = tools.get_plot(plot_name)
+        if plot and plot.get("lat"):
+            data = get_soil(lat=plot["lat"], lon=plot["lon"], location=plot.get("name", plot_name))
+            return format_soil(data), data
+    loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
+    data = get_soil(lat=lat, lon=lon, location=loc)
+    return format_soil(data), data
+
+def _h_season_summary(action, _lat, _lon, _name):
+    s = tools.season_summary()
+    return (
+        f"Season summary:\n"
+        f"  Plots: {s['plots']}\n"
+        f"  Active crops: {s['active_crops']}\n"
+        f"  Harvested: {s['harvested_crops']} ({s['total_yield_kg']}kg total yield)\n"
+        f"  Open observations: {s['open_observations']}\n"
+        f"  Sprays this month: {s['sprays_this_month']}"
+    ), s
+
+def _h_chat(action, _lat, _lon, _name):
+    return action.get("reply", ""), None
+
+
+# Dispatch table — add new farming actions here (one line each)
+_DISPATCH: dict[str, Any] = {
+    "add_plot":           _h_add_plot,
+    "list_plots":         _h_list_plots,
+    "plant_crop":         _h_plant_crop,
+    "list_crops":         _h_list_crops,
+    "harvest_crop":       _h_harvest_crop,
+    "log_spray":          _h_log_spray,
+    "spray_history":      _h_spray_history,
+    "log_observation":    _h_log_observation,
+    "open_observations":  _h_open_observations,
+    "mandi_price":        _h_mandi_price,
+    "ndvi_health":        _h_ndvi_health,
+    "disease_info":       _h_disease_info,
+    "diagnose_photo":     _h_diagnose_photo,
+    "weather_now":        _h_weather_now,
+    "weather_forecast":   _h_weather_forecast,
+    "spray_safe_tomorrow":_h_spray_safe_tomorrow,
+    "rainfall_history":   _h_rainfall_history,
+    "crop_history":       _h_crop_history,
+    "soil_data":          _h_soil_data,
+    "season_summary":     _h_season_summary,
+    "summary":            _h_season_summary,
+    "chat":               _h_chat,
+}
+
+
 def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | None]:
-    a = action.get("action")
+    a    = action.get("action")
     farm = (context or {}).get("default_farm", {})
     _lat  = farm.get("lat") or farm.get("latitude") or None
     _lon  = farm.get("lon") or farm.get("longitude") or None
     _name = (farm.get("city") or farm.get("primary_location")
              or farm.get("location") or farm.get("label") or None)
-
-    # ── Plot management ────────────────────────────────────────────────────────
-    if a == "add_plot":
-        loc = action.get("location", "")
-        lat = lon = None
-        if loc:
-            coords = resolve(loc)
-            if coords:
-                lat, lon, _ = coords
-        r = tools.add_plot(action["name"], action.get("area_acres"), action.get("soil_type"), lat, lon)
-        area = f" ({action['area_acres']} acres)" if action.get("area_acres") else ""
-        loc_str = f" — {loc}" if loc else ""
-        return f"Plot added: {action['name']}{area}{loc_str}", r
-
-    if a == "list_plots":
-        plots = tools.list_plots()
-        if not plots:
-            return "No plots yet. Try: 'add my north field, 3 acres, black soil, Solapur'", None
-        lines = ["Your plots:"]
-        for p in plots:
-            area = f" — {p['area_acres']} acres" if p.get("area_acres") else ""
-            soil = f", {p['soil_type']}" if p.get("soil_type") else ""
-            lines.append(f"  {p['name']}{area}{soil}")
-        return "\n".join(lines), plots
-
-    if a == "plant_crop":
-        r = tools.plant_crop(action["plot"], action["crop"], action.get("variety"),
-                             action.get("planted_date"), action.get("expected_harvest"))
-        if "error" in r:
-            return r["error"], None
-        harvest = f", harvest expected {action['expected_harvest']}" if action.get("expected_harvest") else ""
-        return f"Planted {action['crop']} in {action['plot']} on {r['planted']}{harvest}", r
-
-    if a == "list_crops":
-        crops = tools.list_crops(action.get("plot"))
-        if not crops:
-            return "No active crops found.", None
-        lines = ["Active crops:"]
-        for c in crops:
-            h = f" (harvest: {c['expected_harvest']})" if c.get("expected_harvest") else ""
-            v = f" / {c['variety']}" if c.get("variety") else ""
-            lines.append(f"  {c['plot_name']} → {c['crop_name']}{v}{h}")
-        return "\n".join(lines), crops
-
-    if a == "harvest_crop":
-        r = tools.update_crop_status(action["crop_id"], "harvested", action.get("yield_kg"))
-        yield_str = f" — {action['yield_kg']}kg yield" if action.get("yield_kg") else ""
-        return f"Crop #{action['crop_id']} marked as harvested{yield_str}", r
-
-    if a == "log_spray":
-        r = tools.log_spray(action["plot"], action["chemical"], action.get("quantity"), action.get("reason"))
-        if "error" in r:
-            return r["error"], None
-        qty = f" ({action['quantity']})" if action.get("quantity") else ""
-        reason = f" — {action['reason']}" if action.get("reason") else ""
-        return f"Spray logged: {action['chemical']}{qty} on {action['plot']}{reason}", r
-
-    if a == "spray_history":
-        logs = tools.spray_history(action.get("plot", ""))
-        if not logs:
-            return "No spray logs found.", None
-        lines = [f"Spray history — {action.get('plot', '')}:"]
-        for s in logs[:10]:
-            qty = f" ({s['quantity']})" if s.get("quantity") else ""
-            lines.append(f"  {s['date']}: {s['chemical']}{qty}")
-        return "\n".join(lines), logs
-
-    if a == "log_observation":
-        r = tools.log_observation(action["plot"], action["type"], action["description"],
-                                  action.get("severity"))
-        if "error" in r:
-            return r["error"], None
-        sev = f" [{action['severity']}]" if action.get("severity") else ""
-        return f"Observation logged on {action['plot']}: {action['type']}{sev}", r
-
-    if a == "open_observations":
-        obs = tools.open_observations(action.get("plot"))
-        if not obs:
-            return "No open observations.", None
-        lines = ["Open observations:"]
-        for o in obs:
-            sev = f" [{o['severity']}]" if o.get("severity") else ""
-            lines.append(f"  {o['date']} | {o['plot_name']} | {o['type']}{sev}: {o['description'][:80]}")
-        return "\n".join(lines), obs
-
-    # ── Mandi (APMC) prices ────────────────────────────────────────────────────
-    if a == "mandi_price":
-        crop = action.get("commodity") or action.get("crop")
-        if not crop:
-            known = list_crops_with_kb()
-            return (
-                f"Which crop price do you want? e.g. pomegranate, onion, sugarcane.\n"
-                f"Crops I know: {', '.join(known)}"
-            ), None
-        district = action.get("district") or None
-        data = get_prices(crop, district=district)
-        return format_prices(data), data
-
-    # ── NDVI crop health (NASA MODIS) ─────────────────────────────────────────
-    if a == "ndvi_health":
-        loc_raw = action.get("location") or "barloni"
-        name, lat, lon = _loc(loc_raw, _lat, _lon, _name)
-        # Fall back to Barloni if no coordinates
-        if lat is None or lon is None:
-            from modules.farming.geocode import _LOCAL_MAP
-            lat, lon, name = _LOCAL_MAP.get("barloni", (18.1617, 75.4218, "Barloni"))
-        data = get_ndvi(lat=lat, lon=lon)
-        return format_ndvi_report(data, plot_name=name or "Barloni farm"), data
-
-    # ── Disease knowledge base ─────────────────────────────────────────────────
-    if a == "disease_info":
-        crop = action.get("crop") or None
-        if not crop:
-            known = list_crops_with_kb()
-            crops_str = ", ".join(known) if known else "pomegranate"
-            return (
-                f"Which crop are you asking about? I have disease information for: {crops_str}.\n"
-                "You can also share a photo for diagnosis."
-            ), None
-        condition = action.get("condition", "")
-        if condition:
-            text = format_disease_summary(crop, condition)
-        else:
-            kb = kb_context_for_llm(crop)
-            text = kb if kb else f"No knowledge base found for {crop}."
-        return text, None
-
-    # ── Disease diagnosis from photo ───────────────────────────────────────────
-    if a == "diagnose_photo":
-        if not farming_server_running():
-            kb = kb_context_for_llm(action.get("crop", "pomegranate"))
-            return (
-                "Farming server not running — can't analyse photos right now.\n"
-                f"Start it: cd /home/ganesh/projects/farming && python main.py\n\n"
-                f"Meanwhile, here's the disease KB:\n{kb[:500]}..."
-            ), None
-        plot = tools.get_plot(action.get("plot", "")) if action.get("plot") else None
-        result = analyse_photo(
-            action["image_path"], action.get("crop", "pomegranate"),
-            location="", plot_id=plot["id"] if plot else None,
-        )
-        return format_diagnosis(result), result
-
-    # ── Weather ────────────────────────────────────────────────────────────────
-    if a == "weather_now":
-        loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
-        data = wx.current_conditions(lat=lat, lon=lon, name=loc)
-        return (
-            f"Current weather at {data['location']}:\n"
-            f"  {data['description']}, {data['temperature_c']}°C\n"
-            f"  Humidity: {data['humidity_pct']}%  |  Wind: {data['wind_kmh']} km/h  |  Rain: {data['rain_mm']}mm"
-        ), data
-
-    if a == "weather_forecast":
-        loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
-        days = action.get("days", 7)
-        fc = wx.forecast(lat=lat, lon=lon, days=days, name=loc)
-        lines = [f"Weather forecast — {fc['location']} ({days} days):"]
-        lines.append(_fmt_forecast(fc["days"]))
-        if fc.get("soil_moisture_now") is not None:
-            lines.append(f"\nSoil moisture: {fc['soil_moisture_now']:.3f} m³/m³")
-        return "\n".join(lines), fc
-
-    if a == "spray_safe_tomorrow":
-        loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
-        result = wx.spray_safe_tomorrow(lat=lat, lon=lon, name=loc)
-        status = "SAFE to spray" if result["safe_to_spray"] else "NOT safe to spray"
-        reasons = "\n  ".join(result["reasons"])
-        lines = [f"Tomorrow ({result['date']}): {status}", f"  {reasons}"]
-        lines.append(f"\n  Total rain expected: {result['rain_mm']}mm")
-
-        rainy = result.get("rainy_hours", [])
-        dry = result.get("dry_windows", [])
-        hourly = result.get("hourly_rain", [])
-
-        if rainy:
-            lines.append(f"  Rain expected: {', '.join(rainy)}")
-        if dry:
-            morning = [h for h in dry if h < "12:00"]
-            afternoon = [h for h in dry if "12:00" <= h < "17:00"]
-            evening = [h for h in dry if h >= "17:00"]
-            windows = []
-            if morning:
-                windows.append(f"morning ({morning[0]}–{morning[-1]})")
-            if afternoon:
-                windows.append(f"afternoon ({afternoon[0]}–{afternoon[-1]})")
-            if evening:
-                windows.append(f"evening ({evening[0]}–{evening[-1]})")
-            lines.append(f"  Dry windows: {', '.join(windows) if windows else 'none'}")
-
-        if hourly:
-            peak = max(hourly, key=lambda h: h.get("rain_mm") or 0)
-            if (peak.get("rain_mm") or 0) > 0:
-                lines.append(f"  Peak rain: {peak['rain_mm']}mm at {peak['hour']}")
-
-        return "\n".join(lines), result
-
-    if a == "rainfall_history":
-        loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
-        r = wx.historical_rainfall(lat=lat, lon=lon, name=loc,
-                                   start=action.get("start"), end=action.get("end"))
-        lines = [f"Rainfall — {r['location']} ({r['start']} to {r['end']}) — total: {r['total_mm']}mm"]
-        for month, mm in r["monthly_mm"].items():
-            lines.append(f"  {month}: {mm}mm")
-        return "\n".join(lines), r
-
-    if a == "crop_history":
-        plot = tools.get_plot(action.get("plot", ""))
-        if not plot:
-            return f"Plot '{action.get('plot')}' not found.", None
-        if not plot.get("lat") or not plot.get("lon"):
-            return f"Plot '{plot['name']}' has no coordinates. Add it with a location name.", None
-        crops = tools.list_crops(plot["name"])
-        if not crops:
-            return f"No active crops on {plot['name']} to get history for.", None
-        planted = crops[0].get("planted_date")
-        if not planted:
-            return f"No planting date recorded for crops on {plot['name']}.", None
-        h = wx.crop_history(plot["lat"], plot["lon"], planted, plot["name"])
-        return (
-            f"Weather history for {plot['name']} since planting ({planted}, {h['days_since_plant']} days ago):\n"
-            f"  Total rain: {h['total_rain_mm']}mm\n"
-            f"  Avg max temp: {h['avg_max_temp_c']}°C\n"
-            f"  High-humidity days (>80%): {h['humid_days_over80']}\n"
-            f"  Heavy rain days (>20mm): {h['heavy_rain_days_over20mm']}\n"
-            f"  Last 7 days: {h['last_7d_rain_mm']}mm rain, {h['last_7d_humid_days']} humid days"
-        ), h
-
-    # ── Soil ───────────────────────────────────────────────────────────────────
-    if a == "soil_data":
-        plot_name = action.get("plot")
-        if plot_name:
-            # Named plot has explicit coords
-            plot = tools.get_plot(plot_name)
-            if plot and plot.get("lat"):
-                data = get_soil(lat=plot["lat"], lon=plot["lon"],
-                                location=plot.get("name", plot_name))
-                return format_soil(data), data
-        # Fall back to location resolution (handles personal refs + geocoding)
-        loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
-        data = get_soil(lat=lat, lon=lon, location=loc)
-        return format_soil(data), data
-
-    # ── Summary ────────────────────────────────────────────────────────────────
-    if a in ("season_summary", "summary"):
-        s = tools.season_summary()
-        return (
-            f"Season summary:\n"
-            f"  Plots: {s['plots']}\n"
-            f"  Active crops: {s['active_crops']}\n"
-            f"  Harvested: {s['harvested_crops']} ({s['total_yield_kg']}kg total yield)\n"
-            f"  Open observations: {s['open_observations']}\n"
-            f"  Sprays this month: {s['sprays_this_month']}"
-        ), s
-
-    if a == "chat":
-        return action.get("reply", ""), None
-
-    return f"Unknown action: {a}", None
+    fn = _DISPATCH.get(a)
+    if fn:
+        return fn(action, _lat, _lon, _name)
+    return f"Unknown farming action: {a}", None
 
 
 _FOLLOW_UPS = {

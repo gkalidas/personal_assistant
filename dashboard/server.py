@@ -396,6 +396,19 @@ async def guardian_patch():
     return JSONResponse({"status": "patching"})
 
 
+@app.get("/api/code/scan")
+async def api_code_scan(path: str | None = None):
+    """Run the code directory analyzer. Defaults to the project root."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    def _run():
+        from modules.code.analyzer import scan_directory
+        target = path or str(Path(__file__).parent.parent)
+        return scan_directory(target, llm_context=False)
+    result = await loop.run_in_executor(None, _run)
+    return JSONResponse(result)
+
+
 @app.get("/api/security/db-key")
 async def api_db_key_info():
     """Return encryption key metadata (never the key itself)."""

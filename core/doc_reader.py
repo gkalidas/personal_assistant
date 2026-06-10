@@ -62,14 +62,14 @@ def read_document(path: str | Path) -> dict[str, Any]:
 
 def _read_pdf(p: Path) -> dict:
     try:
-        import PyPDF2
+        import pypdf
     except ImportError:
-        return _err("pdf", "PyPDF2 not installed — run: pip install PyPDF2")
+        return _err("pdf", "pypdf not installed — run: pip install pypdf")
 
     pages_text = []
     title = None
     try:
-        reader = PyPDF2.PdfReader(str(p))
+        reader = pypdf.PdfReader(str(p))
         meta = reader.metadata
         if meta and meta.title:
             title = meta.title

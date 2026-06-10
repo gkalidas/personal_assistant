@@ -359,7 +359,10 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
   <div class="panel clickable" id="p-guardian" onclick="openModal('guardian')">
     <div class="panel-label" style="justify-content:space-between">
       GUARDIAN
-      <button class="panel-btn" id="g-upd-btn" onclick="event.stopPropagation();triggerUpdate()">⬆ UPDATE</button>
+      <div style="display:flex;gap:5px">
+        <button class="panel-btn" onclick="event.stopPropagation();runCodeAnalysis()" id="g-scan-btn" title="Analyze codebase: LOC, complexity, security">◈ SCAN</button>
+        <button class="panel-btn" id="g-upd-btn" onclick="event.stopPropagation();triggerUpdate()">⬆ UPDATE</button>
+      </div>
     </div>
     <div class="guardian-status">
       <div class="guardian-icon" id="g-icon">◈</div>
@@ -374,6 +377,7 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
       <div class="scan-item"><div class="scan-name">THREAT</div><div class="scan-val ok" id="g-threat">--</div><div class="scan-time" id="g-threat-t">--</div></div>
       <div class="scan-item"><div class="scan-name">AUDIT</div><div class="scan-val ok" id="g-audit">--</div><div class="scan-time" id="g-audit-t">--</div></div>
     </div>
+    <div id="g-code-summary" style="display:none;margin-top:6px;font-size:9px;letter-spacing:1px;color:var(--dim);border-top:1px solid var(--border);padding-top:5px"></div>
     <span class="click-hint">DETAILS</span>
   </div>
 
@@ -773,6 +777,46 @@ async function refreshWeather(){
 }
 
 // ── Guardian update button ─────────────────────────────────────────────────────
+async function runCodeAnalysis(){
+  const btn=el('g-scan-btn');
+  const summary=el('g-code-summary');
+  btn.disabled=true;btn.textContent='◈ …';
+  summary.style.display='block';summary.textContent='Scanning codebase…';
+  try{
+    const r=await fetch('/api/code/scan');
+    if(!r.ok){summary.textContent='Scan failed: '+r.status;btn.disabled=false;btn.textContent='◈ SCAN';return}
+    const d=await r.json();
+    const topFn=d.top_complex_functions&&d.top_complex_functions[0];
+    const topFnStr=topFn?` · worst cc=${topFn.complexity} ${topFn.function}()`:'';
+    const secStr=d.security_issues&&d.security_issues.length?` · ${d.security_issues.length} sec issues`:'· 0 sec issues';
+    summary.innerHTML=
+      `<span style="color:var(--cyan)">${d.total_files} files · ${Number(d.total_loc).toLocaleString()} LOC</span>${topFnStr}${secStr}<br>`+
+      (d.by_language||[]).slice(0,4).map(l=>`${l.language}: ${l.loc.toLocaleString()}`).join(' · ');
+    btn.textContent='◈ DONE';
+    setTimeout(()=>{btn.textContent='◈ SCAN';btn.disabled=false},3000);
+    // Open modal with full report if user clicks DONE
+    btn.onclick=ev=>{ev.stopPropagation();showCodeReport(d);btn.textContent='◈ SCAN';btn.disabled=false;btn.onclick=ev2=>{ev2.stopPropagation();runCodeAnalysis()}};
+  }catch(e){summary.textContent='Error: '+e.message;btn.disabled=false;btn.textContent='◈ SCAN'}
+}
+
+function showCodeReport(d){
+  const topFns=(d.top_complex_functions||[]).slice(0,8)
+    .map(f=>`<tr><td style="color:var(--red)">${f.complexity}</td><td style="color:var(--amber)">${f.function}()</td><td style="color:var(--dim)">${f.file}:${f.line}</td></tr>`).join('');
+  const langs=(d.by_language||[]).slice(0,6)
+    .map(l=>`<tr><td>${l.language}</td><td style="color:var(--cyan)">${(l.loc||0).toLocaleString()}</td><td style="color:var(--dim)">${l.files} files</td></tr>`).join('');
+  const body=`
+    <div style="font-size:10px;letter-spacing:1px;color:var(--dim);margin-bottom:12px">
+      Total: <span style="color:var(--cyan)">${d.total_files} files · ${Number(d.total_loc).toLocaleString()} lines</span>
+      · Security: <span style="color:var(--green)">✓ ${(d.security_issues||[]).length} issues</span>
+    </div>
+    <div style="margin-bottom:10px"><div style="font-size:9px;letter-spacing:2px;color:var(--dim);margin-bottom:6px">LANGUAGES</div>
+    <table style="width:100%;border-collapse:collapse;font-size:10px">${langs}</table></div>
+    <div><div style="font-size:9px;letter-spacing:2px;color:var(--dim);margin-bottom:6px">COMPLEX FUNCTIONS</div>
+    <table style="width:100%;border-collapse:collapse;font-size:10px"><tr style="color:var(--dim);font-size:9px"><th style="text-align:left">CC</th><th style="text-align:left">Function</th><th style="text-align:left">File</th></tr>${topFns}</table></div>`;
+  el('modal-g-body').innerHTML=body;
+  openModal('guardian');
+}
+
 async function triggerUpdate(){
   const btn=el('g-upd-btn');
   btn.disabled=true;btn.className='panel-btn running';btn.textContent='⬆ …';
