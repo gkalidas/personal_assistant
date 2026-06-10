@@ -36,7 +36,24 @@ _EXT_LANG: dict[str, str] = {
 _SKIP_DIRS = {
     ".git", ".venv", "venv", "envs", "__pycache__", "node_modules",
     ".mypy_cache", ".pytest_cache", "dist", "build", ".tox",
-    "site-packages", ".eggs", "*.egg-info",
+    "site-packages", ".eggs", "logs",
+}
+
+# File extensions that are binary/data — never count as code LOC
+_SKIP_EXTS = {
+    ".pyc", ".pyo", ".pyd",            # Python bytecode
+    ".log", ".jsonl",                   # Runtime logs / event journals
+    ".db", ".sqlite", ".sqlite3",       # Databases
+    ".enc",                             # Encrypted backups
+    ".png", ".jpg", ".jpeg", ".gif",    # Images
+    ".ico", ".svg", ".webp", ".heic",   # More images
+    ".woff", ".woff2", ".ttf", ".otf",  # Fonts
+    ".mp3", ".wav", ".ogg", ".mp4",     # Media
+    ".zip", ".tar", ".gz", ".bz2",      # Archives
+    ".bin", ".so", ".dylib", ".dll",    # Binaries
+    ".model", ".onnx", ".pt",           # ML model files
+    ".sample",                          # Git sample files
+    ".TAG",                             # Tag files
 }
 
 
@@ -128,6 +145,11 @@ def scan_directory(target: str | Path, *, llm_context: bool = True) -> dict[str,
         if fpath.is_dir() or _should_skip(fpath):
             continue
         ext = fpath.suffix.lower()
+        if ext in _SKIP_EXTS:
+            continue
+        # Skip extensionless files (binary model caches, git objects, etc.)
+        if not ext:
+            continue
         lang = _EXT_LANG.get(ext, "Other")
         total, code = _count_lines(fpath)
         by_lang[lang]["files"] += 1
