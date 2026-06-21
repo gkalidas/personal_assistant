@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 import httpx
+from core.sanitizer import sanitize_external_text
 
 # Cache results for 30 minutes — prices update once daily, no need to hammer the API
 _cache: dict[str, tuple[float, dict]] = {}
@@ -129,7 +130,9 @@ def format_prices(data: dict) -> str:
     lines.append("  " + "-" * 68)
 
     for r in records[:8]:
-        market = f"{r.get('market', '?')} ({r.get('district', '')})"
+        m_name = sanitize_external_text(r.get("market", "?"),   label="mandi:market")
+        m_dist = sanitize_external_text(r.get("district", ""),  label="mandi:district")
+        market = f"{m_name} ({m_dist})"
         if len(market) > 40:
             market = market[:38] + ".."
         mn = r.get("min_price", 0)

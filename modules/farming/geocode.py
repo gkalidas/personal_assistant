@@ -2,6 +2,7 @@
 Includes a local fallback for Maharashtra farming locations not in the geocoder database."""
 
 import httpx
+from core.sanitizer import sanitize_external_text
 
 _cache: dict[str, tuple[float, float, str]] = {}
 
@@ -63,7 +64,8 @@ def _query(name: str) -> tuple[float, float, str] | None:
         if not results:
             return None
         loc = results[0]
-        return (loc["latitude"], loc["longitude"], loc.get("name", name))
+        clean_name = sanitize_external_text(loc.get("name", name), label="geocode")
+        return (loc["latitude"], loc["longitude"], clean_name)
     except Exception:
         return None
 

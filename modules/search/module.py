@@ -16,6 +16,7 @@ import httpx
 
 from core.base_module import BaseModule, ModuleResponse
 from core.config import SEARXNG_URL
+from core.sanitizer import sanitize_external_text
 
 log = logging.getLogger(__name__)
 
@@ -101,9 +102,9 @@ def _format_results(results: list[dict]) -> str:
         return "No results found."
     parts = []
     for i, r in enumerate(results, 1):
-        title = r.get("title", "")
+        title = sanitize_external_text(r.get("title", ""),        label="search:title")
         url   = r.get("href") or r.get("url", "")
-        body  = r.get("body", "")[:200]
+        body  = sanitize_external_text(r.get("body", "")[:400],   label="search:body")
         parts.append(f"[{i}] {title}\n    {url}\n    {body}")
     return "\n\n".join(parts)
 

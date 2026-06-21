@@ -1,18 +1,22 @@
 """
 Input sanitizer and PII redactor.
 
-sanitize_input()  — cleans user query before it reaches the LLM.
-redact_pii()      — strips personal identifiers before writing to logs/DB.
-validate_action() — checks LLM JSON output has safe, expected field types.
+sanitize_input()         — cleans user query before it reaches the LLM.
+sanitize_external_text() — scrubs injection patterns from external API/web content.
+redact_pii()             — strips personal identifiers before writing to logs/DB.
+validate_action()        — checks LLM JSON output has safe, expected field types.
 
 Injection patterns are loaded from security/patterns.json (auto-updated by
 the security guardian). Falls back to the built-in base set if not present.
 """
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -172,6 +176,23 @@ def sanitize_input(query: str) -> SanitizeResult:
             warnings.append(f"unusual repetition detected: '{most_common}' repeated {tokens.count(most_common)} times")
 
     return SanitizeResult(query=query, original=original, warnings=warnings)
+
+
+def sanitize_external_text(text: str, label: str = "external") -> str:
+    """
+    Scrub injection patterns from text that arrived from an external source
+    (API responses, web search results, geocoding names, etc.).
+
+    Unlike sanitize_input() this does not block or truncate — it silently
+    replaces any matching injection with [BLOCKED] and logs a warning so the
+    surrounding content still flows through cleanly.
+    """
+    if not text:
+        return text
+    cleaned = _INJECTION_RE.sub("[BLOCKED]", text)
+    if cleaned != text:
+        log.warning("Injection pattern scrubbed from %s content", label)
+    return cleaned
 
 
 # ── PII redactor ──────────────────────────────────────────────────────────────
