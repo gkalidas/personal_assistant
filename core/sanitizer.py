@@ -22,15 +22,18 @@ log = logging.getLogger(__name__)
 
 MAX_QUERY_LEN = 1000
 
-# Shell metacharacters that must never appear in LLM action field values.
-# These are legitimate in free-text user queries ("I earned $500; split it")
-# but have no place in structured action field values like plot names or amounts.
+# Unambiguous shell-injection syntax that must never appear in LLM action
+# field values. Deliberately narrow: these fields feed parameterized SQLite
+# queries (never a shell), so this is defense-in-depth. We match only syntax
+# with no legitimate use in farm/health/finance free text — NOT bare "&&"/"||"
+# or plain command words, which false-positive on natural descriptions
+# (e.g. "bought seeds && fertilizer", "use python for analysis").
 _SHELL_META_RE = re.compile(
     r'(?:'
-    r'\$\(|\`'                          # command substitution $() or backtick
-    r'|&&|\|\|'                         # shell logical operators
-    r'|\b(?:rm|chmod|chown|curl|wget|nc|bash|sh|python|perl)\s+-'  # dangerous commands with flags
-    r'|\.\./\.\.'                       # path traversal
+    r'\$\([^)]*\)|`[^`]*`'                       # command substitution $(...) or `...`
+    r'|;\s*(?:rm|chmod|chown|curl|wget|nc|bash|sh|eval)\b'  # command chained after ';'
+    r'|\|\s*(?:bash|sh|nc|python|perl)\b'        # piped into an interpreter
+    r'|\.\./\.\.'                                # path traversal
     r')',
     re.IGNORECASE,
 )
@@ -125,6 +128,9 @@ _ACTION_SCHEMA: dict[str, dict[str, dict[str, tuple]]] = {
         "crop_history":   {},
         "soil_data":      {},
         "season_summary": {},
+        "summary":        {},
+        "ndvi_health":    {"location": (str, type(None)), "plot": (str, type(None))},
+        "analysis_history": {"limit": (int, float, type(None))},
         "chat":           {"reply": (str,)},
     },
     "health": {
