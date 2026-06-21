@@ -19,6 +19,7 @@ import sys
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Callable
 
 PROJECT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT))
@@ -60,6 +61,7 @@ WEIGHTS = {
 
 
 def _read_latest(name: str) -> dict | None:
+    """Load logs/security/<name>_latest.json, or None if missing/unreadable."""
     path = LOG_DIR / f"{name}_latest.json"
     if not path.exists():
         return None
@@ -89,6 +91,7 @@ def _is_stale(data: dict | None, max_hours: int) -> tuple[bool, str]:
 # ── Per-component scorers ──────────────────────────────────────────────────────
 
 def _score_cve(data: dict | None) -> tuple[float, str]:
+    """Score dependency CVEs (0–100): penalise by severity, reward auto-patches."""
     if data is None:
         return 40.0, "No CVE scan run yet — assume vulnerable"
 
@@ -118,6 +121,7 @@ def _score_cve(data: dict | None) -> tuple[float, str]:
 
 
 def _score_code_audit(data: dict | None) -> tuple[float, str]:
+    """Score code-audit findings (0–100) weighted by issue severity."""
     if data is None:
         return 50.0, "No code audit run yet"
 
@@ -144,6 +148,7 @@ def _score_code_audit(data: dict | None) -> tuple[float, str]:
 
 
 def _score_red_team(data: dict | None) -> tuple[float, str]:
+    """Score the red-team run (0–100): penalise by bypass rate, severity, and the indirect-injection gap."""
     if data is None:
         return 50.0, "No red team run yet — unknown attack surface"
 
@@ -177,6 +182,7 @@ def _score_red_team(data: dict | None) -> tuple[float, str]:
 
 
 def _score_jailbreak(data: dict | None) -> tuple[float, str]:
+    """Score the jailbreak sim (0–100): penalise by output-jail escape rate."""
     if data is None:
         return 50.0, "No jailbreak simulation run yet"
 
@@ -194,6 +200,7 @@ def _score_jailbreak(data: dict | None) -> tuple[float, str]:
 
 
 def _score_patterns(data: dict | None) -> tuple[float, str]:
+    """Score injection-pattern health (0–100) from pattern count and recency."""
     if data is None:
         # Try reading patterns.json directly
         pf = PROJECT / "security" / "patterns.json"
@@ -216,6 +223,7 @@ def _score_patterns(data: dict | None) -> tuple[float, str]:
 
 
 def _score_anomaly(data: dict | None) -> tuple[float, str]:
+    """Score recent log anomalies (0–100) weighted by alert severity."""
     if data is None:
         return 60.0, "No anomaly detection run yet"
 
@@ -235,101 +243,122 @@ def _score_anomaly(data: dict | None) -> tuple[float, str]:
     return round(score, 1), detail
 
 
-# ── Main calculator ────────────────────────────────────────────────────────────
+# ── Component specifications ────────────────────────────────────────────────────
 
-def calculate_posture(verbose: bool = True) -> PostureReport:
-    computed_at = datetime.now().isoformat()
-    components  = []
-    alerts      = []
-    recommendations = []
+@dataclass(frozen=True)
+class _ComponentSpec:
+    """Declarative description of one posture component.
 
-    # ── CVE ──────────────────────────────────────────────────────────────────
-    cve_data  = _read_latest("vuln_scan")
-    stale, lr = _is_stale(cve_data, max_hours=48)
-    raw, det  = _score_cve(cve_data)
-    components.append(PostureComponent(
-        name="CVE Scan", score=raw * WEIGHTS["cve"], weight=WEIGHTS["cve"],
-        raw_score=raw, detail=det, stale=stale, last_run=lr
-    ))
-    if stale:
-        recommendations.append("Run `python security/guardian.py vuln` — CVE scan is overdue")
-    if raw < 60:
-        alerts.append(f"CVE: critical/high vulnerabilities in dependencies ({det})")
+    Drives :func:`_evaluate_component` so every component is scored, staleness-
+    checked, and alerted on through the same code path instead of a copy-pasted
+    block. ``extra_hook`` adds component-specific alerts/recommendations
+    (e.g. the red-team bypass and indirect-injection warnings).
+    """
+    name:        str
+    weight_key:  str
+    source:      str                                   # logs/security/<source>_latest.json
+    scorer:      Callable[[dict | None], tuple[float, str]]
+    stale_hours: int
+    overdue_cmd: str                                   # recommendation shown when stale
+    alert_below: float | None = None                   # raw score that triggers an alert
+    alert_label: str = ""                              # prefix for that alert
+    extra_hook:  Callable[[dict | None], tuple[list[str], list[str]]] | None = None
 
-    # ── Code audit ────────────────────────────────────────────────────────────
-    audit_data = _read_latest("code_audit")
-    stale, lr  = _is_stale(audit_data, max_hours=8 * 24)
-    raw, det   = _score_code_audit(audit_data)
-    components.append(PostureComponent(
-        name="Code Audit", score=raw * WEIGHTS["code_audit"], weight=WEIGHTS["code_audit"],
-        raw_score=raw, detail=det, stale=stale, last_run=lr
-    ))
-    if stale:
-        recommendations.append("Run `python security/guardian.py audit` — code audit is overdue")
-    if raw < 60:
-        alerts.append(f"Code: serious issues found ({det})")
 
-    # ── Red team ──────────────────────────────────────────────────────────────
-    rt_data   = _read_latest("red_team")
-    stale, lr = _is_stale(rt_data, max_hours=72)
-    raw, det  = _score_red_team(rt_data)
-    components.append(PostureComponent(
-        name="Red Team", score=raw * WEIGHTS["red_team"], weight=WEIGHTS["red_team"],
-        raw_score=raw, detail=det, stale=stale, last_run=lr
-    ))
-    if stale:
-        recommendations.append("Run `python security/red_team.py` — attack simulation is overdue")
-    if rt_data and rt_data.get("bypassed", 0) > 0:
-        alerts.append(f"Red team: {rt_data['bypassed']} attack(s) bypassed sanitizer")
-        recommendations.append("Run `python security/autodefense.py` to close bypass gaps")
-    if rt_data and rt_data.get("indirect_gap"):
+def _red_team_extra(data: dict | None) -> tuple[list[str], list[str]]:
+    """Red-team-specific alerts: sanitizer bypasses and the indirect-injection gap."""
+    alerts: list[str] = []
+    recs:   list[str] = []
+    if data and data.get("bypassed", 0) > 0:
+        alerts.append(f"Red team: {data['bypassed']} attack(s) bypassed sanitizer")
+        recs.append("Run `python security/autodefense.py` to close bypass gaps")
+    if data and data.get("indirect_gap"):
         alerts.append("Indirect injection gap: external API responses not sanitized")
-        recommendations.append(
+        recs.append(
             "Add sanitize_input() call on all external API response strings "
             "before returning them in module handlers"
         )
+    return alerts, recs
 
-    # ── Jailbreak sim ────────────────────────────────────────────────────────
-    jb_data   = _read_latest("jailbreak")
-    stale, lr = _is_stale(jb_data, max_hours=72)
-    raw, det  = _score_jailbreak(jb_data)
-    components.append(PostureComponent(
-        name="Jailbreak Sim", score=raw * WEIGHTS["jailbreak"], weight=WEIGHTS["jailbreak"],
-        raw_score=raw, detail=det, stale=stale, last_run=lr
-    ))
+
+_COMPONENT_SPECS = [
+    _ComponentSpec("CVE Scan", "cve", "vuln_scan", _score_cve, 48,
+                   "Run `python security/guardian.py vuln` — CVE scan is overdue",
+                   60, "CVE: critical/high vulnerabilities in dependencies"),
+    _ComponentSpec("Code Audit", "code_audit", "code_audit", _score_code_audit, 8 * 24,
+                   "Run `python security/guardian.py audit` — code audit is overdue",
+                   60, "Code: serious issues found"),
+    _ComponentSpec("Red Team", "red_team", "red_team", _score_red_team, 72,
+                   "Run `python security/red_team.py` — attack simulation is overdue",
+                   extra_hook=_red_team_extra),
+    _ComponentSpec("Jailbreak Sim", "jailbreak", "jailbreak", _score_jailbreak, 72,
+                   "Run `python security/jailbreak_sim.py` — jail test overdue",
+                   70, "Jailbreak: escape(s) detected in output jail"),
+    _ComponentSpec("Patterns", "patterns", "pattern_update", _score_patterns, 12,
+                   "Run `python security/guardian.py patterns` — pattern update overdue"),
+    _ComponentSpec("Anomaly", "anomaly", "anomaly_detect", _score_anomaly, 2,
+                   "Run `python security/guardian.py anomaly` — anomaly check overdue",
+                   70, "Anomaly: recent security alerts in logs"),
+]
+
+
+def _evaluate_component(
+    spec: _ComponentSpec,
+) -> tuple[PostureComponent, list[str], list[str]]:
+    """Score one component from its latest report. Returns (component, alerts, recs)."""
+    data      = _read_latest(spec.source)
+    stale, lr = _is_stale(data, max_hours=spec.stale_hours)
+    raw, det  = spec.scorer(data)
+    weight    = WEIGHTS[spec.weight_key]
+
+    component = PostureComponent(
+        name=spec.name, score=raw * weight, weight=weight,
+        raw_score=raw, detail=det, stale=stale, last_run=lr,
+    )
+
+    alerts: list[str] = []
+    recs:   list[str] = []
     if stale:
-        recommendations.append("Run `python security/jailbreak_sim.py` — jail test overdue")
-    if raw < 70:
-        alerts.append(f"Jailbreak: escape(s) detected in output jail ({det})")
+        recs.append(spec.overdue_cmd)
+    if spec.alert_below is not None and raw < spec.alert_below:
+        alerts.append(f"{spec.alert_label} ({det})")
+    if spec.extra_hook:
+        extra_alerts, extra_recs = spec.extra_hook(data)
+        alerts.extend(extra_alerts)
+        recs.extend(extra_recs)
+    return component, alerts, recs
 
-    # ── Patterns ──────────────────────────────────────────────────────────────
-    pat_data  = _read_latest("pattern_update")
-    stale, lr = _is_stale(pat_data, max_hours=12)
-    raw, det  = _score_patterns(pat_data)
-    components.append(PostureComponent(
-        name="Patterns", score=raw * WEIGHTS["patterns"], weight=WEIGHTS["patterns"],
-        raw_score=raw, detail=det, stale=stale, last_run=lr
-    ))
-    if stale:
-        recommendations.append("Run `python security/guardian.py patterns` — pattern update overdue")
 
-    # ── Anomaly ───────────────────────────────────────────────────────────────
-    anom_data = _read_latest("anomaly_detect")
-    stale, lr = _is_stale(anom_data, max_hours=2)
-    raw, det  = _score_anomaly(anom_data)
-    components.append(PostureComponent(
-        name="Anomaly", score=raw * WEIGHTS["anomaly"], weight=WEIGHTS["anomaly"],
-        raw_score=raw, detail=det, stale=stale, last_run=lr
-    ))
-    if stale:
-        recommendations.append("Run `python security/guardian.py anomaly` — anomaly check overdue")
-    if raw < 70:
-        alerts.append(f"Anomaly: recent security alerts in logs ({det})")
+def _grade_for(overall: float) -> str:
+    """Map an overall 0–100 score to a letter grade."""
+    if overall >= 90: return "A"
+    if overall >= 75: return "B"
+    if overall >= 60: return "C"
+    if overall >= 45: return "D"
+    return "F"
 
-    # ── Overall ───────────────────────────────────────────────────────────────
-    overall = sum(c.score for c in components)
-    overall = round(min(100.0, max(0.0, overall)), 1)
-    grade   = "A" if overall >= 90 else "B" if overall >= 75 else "C" if overall >= 60 else "D" if overall >= 45 else "F"
+
+# ── Main calculator ────────────────────────────────────────────────────────────
+
+def calculate_posture(verbose: bool = True) -> PostureReport:
+    """Compute the weighted security posture score from all component reports.
+
+    Evaluates every spec in ``_COMPONENT_SPECS`` (CVE, code audit, red team,
+    jailbreak, patterns, anomaly), sums the weighted scores into a 0–100
+    overall with a letter grade, prints the breakdown when ``verbose``, and
+    persists the result to ``posture_latest.json``.
+    """
+    computed_at = datetime.now().isoformat()
+    components, alerts, recommendations = [], [], []
+
+    for spec in _COMPONENT_SPECS:
+        component, c_alerts, c_recs = _evaluate_component(spec)
+        components.append(component)
+        alerts.extend(c_alerts)
+        recommendations.extend(c_recs)
+
+    overall = round(min(100.0, max(0.0, sum(c.score for c in components))), 1)
+    grade   = _grade_for(overall)
 
     report = PostureReport(
         overall=overall, grade=grade,
@@ -339,31 +368,35 @@ def calculate_posture(verbose: bool = True) -> PostureReport:
 
     if verbose:
         _print_posture(report)
-
-    # Save report
-    out    = LOG_DIR / "posture_latest.json"
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({
-        "overall":   overall,
-        "grade":     grade,
-        "computed_at": computed_at,
-        "components": [
-            {"name": c.name, "raw_score": c.raw_score, "weight": c.weight,
-             "weighted": c.score, "detail": c.detail, "stale": c.stale, "last_run": c.last_run}
-            for c in components
-        ],
-        "alerts":         alerts,
-        "recommendations": recommendations,
-    }, indent=2))
-
+    _save_posture(report)
     return report
 
 
+def _save_posture(report: PostureReport) -> None:
+    """Persist the posture report to logs/security/posture_latest.json."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    out = LOG_DIR / "posture_latest.json"
+    out.write_text(json.dumps({
+        "overall":     report.overall,
+        "grade":       report.grade,
+        "computed_at": report.computed_at,
+        "components": [
+            {"name": c.name, "raw_score": c.raw_score, "weight": c.weight,
+             "weighted": c.score, "detail": c.detail, "stale": c.stale, "last_run": c.last_run}
+            for c in report.components
+        ],
+        "alerts":          report.alerts,
+        "recommendations": report.recommendations,
+    }, indent=2))
+
+
 def _grade_color(grade: str) -> str:
+    """Return a coloured status emoji for a letter grade."""
     return {"A": "🟢", "B": "🟡", "C": "🟠", "D": "🔴", "F": "⛔"}.get(grade, "⚪")
 
 
 def _print_posture(report: PostureReport) -> None:
+    """Render the posture report as a formatted console breakdown."""
     bar_filled = int(report.overall / 5)
     bar = "█" * bar_filled + "░" * (20 - bar_filled)
     print(f"\n{'='*65}")
