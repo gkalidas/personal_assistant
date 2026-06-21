@@ -59,6 +59,7 @@ MIN_INTERVAL = {
     "anomaly_detect":       3600,   # at most once/h — quick check, low load
     "pattern_update":   6 * 3600,   # every 6h — light NVD + file write
     "threat_intel":    12 * 3600,   # every 12h — network + sanitizer tests
+    "red_team":        24 * 3600,   # daily — attack simulation against all layers
     "vuln_scan":       24 * 3600,   # daily — OSV batch query
     "code_audit":       7 * 86400,  # weekly — bandit + regex scan
 }
@@ -216,6 +217,42 @@ def task_threat_intel() -> dict:
     return result
 
 
+def task_red_team() -> dict:
+    from security.red_team      import run_red_team, save_report
+    from security.autodefense   import run_autodefense
+    from security.posture       import calculate_posture
+
+    log.info("=== Red Team Simulation + Auto-Defense ===")
+    report = run_red_team(llm=False, verbose=False)
+    path   = save_report(report)
+    log.info(f"  {report.blocked}/{report.total_attacks} attacks blocked "
+             f"({report.bypass_rate_pct:.0f}% bypass rate)")
+
+    if report.bypassed > 0:
+        log.warning(f"  !! {report.bypassed} bypass(es) found — running auto-defense")
+        rt_data = json.loads(path.read_text())
+        run_autodefense(red_team_report=rt_data, dry_run=False, verbose=False)
+        # Re-run to confirm fixes
+        report2 = run_red_team(llm=False, verbose=False)
+        save_report(report2)
+        log.info(f"  After auto-defense: {report2.blocked}/{report2.total_attacks} blocked")
+    else:
+        log.info("  All attacks blocked — no auto-defense needed")
+
+    # Compute fresh posture score after red team
+    posture = calculate_posture(verbose=False)
+    log.info(f"  Posture score: {posture.overall}/100 Grade {posture.grade}")
+
+    return {
+        "total_attacks":   report.total_attacks,
+        "blocked":         report.blocked,
+        "bypassed":        report.bypassed,
+        "bypass_rate_pct": report.bypass_rate_pct,
+        "posture_score":   posture.overall,
+        "posture_grade":   posture.grade,
+    }
+
+
 def task_anomaly_detect() -> dict:
     from security.watcher import detect_anomalies
 
@@ -271,6 +308,7 @@ def _full_scan() -> dict:
     for task_name, fn in [
         ("anomaly_detect",  task_anomaly_detect),
         ("pattern_update",  task_pattern_update),
+        ("red_team",        task_red_team),
         ("vuln_scan",       lambda: task_vuln_scan(auto_patch=True)),
         ("code_audit",      task_code_audit),
         ("threat_intel",    task_threat_intel),
@@ -375,6 +413,7 @@ def _run_one(name: str) -> None:
         "anomaly_detect":  task_anomaly_detect,
         "pattern_update":  task_pattern_update,
         "threat_intel":    task_threat_intel,
+        "red_team":        task_red_team,
         "vuln_scan":       lambda: task_vuln_scan(auto_patch=True),
         "code_audit":      task_code_audit,
     }
@@ -484,16 +523,32 @@ def main() -> None:
         print(f"  Predicted idle hours: {p['predicted_idle_hours']}")
         print_pattern()
 
+    def _cmd_redteam():
+        from security.red_team import run_red_team, save_report
+        r = run_red_team(llm="--llm" in sys.argv, verbose=True)
+        save_report(r)
+
+    def _cmd_autodefense():
+        from security.autodefense import run_autodefense
+        run_autodefense(dry_run="--dry-run" in sys.argv, verbose=True)
+
+    def _cmd_posture():
+        from security.posture import calculate_posture
+        calculate_posture(verbose=True)
+
     dispatch = {
-        "daemon":   run_daemon,
-        "scan":     _full_scan,
-        "vuln":     lambda: task_vuln_scan(auto_patch=("--patch" in sys.argv)),
-        "audit":    lambda: (_load_state(), _run_one("code_audit")),
-        "patterns": task_pattern_update,
-        "anomaly":  task_anomaly_detect,
-        "patch":    lambda: task_vuln_scan(auto_patch=True),
-        "intel":    task_threat_intel,
-        "load":     _cmd_load,        # show current load + usage pattern heatmap
+        "daemon":     run_daemon,
+        "scan":       _full_scan,
+        "vuln":       lambda: task_vuln_scan(auto_patch=("--patch" in sys.argv)),
+        "audit":      lambda: (_load_state(), _run_one("code_audit")),
+        "patterns":   task_pattern_update,
+        "anomaly":    task_anomaly_detect,
+        "patch":      lambda: task_vuln_scan(auto_patch=True),
+        "intel":      task_threat_intel,
+        "redteam":    _cmd_redteam,       # run attack simulation
+        "autodefense":_cmd_autodefense,   # auto-fix bypasses from red team
+        "posture":    _cmd_posture,       # show security score
+        "load":       _cmd_load,
     }
 
     fn = dispatch.get(cmd)
