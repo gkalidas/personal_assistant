@@ -190,9 +190,14 @@ def mark_photos_processed(photos: list, week: str) -> None:
     now = datetime.now().isoformat()
     with _conn() as conn:
         for p in photos:
-            path = str(getattr(p, "path", p))
+            # photos are dicts from read_exif() — use dict key, not str(dict)
+            if isinstance(p, dict):
+                path = p.get("path") or p.get("filename") or str(p)
+                date_taken = p.get("date")
+            else:
+                path = str(getattr(p, "path", p))
+                date_taken = getattr(p, "date", None)
             size = None
-            date_taken = getattr(p, "date", None)
             try:
                 import os
                 size = os.path.getsize(path)
@@ -242,14 +247,49 @@ def add_diary_question(week: str, question: str, photo_path: str | None = None) 
         return cur.lastrowid
 
 
+def _extract_names(text: str) -> list[str]:
+    """Pull proper nouns from a free-text answer. Returns [] if none found."""
+    import re
+    # Match capitalized words of 3+ chars; skip common filler words
+    _SKIP = {"That", "This", "The", "Who", "What", "Yes", "No", "She", "He",
+             "His", "Her", "They", "Their", "My", "Our", "Its", "And", "But"}
+    candidates = re.findall(r'\b[A-Z][a-z]{2,}\b', text)
+    return [c for c in candidates if c not in _SKIP]
+
+
+def _auto_label_faces_from_answer(photo_path: str, answer: str) -> None:
+    """When user answers 'Who is in this photo?', label matching face clusters."""
+    try:
+        from modules.faces.db import faces_for_photo, rename_cluster
+        faces = faces_for_photo(photo_path)
+        cluster_ids = list({f["cluster_id"] for f in faces
+                            if f.get("cluster_id") is not None})
+        if not cluster_ids:
+            return
+        names = _extract_names(answer)
+        if not names:
+            return
+        # Assign the first extracted name to the first (largest) cluster in the photo
+        for i, cid in enumerate(cluster_ids):
+            label = names[i] if i < len(names) else names[0]
+            rename_cluster(cid, label)
+    except Exception:
+        pass
+
+
 def answer_diary_question(qid: int, answer: str) -> None:
-    """Record the user's answer to a diary question."""
+    """Record the user's answer to a diary question and auto-label face clusters."""
     now = datetime.now().isoformat()
     with _conn() as conn:
         conn.execute(
             "UPDATE diary_questions SET answer=?, answered_at=? WHERE id=?",
             (answer, now, qid),
         )
+        row = conn.execute(
+            "SELECT photo_path, question FROM diary_questions WHERE id=?", (qid,)
+        ).fetchone()
+    if row and row["photo_path"] and "who" in (row["question"] or "").lower():
+        _auto_label_faces_from_answer(row["photo_path"], answer)
 
 
 def get_pending_questions(week: str | None = None, limit: int = 10) -> list[dict]:

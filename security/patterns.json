@@ -1,10 +1,10 @@
 {
   "_meta": {
     "version": 1,
-    "last_updated": "2026-06-10",
+    "last_updated": "2026-06-21",
     "source": "GK Security Guardian — curated LLM attack pattern library",
     "description": "Regex patterns for prompt injection and jailbreak detection. Auto-updated by guardian.py.",
-    "total_patterns": 45,
+    "total_patterns": 47,
     "last_sources": []
   },
   "injection_patterns": [
@@ -282,6 +282,20 @@
       "severity": "high",
       "category": "fictional_framing",
       "note": "Fictional story framing for harmful content"
+    },
+    {
+      "id": "INJ-TI-arxiv25",
+      "pattern": "pretend\\s+uncensored\\s+safety",
+      "severity": "high",
+      "category": "prompt_injection",
+      "source": "arxiv-2510.17947"
+    },
+    {
+      "id": "INJ-TI-arxiv26",
+      "pattern": "different\\s+where\\s+removed",
+      "severity": "high",
+      "category": "prompt_injection",
+      "source": "arxiv-2604.10271"
     }
   ],
   "safe_domains": [

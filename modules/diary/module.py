@@ -88,11 +88,12 @@ _QUESTION_TEMPLATES = [
 
 def _ask_photo_questions(photos: list, captions: dict, week: str) -> None:
     """Queue review questions for photos that lack context."""
+    from modules.diary.vision import _known_faces_in_photo
     asked = set()
     for photo in photos[:5]:  # limit to 5 questions per diary write to avoid spam
-        path = str(getattr(photo, "path", photo))
-        caption = captions.get(path, "") if captions else ""
-        has_gps = bool(getattr(photo, "gps", None))
+        path = photo.get("path", str(photo)) if isinstance(photo, dict) else str(getattr(photo, "path", photo))
+        caption = captions.get(photo.get("filename", "") if isinstance(photo, dict) else path, "") if captions else ""
+        has_gps = (photo.get("has_gps") if isinstance(photo, dict) else bool(getattr(photo, "gps", None)))
 
         # Ask about location if no GPS and caption doesn't mention a place
         if not has_gps and "location" not in asked:
@@ -102,12 +103,14 @@ def _ask_photo_questions(photos: list, captions: dict, week: str) -> None:
                 add_diary_question(week, q, path)
                 asked.add("location")
 
-        # Ask about people if caption suggests there are people but no names
+        # Ask about people only if faces aren't already identified
         if caption and any(w in caption.lower() for w in ("person", "people", "man", "woman", "child", "group")) and "people" not in asked:
-            q = next((t for k, t in _QUESTION_TEMPLATES if k == "many_people"), None)
-            if q:
-                add_diary_question(week, q, path)
-                asked.add("people")
+            known = _known_faces_in_photo(path)
+            if not known:  # skip if face clusters already named
+                q = next((t for k, t in _QUESTION_TEMPLATES if k == "many_people"), None)
+                if q:
+                    add_diary_question(week, q, path)
+                    asked.add("people")
 
 
 def _do_write(query: str, profile: dict) -> tuple[str, dict | None]:
@@ -190,6 +193,12 @@ def _do_write(query: str, profile: dict) -> tuple[str, dict | None]:
 
         # Write diary entry
         entry = write_diary_entry(date_str, photos, captions, profile)
+
+        # Skip saving if LLM failed — leave photos unprocessed so retry works
+        if entry.startswith("[Could not generate"):
+            log.warning("diary LLM failed for %s — photos NOT marked processed, will retry", date_str)
+            output_lines.append(f"⚠ {date_str}: generation failed — Ollama may be busy. Try again later.")
+            continue
 
         # Save draft (keyed by ISO week so multiple days merge into one week draft)
         week_key = _date_to_week(date_str)

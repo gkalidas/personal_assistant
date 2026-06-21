@@ -78,18 +78,24 @@ _STATE_FILE = LOG_DIR / "guardian_state.json"
 
 def _load_state() -> None:
     """Load persisted last-run wall-clock times back to monotonic offsets."""
-    if not _STATE_FILE.exists():
-        return
-    try:
-        data = json.loads(_STATE_FILE.read_text())
-        now_wall = datetime.now().timestamp()
-        now_mono = time.monotonic()
-        for task, wall_ts in data.get("last_run_wall", {}).items():
-            if task in _last_run:
-                age = now_wall - wall_ts           # seconds since last run
-                _last_run[task] = now_mono - age   # convert to monotonic
-    except Exception as e:
-        log.debug(f"Could not load guardian state: {e}")
+    now_wall = datetime.now().timestamp()
+    now_mono = time.monotonic()
+    known: set[str] = set()
+    if _STATE_FILE.exists():
+        try:
+            data = json.loads(_STATE_FILE.read_text())
+            for task, wall_ts in data.get("last_run_wall", {}).items():
+                if task in _last_run:
+                    age = now_wall - wall_ts           # seconds since last run
+                    _last_run[task] = now_mono - age   # convert to monotonic
+                    known.add(task)
+        except Exception as e:
+            log.debug(f"Could not load guardian state: {e}")
+    # Tasks with no saved timestamp have never run — treat as immediately overdue
+    # so the scheduler picks them up on the next idle window, not after N days of uptime.
+    for task in MIN_INTERVAL:
+        if task not in known:
+            _last_run[task] = now_mono - MIN_INTERVAL[task] * (MAX_OVERDUE + 1)
 
 
 def _save_state() -> None:
@@ -482,7 +488,7 @@ def main() -> None:
         "daemon":   run_daemon,
         "scan":     _full_scan,
         "vuln":     lambda: task_vuln_scan(auto_patch=("--patch" in sys.argv)),
-        "audit":    task_code_audit,
+        "audit":    lambda: (_load_state(), _run_one("code_audit")),
         "patterns": task_pattern_update,
         "anomaly":  task_anomaly_detect,
         "patch":    lambda: task_vuln_scan(auto_patch=True),

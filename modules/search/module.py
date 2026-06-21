@@ -1,16 +1,21 @@
 """
-Web search module — DuckDuckGo (privacy-first, no API key needed).
+Web search module — SearXNG (self-hosted) with automatic DDGS fallback.
 
-Routes queries that need current/external information not in the local KB:
-news, prices, regulations, generic "what is X" questions, etc.
+Set SEARXNG_URL in .env to enable the self-hosted backend, e.g.:
+  docker run -d -p 8888:8080 --name searxng searxng/searxng
+  SEARXNG_URL=http://localhost:8888
+
+When SEARXNG_URL is empty, falls back to DuckDuckGo (DDGS).
 """
 
-import json
 import logging
 import time
 from typing import Any
 
+import httpx
+
 from core.base_module import BaseModule, ModuleResponse
+from core.config import SEARXNG_URL
 
 log = logging.getLogger(__name__)
 
@@ -26,30 +31,70 @@ RULES:
 
 Respond in plain text. No JSON."""
 
+_TIMEOUT = 8
+
+
+# ── Search backends ───────────────────────────────────────────────────────────
+
+def _searxng_search(query: str, news: bool = False, max_results: int = 5) -> list[dict]:
+    """Query a self-hosted SearXNG instance; returns normalised result dicts."""
+    category = "news" if news else "general"
+    params   = {
+        "q":          query,
+        "format":     "json",
+        "categories": category,
+        "language":   "en",
+        "safesearch": "0",
+    }
+    try:
+        resp = httpx.get(f"{SEARXNG_URL}/search", params=params, timeout=_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        results = []
+        for r in (data.get("results") or [])[:max_results]:
+            results.append({
+                "title": r.get("title", ""),
+                "href":  r.get("url", ""),
+                "body":  r.get("content", ""),
+            })
+        log.debug("searxng %s %d results for %r", category, len(results), query[:60])
+        return results
+    except Exception as e:
+        log.warning("searxng failed (%s): %s — falling back to DDGS", SEARXNG_URL, e)
+        return []
+
 
 def _ddg_search(query: str, max_results: int = 5) -> list[dict]:
-    """Run a DuckDuckGo search, return list of {title, href, body}."""
     try:
         from ddgs import DDGS
         with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=max_results))
-        return results
+            return list(ddgs.text(query, max_results=max_results))
     except Exception as e:
-        log.error("DDG search failed: %s", e)
+        log.error("DDGS text search failed: %s", e)
         return []
 
 
 def _ddg_news(query: str, max_results: int = 5) -> list[dict]:
-    """DuckDuckGo news search."""
     try:
         from ddgs import DDGS
         with DDGS() as ddgs:
-            results = list(ddgs.news(query, max_results=max_results))
-        return results
+            return list(ddgs.news(query, max_results=max_results))
     except Exception as e:
-        log.error("DDG news failed: %s", e)
+        log.error("DDGS news search failed: %s", e)
         return []
 
+
+def _search(query: str, news: bool = False, max_results: int = 5) -> tuple[list[dict], str]:
+    """Try SearXNG first; fall back to DDGS. Returns (results, backend_name)."""
+    if SEARXNG_URL:
+        results = _searxng_search(query, news=news, max_results=max_results)
+        if results:
+            return results, "searxng"
+    results = _ddg_news(query, max_results) if news else _ddg_search(query, max_results)
+    return results, "ddgs"
+
+
+# ── Format + summarise ────────────────────────────────────────────────────────
 
 def _format_results(results: list[dict]) -> str:
     if not results:
@@ -73,7 +118,7 @@ def _llm_summarise(query: str, search_text: str, stream: bool = False) -> str:
     text = llm_call(
         messages, think=False,
         stream_to_stdout=stream,
-        prefix=f"\nGK [search]: " if stream else "",
+        prefix="\nGK [search]: " if stream else "",
         use_fallback=True,
     )
     log.debug("LLM summarise %.0fms stream=%s", (time.monotonic() - t0) * 1000, stream)
@@ -82,9 +127,11 @@ def _llm_summarise(query: str, search_text: str, stream: bool = False) -> str:
 
 _NEWS_WORDS = {
     "news", "latest", "today", "recent", "current", "new", "update",
-    "aaj", "kal", "abhi", "khabar",  # Hindi/Marathi equivalents
+    "aaj", "kal", "abhi", "khabar",
 }
 
+
+# ── Module ────────────────────────────────────────────────────────────────────
 
 class SearchModule(BaseModule):
     name = "search"
@@ -95,18 +142,12 @@ class SearchModule(BaseModule):
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
         t0 = time.monotonic()
-        q_lower = query.lower()
-        is_news = any(w in q_lower for w in _NEWS_WORDS)
+        is_news = any(w in query.lower() for w in _NEWS_WORDS)
 
-        if is_news:
-            results = _ddg_news(query, max_results=5)
-            kind = "news"
-        else:
-            results = _ddg_search(query, max_results=5)
-            kind = "web"
-
-        log.info("search kind=%s results=%d q=%r latency=%dms",
-                 kind, len(results), query[:60], int((time.monotonic() - t0) * 1000))
+        results, backend = _search(query, news=is_news, max_results=5)
+        log.info("search backend=%s kind=%s results=%d q=%r latency=%dms",
+                 backend, "news" if is_news else "web", len(results),
+                 query[:60], int((time.monotonic() - t0) * 1000))
 
         if not results:
             return ModuleResponse(
@@ -123,5 +164,5 @@ class SearchModule(BaseModule):
             from core.mistake_log import log_mistake
             log_mistake("llm_timeout", query=query, module=self.name,
                         details=str(e), severity="medium")
-            summary = f"Search results for: {query}\n\n{search_text}"
-            return ModuleResponse(text=summary, module=self.name)
+            return ModuleResponse(text=f"Search results for: {query}\n\n{search_text}",
+                                  module=self.name)

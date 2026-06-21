@@ -157,214 +157,262 @@ def _fmt_generic_row(r: dict, unit: str = "") -> str:
     return f"  {r['date']} {r['time']} — {v} {u}"
 
 
-# ── Execute actions ───────────────────────────────────────────────────────────
+# ── Per-action handlers ───────────────────────────────────────────────────────
+
+def _handle_log_bp(action: dict) -> tuple[str, dict | None]:
+    s = int(action.get("systolic", 0))
+    d = int(action.get("diastolic", 0))
+    if not s or not d:
+        return "BP reading incomplete — need both systolic and diastolic values.", None
+    r = tools.log_reading("bp", s, d, "mmHg", notes=action.get("notes"))
+    cat, advice = tools.interpret_bp(s, d)
+    return f"BP logged: {s}/{d} mmHg [{cat}]\n  {advice}", r
+
+
+def _handle_log_steps(action: dict) -> tuple[str, dict | None]:
+    count = int(action.get("count", 0))
+    if count <= 0:
+        return "How many steps? Please provide the count.", None
+    r = tools.log_reading("steps", count, unit="steps")
+    goals = tools.get_goals()
+    goal  = int(goals.get("steps", {}).get("target", 10000))
+    cat, _ = tools.interpret_steps(count, goal)
+    text = f"Steps logged: {count:,} — {cat}"
+    if count < goal:
+        text += f"\n  {goal - count:,} more to reach your {goal:,} goal."
+    return text, r
+
+
+def _handle_log_weight(action: dict) -> tuple[str, dict | None]:
+    kg = float(action.get("kg", 0))
+    if kg <= 0:
+        return "Please provide your weight in kg.", None
+    r = tools.log_reading("weight", kg, unit="kg")
+    prev = tools.get_history("weight", days=7)
+    if len(prev) >= 2:
+        diff = round(kg - prev[1]["value1"], 1)
+        direction = "▲" if diff > 0 else "▼"
+        return f"Weight logged: {kg} kg ({direction} {abs(diff)} kg from last reading)", r
+    return f"Weight logged: {kg} kg", r
+
+
+def _handle_log_sleep(action: dict) -> tuple[str, dict | None]:
+    hours = float(action.get("hours", 0))
+    if hours <= 0:
+        return "How many hours did you sleep? Please provide a number.", None
+    r = tools.log_reading("sleep", hours, unit="hours")
+    cat, advice = tools.interpret_sleep(hours)
+    return f"Sleep logged: {hours}h — {cat}\n  {advice}", r
+
+
+def _handle_log_sugar(action: dict) -> tuple[str, dict | None]:
+    mg_dl = float(action.get("mg_dl", 0))
+    if mg_dl <= 0:
+        return "Please provide the glucose reading in mg/dL.", None
+    meal_state = action.get("meal_state") or "random"
+    r = tools.log_reading("sugar", mg_dl, unit="mg/dL", meal_state=meal_state)
+    cat, advice = tools.interpret_sugar(mg_dl, meal_state)
+    label = {"fasting": "fasting", "post_meal": "post-meal", "random": "random"}.get(meal_state, "")
+    return f"Blood sugar logged: {mg_dl} mg/dL ({label}) — {cat}\n  {advice}", r
+
+
+def _handle_history(action: dict) -> tuple[str, dict | None]:
+    type_ = action.get("type", "bp")
+    days  = int(action.get("days", 7))
+    rows  = tools.get_history(type_, days)
+    if not rows:
+        return f"No {type_} readings in the last {days} days.", None
+    label = {"bp": "Blood Pressure", "steps": "Steps", "weight": "Weight",
+             "sleep": "Sleep", "sugar": "Blood Sugar"}.get(type_, type_.upper())
+    lines = [f"{label} — last {days} days:"]
+    for r in rows[:20]:
+        if type_ == "bp":
+            lines.append(_fmt_bp_row(r))
+        elif type_ == "steps":
+            lines.append(_fmt_steps_row(r))
+        else:
+            lines.append(_fmt_generic_row(r, r.get("unit", "")))
+    return "\n".join(lines), rows
+
+
+def _handle_summary(action: dict) -> tuple[str, dict | None]:
+    s = tools.today_summary()
+    if not s["readings"]:
+        return (f"No health readings logged yet today ({s['date']}).\n"
+                "Log your BP, steps, weight, sleep, or sugar to get started."), None
+    lines = [f"Health summary — {s['date']}:"]
+    for rd in s["readings"]:
+        t  = rd["type"]
+        v1 = rd["value1"]
+        v2 = rd.get("value2")
+        u  = rd.get("unit", "")
+        if t == "bp" and v2:
+            cat, _ = tools.interpret_bp(v1, v2)
+            lines.append(f"  BP: {int(v1)}/{int(v2)} mmHg [{cat}] at {rd['time']}")
+        elif t == "steps":
+            lines.append(f"  Steps: {int(v1):,} at {rd['time']}")
+        elif t == "weight":
+            lines.append(f"  Weight: {v1} kg at {rd['time']}")
+        elif t == "sleep":
+            lines.append(f"  Sleep: {v1}h")
+        elif t == "sugar":
+            ms = rd.get("meal_state") or "random"
+            lines.append(f"  Sugar: {v1} mg/dL ({ms}) at {rd['time']}")
+        else:
+            lines.append(f"  {t}: {v1} {u}")
+    return "\n".join(lines), s
+
+
+def _handle_trend(action: dict) -> tuple[str, dict | None]:
+    type_ = action.get("type", "steps")
+    days  = int(action.get("days", 14))
+    rows  = tools.daily_trend(type_, days)
+    if not rows:
+        return f"No {type_} data in the last {days} days to show trend.", None
+    label = {"bp": "BP", "steps": "Steps", "weight": "Weight",
+             "sleep": "Sleep", "sugar": "Sugar"}.get(type_, type_)
+    lines = [f"{label} trend — last {days} days:"]
+    for r in rows:
+        v1 = r["avg_v1"]
+        v2 = r.get("avg_v2")
+        if type_ == "bp" and v2:
+            lines.append(f"  {r['date']}: {int(v1)}/{int(v2)} mmHg (avg, {r['readings']} readings)")
+        elif type_ == "steps":
+            lines.append(f"  {r['date']}: {int(v1):,} steps")
+        else:
+            lines.append(f"  {r['date']}: {v1}")
+    return "\n".join(lines), rows
+
+
+def _handle_set_goal(action: dict) -> tuple[str, dict | None]:
+    type_  = action.get("type")
+    target = float(action.get("target", 0))
+    if not type_ or target <= 0:
+        return "Please specify goal type (steps/weight/sleep) and target value.", None
+    unit = {"steps": "steps/day", "weight": "kg", "sleep": "hours/night"}.get(type_, "")
+    r = tools.set_goal(type_, target, unit)
+    return f"Goal set: {type_} = {target} {unit}", r
+
+
+_NUTRITION_TIPS: list[tuple[tuple[str, ...], list[str]]] = [
+    (
+        ("diabet", "sugar", "glucose"),
+        [
+            "  Diabetes-friendly eating principles:",
+            "  • Choose low-glycaemic-index foods: lentils, legumes, oats, brown rice, vegetables",
+            "  • Limit refined carbs: white rice, maida, sugary drinks, sweets",
+            "  • Eat regular small meals — avoid long gaps to keep blood sugar stable",
+            "  • Fibre helps: include 4–5 servings of vegetables, whole grains daily",
+            "  • Protein at every meal (dal, curd, eggs, fish) slows glucose absorption",
+            "  • Check blood sugar before and 2h after meals to understand your body's response",
+        ],
+    ),
+    (
+        ("protein", "muscle", "strength"),
+        [
+            "  Protein guidance (general):",
+            "  • Typical intake: 0.8–1.2 g per kg body weight for sedentary to active adults",
+            "  • Good Indian sources: dal, rajma, chole, paneer, curd (dahi), eggs, fish, chicken",
+            "  • Spread protein across 3–4 meals for better absorption",
+            "  • Whey or plant protein supplements: not necessary if dal+curd+eggs are in daily diet",
+        ],
+    ),
+    (
+        ("iron", "anaemia", "anemia", "hemoglobin"),
+        [
+            "  Iron and anaemia (general):",
+            "  • Iron-rich foods: green leafy vegetables (palak, methi), jaggery, sesame, lentils,",
+            "    liver, red meat, fortified cereals",
+            "  • Pair iron-rich foods with Vitamin C (lemon juice, amla) to improve absorption",
+            "  • Avoid tea/coffee immediately after meals — tannins reduce iron absorption",
+            "  • If haemoglobin is low, see a doctor to confirm iron-deficiency (vs other causes)",
+        ],
+    ),
+    (
+        ("weight loss", "lose weight", "obesity", "fat"),
+        [
+            "  Weight management (general principles):",
+            "  • Sustainable deficit: reduce portion size, not eliminate food groups",
+            "  • Prioritise vegetables, dal, salad — high volume, low calories",
+            "  • Limit oil, ghee, fried foods, processed snacks, sugary drinks",
+            "  • Physical activity: 30–45 min brisk walking most days is evidence-backed",
+            "  • Avoid extreme diets (crash dieting slows metabolism over time)",
+        ],
+    ),
+    (
+        ("bp", "blood pressure", "hypertension", "heart"),
+        [
+            "  Heart-healthy / low-sodium eating (general):",
+            "  • Reduce salt: cook without added salt where possible, avoid papad, pickles, chips",
+            "  • DASH-pattern: more vegetables, fruits, low-fat dairy, whole grains; less red meat",
+            "  • Potassium helps (banana, sweet potato, spinach) — but ask doctor if on BP meds",
+            "  • Limit saturated fats: choose olive oil or small amounts of groundnut oil over ghee",
+            "  • Alcohol and smoking significantly worsen blood pressure — avoid/minimise",
+        ],
+    ),
+]
+
+_NUTRITION_DEFAULT = [
+    "  General balanced diet principles (Indian context):",
+    "  • Half plate: vegetables and salad at every main meal",
+    "  • Quarter plate: complex carbs (jowar, bajra, brown rice, whole wheat roti)",
+    "  • Quarter plate: protein (dal, legumes, curd, eggs, fish, lean meat)",
+    "  • Healthy fats: a small amount of cold-pressed oil, nuts, or seeds daily",
+    "  • Hydration: 2–3 litres water; limit packaged juices and sweetened drinks",
+    "  • Local seasonal produce is cheaper, fresher, and culturally appropriate",
+]
+
+_NUTRITION_FOOTER = [
+    "",
+    "  For a personalised plan (diabetes, kidney disease, heart conditions etc.),",
+    "  please consult a registered dietitian or your doctor.",
+]
+
+
+def _handle_nutrition(action: dict) -> tuple[str, dict | None]:
+    topic    = action.get("topic", "general nutrition")
+    topic_lc = topic.lower()
+    tips = next(
+        (lines for keywords, lines in _NUTRITION_TIPS if any(k in topic_lc for k in keywords)),
+        _NUTRITION_DEFAULT,
+    )
+    lines = [
+        f"General nutrition guidance — {topic}:",
+        "  This is general information, not medical advice. Consult a registered dietitian",
+        "  or your doctor for personalised nutrition plans, especially with any health conditions.",
+        "",
+        *tips,
+        *_NUTRITION_FOOTER,
+    ]
+    return "\n".join(lines), None
+
+
+def _handle_chat(action: dict) -> tuple[str, dict | None]:
+    return action.get("reply", ""), None
+
+
+# ── Dispatch table ────────────────────────────────────────────────────────────
+
+_HANDLERS: dict[str, Any] = {
+    "log_bp":     _handle_log_bp,
+    "log_steps":  _handle_log_steps,
+    "log_weight": _handle_log_weight,
+    "log_sleep":  _handle_log_sleep,
+    "log_sugar":  _handle_log_sugar,
+    "history":    _handle_history,
+    "summary":    _handle_summary,
+    "trend":      _handle_trend,
+    "set_goal":   _handle_set_goal,
+    "nutrition":  _handle_nutrition,
+    "chat":       _handle_chat,
+}
+
 
 def _execute(action: dict) -> tuple[str, dict | None]:
-    a = action.get("action")
-
-    if a == "log_bp":
-        s = int(action.get("systolic", 0))
-        d = int(action.get("diastolic", 0))
-        if not s or not d:
-            return "BP reading incomplete — need both systolic and diastolic values.", None
-        r = tools.log_reading("bp", s, d, "mmHg", notes=action.get("notes"))
-        cat, advice = tools.interpret_bp(s, d)
-        text = f"BP logged: {s}/{d} mmHg [{cat}]\n  {advice}"
-        return text, r
-
-    if a == "log_steps":
-        count = int(action.get("count", 0))
-        if count <= 0:
-            return "How many steps? Please provide the count.", None
-        r = tools.log_reading("steps", count, unit="steps")
-        goals = tools.get_goals()
-        goal = int(goals.get("steps", {}).get("target", 10000))
-        cat, note = tools.interpret_steps(count, goal)
-        text = f"Steps logged: {count:,} — {cat}"
-        if count < goal:
-            text += f"\n  {goal - count:,} more to reach your {goal:,} goal."
-        return text, r
-
-    if a == "log_weight":
-        kg = float(action.get("kg", 0))
-        if kg <= 0:
-            return "Please provide your weight in kg.", None
-        r = tools.log_reading("weight", kg, unit="kg")
-        prev = tools.get_history("weight", days=7)
-        if len(prev) >= 2:
-            diff = round(kg - prev[1]["value1"], 1)
-            direction = "▲" if diff > 0 else "▼"
-            return f"Weight logged: {kg} kg ({direction} {abs(diff)} kg from last reading)", r
-        return f"Weight logged: {kg} kg", r
-
-    if a == "log_sleep":
-        hours = float(action.get("hours", 0))
-        if hours <= 0:
-            return "How many hours did you sleep? Please provide a number.", None
-        r = tools.log_reading("sleep", hours, unit="hours")
-        cat, advice = tools.interpret_sleep(hours)
-        return f"Sleep logged: {hours}h — {cat}\n  {advice}", r
-
-    if a == "log_sugar":
-        mg_dl = float(action.get("mg_dl", 0))
-        if mg_dl <= 0:
-            return "Please provide the glucose reading in mg/dL.", None
-        meal_state = action.get("meal_state") or "random"
-        r = tools.log_reading("sugar", mg_dl, unit="mg/dL", meal_state=meal_state)
-        cat, advice = tools.interpret_sugar(mg_dl, meal_state)
-        label = {"fasting": "fasting", "post_meal": "post-meal", "random": "random"}.get(meal_state, "")
-        return f"Blood sugar logged: {mg_dl} mg/dL ({label}) — {cat}\n  {advice}", r
-
-    if a == "history":
-        type_ = action.get("type", "bp")
-        days = int(action.get("days", 7))
-        rows = tools.get_history(type_, days)
-        if not rows:
-            return f"No {type_} readings in the last {days} days.", None
-        label_map = {"bp": "Blood Pressure", "steps": "Steps", "weight": "Weight",
-                     "sleep": "Sleep", "sugar": "Blood Sugar"}
-        label = label_map.get(type_, type_.upper())
-        lines = [f"{label} — last {days} days:"]
-        for r in rows[:20]:
-            if type_ == "bp":
-                lines.append(_fmt_bp_row(r))
-            elif type_ == "steps":
-                lines.append(_fmt_steps_row(r))
-            else:
-                lines.append(_fmt_generic_row(r, r.get("unit", "")))
-        return "\n".join(lines), rows
-
-    if a == "summary":
-        s = tools.today_summary()
-        if not s["readings"]:
-            return f"No health readings logged yet today ({s['date']}).\nLog your BP, steps, weight, sleep, or sugar to get started.", None
-        lines = [f"Health summary — {s['date']}:"]
-        for rd in s["readings"]:
-            t = rd["type"]
-            v1 = rd["value1"]
-            v2 = rd.get("value2")
-            u  = rd.get("unit", "")
-            if t == "bp" and v2:
-                cat, _ = tools.interpret_bp(v1, v2)
-                lines.append(f"  BP: {int(v1)}/{int(v2)} mmHg [{cat}] at {rd['time']}")
-            elif t == "steps":
-                lines.append(f"  Steps: {int(v1):,} at {rd['time']}")
-            elif t == "weight":
-                lines.append(f"  Weight: {v1} kg at {rd['time']}")
-            elif t == "sleep":
-                lines.append(f"  Sleep: {v1}h")
-            elif t == "sugar":
-                ms = rd.get("meal_state") or "random"
-                lines.append(f"  Sugar: {v1} mg/dL ({ms}) at {rd['time']}")
-            else:
-                lines.append(f"  {t}: {v1} {u}")
-        return "\n".join(lines), s
-
-    if a == "trend":
-        type_ = action.get("type", "steps")
-        days  = int(action.get("days", 14))
-        rows  = tools.daily_trend(type_, days)
-        if not rows:
-            return f"No {type_} data in the last {days} days to show trend.", None
-        label_map = {"bp": "BP", "steps": "Steps", "weight": "Weight", "sleep": "Sleep", "sugar": "Sugar"}
-        label = label_map.get(type_, type_)
-        lines = [f"{label} trend — last {days} days:"]
-        for r in rows:
-            v1 = r["avg_v1"]
-            v2 = r.get("avg_v2")
-            if type_ == "bp" and v2:
-                lines.append(f"  {r['date']}: {int(v1)}/{int(v2)} mmHg (avg, {r['readings']} readings)")
-            elif type_ == "steps":
-                lines.append(f"  {r['date']}: {int(v1):,} steps")
-            else:
-                lines.append(f"  {r['date']}: {v1}")
-        return "\n".join(lines), rows
-
-    if a == "set_goal":
-        type_ = action.get("type")
-        target = float(action.get("target", 0))
-        if not type_ or target <= 0:
-            return "Please specify goal type (steps/weight/sleep) and target value.", None
-        unit_map = {"steps": "steps/day", "weight": "kg", "sleep": "hours/night"}
-        unit = unit_map.get(type_, "")
-        r = tools.set_goal(type_, target, unit)
-        return f"Goal set: {type_} = {target} {unit}", r
-
-    if a == "nutrition":
-        topic = action.get("topic", "general nutrition")
-        lines = [
-            f"General nutrition guidance — {topic}:",
-            "  This is general information, not medical advice. Consult a registered dietitian",
-            "  or your doctor for personalised nutrition plans, especially with any health conditions.",
-            "",
-        ]
-        topic_lc = topic.lower()
-        if any(t in topic_lc for t in ("diabet", "sugar", "glucose")):
-            lines += [
-                "  Diabetes-friendly eating principles:",
-                "  • Choose low-glycaemic-index foods: lentils, legumes, oats, brown rice, vegetables",
-                "  • Limit refined carbs: white rice, maida, sugary drinks, sweets",
-                "  • Eat regular small meals — avoid long gaps to keep blood sugar stable",
-                "  • Fibre helps: include 4–5 servings of vegetables, whole grains daily",
-                "  • Protein at every meal (dal, curd, eggs, fish) slows glucose absorption",
-                "  • Check blood sugar before and 2h after meals to understand your body's response",
-            ]
-        elif any(t in topic_lc for t in ("protein", "muscle", "strength")):
-            lines += [
-                "  Protein guidance (general):",
-                "  • Typical intake: 0.8–1.2 g per kg body weight for sedentary to active adults",
-                "  • Good Indian sources: dal, rajma, chole, paneer, curd (dahi), eggs, fish, chicken",
-                "  • Spread protein across 3–4 meals for better absorption",
-                "  • Whey or plant protein supplements: not necessary if dal+curd+eggs are in daily diet",
-            ]
-        elif any(t in topic_lc for t in ("iron", "anaemia", "anemia", "hemoglobin")):
-            lines += [
-                "  Iron and anaemia (general):",
-                "  • Iron-rich foods: green leafy vegetables (palak, methi), jaggery, sesame, lentils,",
-                "    liver, red meat, fortified cereals",
-                "  • Pair iron-rich foods with Vitamin C (lemon juice, amla) to improve absorption",
-                "  • Avoid tea/coffee immediately after meals — tannins reduce iron absorption",
-                "  • If haemoglobin is low, see a doctor to confirm iron-deficiency (vs other causes)",
-            ]
-        elif any(t in topic_lc for t in ("weight loss", "lose weight", "obesity", "fat")):
-            lines += [
-                "  Weight management (general principles):",
-                "  • Sustainable deficit: reduce portion size, not eliminate food groups",
-                "  • Prioritise vegetables, dal, salad — high volume, low calories",
-                "  • Limit oil, ghee, fried foods, processed snacks, sugary drinks",
-                "  • Physical activity: 30–45 min brisk walking most days is evidence-backed",
-                "  • Avoid extreme diets (crash dieting slows metabolism over time)",
-            ]
-        elif any(t in topic_lc for t in ("bp", "blood pressure", "hypertension", "heart")):
-            lines += [
-                "  Heart-healthy / low-sodium eating (general):",
-                "  • Reduce salt: cook without added salt where possible, avoid papad, pickles, chips",
-                "  • DASH-pattern: more vegetables, fruits, low-fat dairy, whole grains; less red meat",
-                "  • Potassium helps (banana, sweet potato, spinach) — but ask doctor if on BP meds",
-                "  • Limit saturated fats: choose olive oil or small amounts of groundnut oil over ghee",
-                "  • Alcohol and smoking significantly worsen blood pressure — avoid/minimise",
-            ]
-        else:
-            lines += [
-                "  General balanced diet principles (Indian context):",
-                "  • Half plate: vegetables and salad at every main meal",
-                "  • Quarter plate: complex carbs (jowar, bajra, brown rice, whole wheat roti)",
-                "  • Quarter plate: protein (dal, legumes, curd, eggs, fish, lean meat)",
-                "  • Healthy fats: a small amount of cold-pressed oil, nuts, or seeds daily",
-                "  • Hydration: 2–3 litres water; limit packaged juices and sweetened drinks",
-                "  • Local seasonal produce is cheaper, fresher, and culturally appropriate",
-            ]
-        lines += [
-            "",
-            "  For a personalised plan (diabetes, kidney disease, heart conditions etc.),",
-            "  please consult a registered dietitian or your doctor.",
-        ]
-        return "\n".join(lines), None
-
-    if a == "chat":
-        return action.get("reply", ""), None
-
-    return f"Unknown action: {a}", None
+    handler = _HANDLERS.get(action.get("action", ""))
+    if handler:
+        return handler(action)
+    return f"Unknown action: {action.get('action')}", None
 
 
 _FOLLOW_UPS = {

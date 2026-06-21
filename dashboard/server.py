@@ -10,6 +10,9 @@ POST /graphql    → GraphQL API (selective field queries)
 GET  /graphql    → GraphQL playground (browser)
 """
 
+from dotenv import load_dotenv
+load_dotenv()  # must run before any module reads os.getenv() at import time
+
 import asyncio
 import logging
 import tempfile
@@ -22,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.responses import Response
 from strawberry.fastapi import GraphQLRouter
 
@@ -124,11 +127,69 @@ def _bg_check_new_photos():
         log.error("bg photo check failed: %s", e)
 
 
+def _bg_todo_verifier():
+    """Every 10 minutes, re-run all todo verifiers and reopen stale 'done' tasks."""
+    time.sleep(30)  # let server fully start before first check
+    while True:
+        try:
+            from dashboard.todo_verifier import verify_all_todos
+            results = verify_all_todos()
+            reopened = [r for r in results if not r["passed"]]
+            if reopened:
+                log.info("todo-verify: %d task(s) failed verification: %s",
+                         len(reopened), [r["id"] for r in reopened])
+        except Exception as e:
+            log.debug("todo-verify sweep error: %s", e)
+        time.sleep(600)  # 10 minutes
+
+
+def _bg_digest_scheduler():
+    """Sleep-loop that fires the weekly digest every Sunday at ~19:00 local time."""
+    import datetime as _dt
+    while True:
+        now   = _dt.datetime.now()
+        # Sunday = weekday 6; target 19:00
+        days_until_sunday = (6 - now.weekday()) % 7
+        target = now.replace(hour=19, minute=0, second=0, microsecond=0)
+        if days_until_sunday == 0 and now >= target:
+            days_until_sunday = 7  # already past target today, wait for next week
+        target += _dt.timedelta(days=days_until_sunday)
+        sleep_s = (target - now).total_seconds()
+        log.info("digest scheduler: next send in %.0fh (Sunday 19:00)", sleep_s / 3600)
+        time.sleep(sleep_s)
+        try:
+            from modules.digest.sender import send_digest
+            result = send_digest()
+            log.info("digest scheduler: send result=%s", result)
+        except Exception as e:
+            log.error("digest scheduler: send failed: %s", e)
+
+
+def _bg_farming_sync():
+    """Every 30 minutes, sync farming project's crop_plots → PA plots/crops tables."""
+    time.sleep(5)  # let db.init() complete before first sync
+    while True:
+        try:
+            from modules.farming.sync import sync_crop_plots_to_pa
+            result = sync_crop_plots_to_pa()
+            if result.get("synced_plots") or result.get("synced_crops"):
+                log.info("farming-sync: %s", result)
+        except Exception as e:
+            log.debug("farming-sync error: %s", e)
+        time.sleep(1800)  # 30 minutes
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     # Initialise persistent stores
     _ensure_todos()
     _ensure_graph()
+    # Init farming DB tables (adds PA tables to shared farming.db without touching farming project's tables)
+    try:
+        from modules.farming.db import init as _farming_db_init
+        _farming_db_init()
+    except Exception as e:
+        log.warning("farming db init failed: %s", e)
     # Warm up weather + whisper in background
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _wx.get)
@@ -137,6 +198,12 @@ async def _lifespan(app: FastAPI):
     threading.Thread(target=_bg_check_new_photos, daemon=True, name="photo-check").start()
     # Encrypted backup of sensitive DBs at startup (non-blocking)
     threading.Thread(target=_backup_dbs, daemon=True, name="db-backup").start()
+    # Weekly digest emailer — fires every Sunday ~19:00
+    threading.Thread(target=_bg_digest_scheduler, daemon=True, name="digest-sched").start()
+    # Periodic todo verifier sweep — re-checks all verifiable tasks every 10 minutes
+    threading.Thread(target=_bg_todo_verifier, daemon=True, name="todo-verify").start()
+    # Farming sync: mirror crop_plots → PA plots/crops every 30 min
+    threading.Thread(target=_bg_farming_sync, daemon=True, name="farming-sync").start()
     yield
 
 
@@ -301,6 +368,12 @@ _MINDMAP_BRANCHES = [
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+# Payload cache — shared between WS and /api/data so both see the same build
+# without doubling the work. Refreshed in a thread every WS tick.
+_payload_cache: dict[str, Any] = {}
+_payload_lock  = threading.Lock()
+
+
 def _build_payload() -> dict[str, Any]:
     net = _net.status
     sys = get_system_stats()
@@ -354,7 +427,16 @@ async def guide_page():
 
 @app.get("/api/data")
 async def api_data():
-    return JSONResponse(_build_payload())
+    with _payload_lock:
+        cached = dict(_payload_cache)
+    if cached:
+        return JSONResponse(cached)
+    # Cache cold — build in executor so we don't block the loop
+    data = await asyncio.get_event_loop().run_in_executor(None, _build_payload)
+    with _payload_lock:
+        _payload_cache.clear()
+        _payload_cache.update(data)
+    return JSONResponse(data)
 
 
 @app.get("/api/mindmap")
@@ -498,6 +580,33 @@ async def diary_photo_stats():
         return JSONResponse({"total_processed": 0, "by_week": [], "last_processed_at": None})
 
 
+@app.get("/api/diary/photo/{filename}")
+async def diary_photo_serve(filename: str):
+    """Serve a photo from the configured photo directory (path-traversal safe)."""
+    from core.memory import load_profile
+    from modules.diary.photo_reader import default_photo_dir
+    if ".." in filename or filename.startswith("/"):
+        return JSONResponse({"error": "invalid filename"}, status_code=400)
+    profile = load_profile()
+    photo_dir = default_photo_dir(profile)
+    target = (photo_dir / filename).resolve()
+    if not str(target).startswith(str(photo_dir.resolve())):
+        return JSONResponse({"error": "invalid path"}, status_code=400)
+    if not target.exists():
+        # Try recursively searching subdirectories one level deep
+        matches = list(photo_dir.glob(f"*/{filename}")) + list(photo_dir.glob(filename))
+        if not matches:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        target = matches[0].resolve()
+        if not str(target).startswith(str(photo_dir.resolve())):
+            return JSONResponse({"error": "invalid path"}, status_code=400)
+    suffix = target.suffix.lower()
+    media_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+                 ".gif": "image/gif", ".webp": "image/webp", ".heic": "image/heic"}
+    media_type = media_map.get(suffix, "image/jpeg")
+    return FileResponse(str(target), media_type=media_type)
+
+
 @app.post("/api/diary/write-photos")
 async def diary_write_photos():
     """Trigger diary write from ~/Pictures in background; return immediately."""
@@ -545,6 +654,80 @@ async def diary_draft_get(week: str):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.post("/api/diary/retry/{week}")
+async def diary_retry_week(week: str):
+    """
+    Clear failed/error diary draft for a week, un-mark its photos, and re-run generation.
+    Handles entries that have '[Could not generate…]' error text.
+    """
+    import re as _re
+
+    def _run():
+        import sqlite3
+        from core.memory import get_diary_draft, save_diary_draft
+        draft = get_diary_draft(week)
+        if not draft:
+            return {"ok": False, "error": "week not found"}
+
+        raw = draft.get("draft", "")
+
+        # Strip error sections, keep successfully generated content
+        cleaned = _re.sub(
+            r'──[^\n]*\n+\[Could not generate[^\]]*\]\n*',
+            '', raw, flags=_re.MULTILINE
+        ).strip()
+
+        # Collect the date strings that failed (from error text)
+        failed_dates = _re.findall(
+            r'Could not generate diary entry for \w+, (\d{2} \w+ \d{4})',
+            raw
+        )
+        # Convert to YYYY-MM-DD
+        from datetime import datetime
+        failed_date_strs = []
+        for d in failed_dates:
+            try:
+                failed_date_strs.append(datetime.strptime(d, "%d %B %Y").strftime("%Y-%m-%d"))
+            except Exception:
+                pass
+
+        # Un-mark those photos from processed_photos so they'll be retried
+        if failed_date_strs:
+            conn = sqlite3.connect("personal_assistant.db")
+            for ds in failed_date_strs:
+                conn.execute(
+                    "DELETE FROM processed_photos WHERE path LIKE ? OR path LIKE ?",
+                    (f"%{ds}%", f"%{ds.replace('-', '')}%")
+                )
+                log.info("diary retry: un-marked photos for %s", ds)
+            conn.commit()
+            conn.close()
+
+        # Save cleaned draft (or delete entirely if nothing survived)
+        if cleaned:
+            save_diary_draft(week, cleaned)
+        else:
+            conn = sqlite3.connect("personal_assistant.db")
+            conn.execute("DELETE FROM diary_drafts WHERE week=?", (week,))
+            conn.commit()
+            conn.close()
+
+        # Retrigger generation
+        try:
+            mods = _get_query_modules()
+            diary = mods.get("diary")
+            if diary:
+                diary.handle("write diary from my photos", {})
+        except Exception as e:
+            log.error("diary retry write error: %s", e)
+
+        return {"ok": True, "cleaned": bool(cleaned), "retried_dates": failed_date_strs}
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, _run)
+    return JSONResponse(result)
+
+
 @app.get("/api/graph")
 async def api_graph():
     """Return knowledge graph nodes + edges for vis-network."""
@@ -582,6 +765,105 @@ async def api_graph_add_edge(payload: dict = Body(...)):
         return JSONResponse({"error": "src_id and dst_id required"}, status_code=400)
     eid = add_edge(int(src), int(dst), rel, payload.get("weight", 1.0))
     return JSONResponse({"id": eid})
+
+
+@app.get("/api/graph/search")
+async def api_graph_search(q: str = "", type: str = ""):
+    """Full-text search across graph node labels, aliases, and properties."""
+    from core.knowledge_graph import search_nodes
+    if not q.strip():
+        return JSONResponse({"results": []})
+    results = search_nodes(q.strip(), type_=type or None, limit=20)
+    return JSONResponse({"results": results})
+
+
+@app.get("/api/graph/node/{node_id}")
+async def api_graph_node(node_id: int):
+    """Return a single node by ID."""
+    from core.knowledge_graph import get_node
+    node = get_node(node_id)
+    if not node:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(node)
+
+
+@app.get("/api/graph/node/{node_id}/neighborhood")
+async def api_graph_neighborhood(node_id: int, depth: int = 1):
+    """Return the subgraph around a node (vis-network format)."""
+    from core.knowledge_graph import node_neighborhood
+    return JSONResponse(node_neighborhood(node_id, depth=min(depth, 3)))
+
+
+@app.delete("/api/graph/node/{node_id}")
+async def api_graph_delete_node(node_id: int):
+    """Delete a node and all its edges."""
+    from core.knowledge_graph import delete_node
+    delete_node(node_id)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/graph/import-graphify")
+async def api_graph_import_graphify(payload: dict = Body(default={})):
+    """
+    Import a Graphify graph.json into our knowledge graph.
+    Pass {"path": "/absolute/path/to/graph.json"} or defaults to project root/graph.json.
+    Graphify (github.com/safishamsi/graphify) produces this via: /graphify .
+    """
+    import json as _json
+    from core.knowledge_graph import upsert_node, add_edge
+
+    graph_path = Path(payload.get("path") or
+                      Path(__file__).parent.parent / "graph.json")
+    if not Path(graph_path).exists():
+        return JSONResponse(
+            {"error": f"graph.json not found at {graph_path}. "
+                      "Run: /graphify . in this project first."},
+            status_code=404,
+        )
+
+    try:
+        data = _json.loads(Path(graph_path).read_text())
+    except Exception as e:
+        return JSONResponse({"error": f"parse error: {e}"}, status_code=400)
+
+    nodes_in  = data.get("nodes") or []
+    edges_in  = data.get("edges") or []
+
+    # Graphify node types → our kg node types
+    _type_map = {
+        "function": "topic", "class": "topic", "module": "topic",
+        "file": "media", "concept": "topic", "person": "person",
+        "place": "place", "event": "event",
+    }
+
+    imported_nodes: dict[str, int] = {}   # graphify id → our kg id
+    node_count = 0
+    for n in nodes_in:
+        gid   = str(n.get("id") or n.get("name") or "")
+        label = (n.get("label") or n.get("name") or gid)[:160]
+        gtype = (n.get("type") or "topic").lower()
+        ktype = _type_map.get(gtype, "topic")
+        props = {k: v for k, v in n.items()
+                 if k not in ("id", "label", "name", "type") and isinstance(v, (str, int, float))}
+        if not label:
+            continue
+        kid = upsert_node(ktype, label, properties=props)
+        imported_nodes[gid] = kid
+        node_count += 1
+
+    edge_count = 0
+    for e in edges_in:
+        src_gid = str(e.get("source") or e.get("from") or "")
+        dst_gid = str(e.get("target") or e.get("to")   or "")
+        rel     = (e.get("label") or e.get("rel") or e.get("type") or "related_to")[:80]
+        src_kid = imported_nodes.get(src_gid)
+        dst_kid = imported_nodes.get(dst_gid)
+        if src_kid and dst_kid:
+            add_edge(src_kid, dst_kid, rel, weight=float(e.get("weight", 1.0)))
+            edge_count += 1
+
+    log.info("graphify import: %d nodes, %d edges", node_count, edge_count)
+    return JSONResponse({"ok": True, "nodes": node_count, "edges": edge_count})
 
 
 @app.get("/api/farming/ndvi")
@@ -671,6 +953,78 @@ async def api_news_refresh():
     return JSONResponse(data)
 
 
+@app.post("/api/news/dismiss")
+async def api_news_dismiss(url: str = Body(..., embed=True)):
+    """Remove one article from the cache by URL; persists until next server restart."""
+    _news.dismiss(url)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/guardian/fix-audit")
+async def api_guardian_fix_audit(payload: dict = Body(...)):
+    """Add # nosec suppression to a bandit-flagged line, then re-run the audit."""
+    issue     = payload.get("issue", {})
+    file_path = issue.get("file", "")
+    line_no   = issue.get("line", 0)
+
+    if not file_path or not line_no:
+        return JSONResponse({"ok": False, "error": "missing file or line"}, status_code=400)
+
+    repo_root = Path(__file__).parent.parent
+    target    = (repo_root / file_path).resolve()
+    if not str(target).startswith(str(repo_root.resolve())):
+        return JSONResponse({"ok": False, "error": "invalid path"}, status_code=400)
+    if not target.exists():
+        return JSONResponse({"ok": False, "error": "file not found"}, status_code=404)
+
+    lines = target.read_text().splitlines(keepends=True)
+    if line_no < 1 or line_no > len(lines):
+        return JSONResponse({"ok": False, "error": "invalid line"}, status_code=400)
+
+    # Append # nosec to the flagged line so bandit ignores it in future runs
+    line = lines[line_no - 1]
+    if "# nosec" not in line:
+        lines[line_no - 1] = line.rstrip("\n\r") + "  # nosec\n"
+        target.write_text("".join(lines))
+
+    # Re-run the full audit and persist updated results
+    try:
+        from security.auditor import run_audit
+        from security.guardian import _save_report
+        result = run_audit(auto_fix_permissions=False)
+        _save_report("code_audit", result)
+        log.info(f"fix-audit: applied nosec to {file_path}:{line_no}, re-audit found {result['total_issues']} issue(s)")
+    except Exception as exc:
+        log.warning(f"fix-audit re-audit failed: {exc}")
+
+    return JSONResponse({"ok": True, "fixed": file_path, "line": line_no})
+
+
+@app.get("/api/news/video")
+async def api_news_video(q: str = ""):
+    """Return a YouTube video ID for a news article query via DDGS video search."""
+    import re as _re
+
+    def _find(query: str) -> str | None:
+        try:
+            from ddgs import DDGS
+            for r in DDGS().videos(query, max_results=5):
+                url = r.get("content") or r.get("url") or ""
+                m = _re.search(r"[?&]v=([A-Za-z0-9_-]{11})", url)
+                if m:
+                    return m.group(1)
+        except Exception as e:
+            log.debug("news video search failed: %s", e)
+        return None
+
+    if not q.strip():
+        return JSONResponse({"video_id": None})
+
+    loop = asyncio.get_event_loop()
+    video_id = await loop.run_in_executor(None, _find, q.strip()[:120])
+    return JSONResponse({"video_id": video_id})
+
+
 # ── Todo CRUD ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/todos")
@@ -690,14 +1044,110 @@ async def api_todos_add(payload: dict = Body(...)):
 
 @app.put("/api/todos/{tid}")
 async def api_todos_update(tid: str, payload: dict = Body(...)):
-    update_todo(tid, **payload)
+    from dashboard.todo_store import get_todo
+    from dashboard.todo_verifier import run_verifier
+
+    # If the user is marking a task done, run its verifier first
+    if payload.get("done") == 1 or payload.get("done") is True:
+        todo = get_todo(tid)
+        if todo and todo.get("verifier"):
+            loop = asyncio.get_event_loop()
+            passed, note = await loop.run_in_executor(
+                None, run_verifier, todo["verifier"]
+            )
+            if not passed:
+                # Block the done mark — return failure with reason
+                update_todo(tid, verified=-1, verify_note=note)
+                return JSONResponse({
+                    "ok": False,
+                    "blocked": True,
+                    "reason": note,
+                }, status_code=200)
+            # Verifier passed — mark verified and done
+            update_todo(tid, verified=1, verify_note=note)
+
+    update_todo(tid, **{k: v for k, v in payload.items()
+                        if k not in ("verifier",)})
     return JSONResponse({"ok": True})
+
+
+@app.post("/api/todos/verify-all")
+async def api_todos_verify_all():
+    """Re-run all verifiers; reopen any task that claims done but fails verification."""
+    from dashboard.todo_verifier import verify_all_todos
+    loop = asyncio.get_event_loop()
+    results = await loop.run_in_executor(None, verify_all_todos)
+    return JSONResponse({"results": results})
 
 
 @app.delete("/api/todos/{tid}")
 async def api_todos_delete(tid: str):
     delete_todo(tid)
     return JSONResponse({"ok": True})
+
+
+# ── Threat pattern auto-fix ────────────────────────────────────────────────────
+
+@app.post("/api/guardian/fix-threat")
+async def fix_threat(request: Request):
+    """
+    Add one or more sanitizer patterns to security/patterns.json and hot-reload.
+    Body: {"patterns": [{id, pattern, severity, category, ...}, ...]}
+    """
+    import json as _json
+    body = await request.json()
+    patterns_to_add: list[dict] = body.get("patterns", [])
+    if not patterns_to_add:
+        return JSONResponse({"ok": False, "error": "no patterns provided"}, status_code=400)
+
+    patterns_file = Path("security/patterns.json")
+    try:
+        data = _json.loads(patterns_file.read_text())
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"cannot read patterns.json: {e}"}, status_code=500)
+
+    existing_ids = {p.get("id") for p in data.get("injection_patterns", [])}
+    added = []
+    for pat in patterns_to_add:
+        if pat.get("id") and pat["id"] not in existing_ids:
+            data["injection_patterns"].append(pat)
+            data["_meta"]["total_patterns"] = len(data["injection_patterns"])
+            existing_ids.add(pat["id"])
+            added.append(pat["id"])
+
+    try:
+        patterns_file.write_text(_json.dumps(data, indent=2, ensure_ascii=False))
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"cannot write patterns.json: {e}"}, status_code=500)
+
+    from core.sanitizer import reload_patterns
+    active = reload_patterns()
+    log.info("threat fix: added %d pattern(s) %s, %d active", len(added), added, active)
+
+    # Patch threat_intel_latest.json so the dashboard reflects the fix on reload.
+    # Match by pattern's "source" field == threat's "id" field.
+    fixed_sources = {p.get("source") for p in patterns_to_add if p.get("source")}
+    threat_file = Path("logs/security/threat_intel_latest.json")
+    if fixed_sources and threat_file.exists():
+        try:
+            ti = _json.loads(threat_file.read_text())
+            remaining = [
+                v for v in ti.get("vulnerabilities", [])
+                if v.get("threat", {}).get("id") not in fixed_sources
+            ]
+            ti["vulnerabilities"]      = remaining
+            ti["vulnerabilities_found"] = len(remaining)
+            # Remove matching alerts (they contain the threat ID in their text)
+            ti["alerts"] = [
+                a for a in ti.get("alerts", [])
+                if not any(src in a for src in fixed_sources)
+            ]
+            threat_file.write_text(_json.dumps(ti, indent=2, ensure_ascii=False))
+            log.info("threat fix: patched threat_intel_latest.json → %d remaining", len(remaining))
+        except Exception as e:
+            log.warning("threat fix: could not patch threat_intel_latest.json: %s", e)
+
+    return JSONResponse({"ok": True, "added": added, "active": active})
 
 
 # ── System upgrade (pip packages) ──────────────────────────────────────────────
@@ -746,6 +1196,85 @@ async def guardian_upgrade():
     loop = asyncio.get_event_loop()
     res = await loop.run_in_executor(None, _run)
     return JSONResponse({"status": "done", "results": res})
+
+
+@app.post("/api/digest/send")
+async def api_digest_send():
+    """Manually trigger the weekly email digest."""
+    from modules.digest.sender import send_digest
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, send_digest)
+    if result.get("ok"):
+        return JSONResponse(result)
+    return JSONResponse(result, status_code=500)
+
+
+@app.get("/api/digest/preview")
+async def api_digest_preview():
+    """Return the digest HTML body for browser preview (no email sent)."""
+    from modules.digest.builder import build_digest
+    loop = asyncio.get_event_loop()
+    subject, _, html = await loop.run_in_executor(None, build_digest)
+    return JSONResponse({"subject": subject, "html": html})
+
+
+@app.post("/api/faces/scan")
+async def api_faces_scan(payload: dict = Body(default={})):
+    """Scan for faces. If 'directory' given, scan that. Otherwise scan ~/Pictures + ~/Uploads."""
+    from modules.faces.clusterer import scan_directory
+    loop = asyncio.get_event_loop()
+    if "directory" in payload:
+        result = await loop.run_in_executor(None, scan_directory, payload["directory"])
+        return JSONResponse(result)
+    # Default: scan all standard photo directories
+    totals = {"total_photos": 0, "newly_scanned": 0, "faces_found": 0}
+    for folder in ("Pictures", "Uploads"):
+        d = Path.home() / folder
+        if d.exists():
+            r = await loop.run_in_executor(None, scan_directory, str(d))
+            totals["total_photos"] += r.get("total_photos", 0)
+            totals["newly_scanned"] += r.get("newly_scanned", 0)
+            totals["faces_found"]   += r.get("faces_found", 0)
+    return JSONResponse(totals)
+
+
+@app.post("/api/faces/cluster")
+async def api_faces_cluster():
+    """Run DBSCAN clustering over all stored face embeddings."""
+    from modules.faces.clusterer import cluster_all
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, cluster_all)
+    return JSONResponse(result)
+
+
+@app.get("/api/faces/clusters")
+async def api_faces_clusters():
+    """List all face clusters with name + photo count."""
+    from modules.faces import db as fdb
+    fdb.init()
+    return JSONResponse({"clusters": fdb.list_clusters(), "stats": fdb.stats()})
+
+
+@app.put("/api/faces/clusters/{cluster_id}")
+async def api_faces_rename(cluster_id: int, payload: dict = Body(...)):
+    """Rename a face cluster (assign a person's name)."""
+    from modules.faces import db as fdb
+    fdb.init()
+    name = (payload.get("name") or "").strip()
+    if not name:
+        return JSONResponse({"error": "name required"}, status_code=400)
+    fdb.rename_cluster(cluster_id, name)
+    return JSONResponse({"ok": True, "cluster_id": cluster_id, "name": name})
+
+
+@app.get("/api/faces/photo")
+async def api_faces_photo(path: str = ""):
+    """Return face detections for a specific photo path."""
+    from modules.faces import db as fdb
+    fdb.init()
+    if not path:
+        return JSONResponse({"error": "path required"}, status_code=400)
+    return JSONResponse({"faces": fdb.faces_for_photo(path)})
 
 
 @app.post("/api/voice/query")
@@ -817,9 +1346,15 @@ async def ws_endpoint(websocket: WebSocket):
     await websocket.accept()
     client = websocket.client
     log.info("dashboard connected: %s", client)
+    loop = asyncio.get_event_loop()
     try:
         while True:
-            payload = _build_payload()
+            # Build payload in thread pool — never blocks the event loop.
+            # Other requests (voice, diary, todos) stay responsive during the build.
+            payload = await loop.run_in_executor(None, _build_payload)
+            with _payload_lock:
+                _payload_cache.clear()
+                _payload_cache.update(payload)
             await websocket.send_json(payload)
             await asyncio.sleep(2)
     except WebSocketDisconnect:

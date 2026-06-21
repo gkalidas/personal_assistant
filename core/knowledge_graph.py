@@ -145,6 +145,98 @@ def list_nodes(type_: str | None = None, limit: int = 100) -> list[dict]:
     return result
 
 
+def search_nodes(query: str, type_: str | None = None, limit: int = 20) -> list[dict]:
+    """Full-text search across node labels, aliases, and properties."""
+    q = f"%{query.lower()}%"
+    with _conn() as c:
+        if type_:
+            rows = c.execute(
+                "SELECT * FROM kg_nodes WHERE type=? AND ("
+                "  lower(label) LIKE ? OR lower(aliases) LIKE ? OR lower(properties) LIKE ?"
+                ") ORDER BY label LIMIT ?",
+                (type_, q, q, q, limit),
+            ).fetchall()
+        else:
+            rows = c.execute(
+                "SELECT * FROM kg_nodes WHERE ("
+                "  lower(label) LIKE ? OR lower(aliases) LIKE ? OR lower(properties) LIKE ?"
+                ") ORDER BY label LIMIT ?",
+                (q, q, q, limit),
+            ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["properties"] = json.loads(d.get("properties") or "{}")
+        d["aliases"]    = json.loads(d.get("aliases")    or "[]")
+        result.append(d)
+    return result
+
+
+def delete_node(node_id: int) -> None:
+    """Delete a node and all its edges."""
+    with _conn() as c:
+        c.execute("DELETE FROM kg_edges WHERE src_id=? OR dst_id=?", (node_id, node_id))
+        c.execute("DELETE FROM kg_nodes WHERE id=?", (node_id,))
+
+
+def node_neighborhood(node_id: int, depth: int = 1) -> dict[str, list]:
+    """
+    Return the subgraph (vis-network format) around `node_id` up to `depth` hops.
+    depth=1 returns the node + all its immediate neighbours + connecting edges.
+    """
+    with _conn() as c:
+        visited_ids: set[int] = {node_id}
+        frontier: set[int]    = {node_id}
+
+        for _ in range(depth):
+            next_frontier: set[int] = set()
+            for nid in frontier:
+                rows = c.execute(
+                    "SELECT src_id, dst_id FROM kg_edges WHERE src_id=? OR dst_id=?",
+                    (nid, nid),
+                ).fetchall()
+                for row in rows:
+                    for neighbour in (row["src_id"], row["dst_id"]):
+                        if neighbour not in visited_ids:
+                            next_frontier.add(neighbour)
+            visited_ids.update(next_frontier)
+            frontier = next_frontier
+
+        nodes = c.execute(
+            f"SELECT * FROM kg_nodes WHERE id IN ({','.join('?' * len(visited_ids))})",
+            list(visited_ids),
+        ).fetchall()
+
+        edges = c.execute(
+            "SELECT * FROM kg_edges WHERE src_id IN "
+            f"({','.join('?' * len(visited_ids))}) AND dst_id IN "
+            f"({','.join('?' * len(visited_ids))})",
+            list(visited_ids) + list(visited_ids),
+        ).fetchall()
+
+    vis_nodes = [
+        {
+            "id":    n["id"],
+            "label": n["label"],
+            "group": n["type"],
+            "color": _NODE_COLORS.get(n["type"], "#888"),
+            "title": f"{n['type'].upper()}: {n['label']}",
+            "font":  {"bold": n["id"] == node_id},
+        }
+        for n in nodes
+    ]
+    vis_edges = [
+        {
+            "from":  e["src_id"],
+            "to":    e["dst_id"],
+            "label": e["rel"],
+            "width": min(5, max(1, int(e["weight"]))),
+        }
+        for e in edges
+    ]
+    return {"nodes": vis_nodes, "edges": vis_edges}
+
+
 # ── Edge CRUD ─────────────────────────────────────────────────────────────────
 
 def add_edge(src_id: int, dst_id: int, rel: str,

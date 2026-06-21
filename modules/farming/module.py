@@ -16,7 +16,10 @@ from modules.farming import weather as wx
 from modules.farming.soil import get_soil, format_soil
 from modules.farming.knowledge import kb_context_for_llm, list_crops_with_kb, format_disease_summary
 from modules.farming.mandi import get_prices, format_prices
-from modules.farming.farming_client import analyse_photo, format_diagnosis, is_running as farming_server_running
+from modules.farming.farming_client import (
+    analyse_photo, format_diagnosis, is_running as farming_server_running,
+    get_history as farming_history, ask as farming_ask,
+)
 from modules.farming.geocode import resolve
 from modules.farming.ndvi import get_ndvi, format_ndvi_report
 
@@ -47,7 +50,7 @@ Actions:
   {"action": "plant_crop", "plot": "<plot_name>", "crop": "<string>", "variety": "<string or null>", "planted_date": "<YYYY-MM-DD or null>"}
   {"action": "list_crops", "plot": "<plot_name or null>"}
   {"action": "harvest_crop", "crop_id": <number>, "yield_kg": <number>}
-  {"action": "log_spray", "plot": "<plot_name>", "chemical": "<string>", "quantity": "<string or null>", "reason": "<string or null>"}
+  {"action": "log_spray", "plot": "<plot_name>", "chemical": "<string>", "quantity": "<string or null>", "reason": "<string or null>", "cost": <number or null — rupees spent on this spray, if mentioned>}
   {"action": "spray_history", "plot": "<plot_name>"}
   {"action": "log_observation", "plot": "<plot_name>", "type": "disease|pest|weather_damage|growth|soil|other", "description": "<string>", "severity": "low|medium|high"}
   {"action": "open_observations"}
@@ -55,6 +58,7 @@ Actions:
   {"action": "crop_history", "plot": "<plot_name>"}
   {"action": "mandi_price", "commodity": "<crop name>", "district": "<district or null>"}
   {"action": "ndvi_health", "location": "<village/city or null>", "plot": "<plot_name or null>"}
+  {"action": "analysis_history", "limit": <number, default 10>}
   {"action": "chat", "reply": "<response for conversational or ambiguous queries>"}
 
 Examples (follow this format exactly):
@@ -287,7 +291,18 @@ def _h_log_spray(action, _lat, _lon, _name):
         return r["error"], None
     qty = f" ({action['quantity']})" if action.get("quantity") else ""
     reason = f" — {action['reason']}" if action.get("reason") else ""
-    return f"Spray logged: {action['chemical']}{qty} on {action['plot']}{reason}", r
+    note = f"Spray logged: {action['chemical']}{qty} on {action['plot']}{reason}"
+    # Auto-log finance expense if user mentioned a cost
+    cost = action.get("cost")
+    if cost:
+        try:
+            from modules.finance.tools import add_transaction
+            desc = f"{action['chemical']}{qty} — {action['plot']}"
+            add_transaction(float(cost), "expense", "farming", desc)
+            note += f"\n  ₹{cost:.0f} logged as farming expense"
+        except Exception as e:
+            log.warning("farming→finance auto-log failed: %s", e)
+    return note, r
 
 def _h_spray_history(action, _lat, _lon, _name):
     logs = tools.spray_history(action.get("plot", ""))
@@ -463,6 +478,21 @@ def _h_season_summary(action, _lat, _lon, _name):
         f"  Sprays this month: {s['sprays_this_month']}"
     ), s
 
+def _h_analysis_history(action, _lat, _lon, _name):
+    limit = int(action.get("limit", 10))
+    rows = farming_history(limit=limit)
+    if not rows:
+        return "No analysis history found (farming server may be offline or no analyses run yet).", None
+    lines = [f"Last {min(limit, len(rows))} disease analyses:"]
+    for r in rows:
+        crop = r.get("crop", "?")
+        loc  = r.get("location", "")
+        diag = r.get("visual_diag") or r.get("condition") or "—"
+        date = (r.get("created_at") or "")[:10]
+        loc_str = f" | {loc}" if loc else ""
+        lines.append(f"  {date}  {crop}{loc_str} → {diag[:60]}")
+    return "\n".join(lines), rows
+
 def _h_chat(action, _lat, _lon, _name):
     return action.get("reply", ""), None
 
@@ -490,6 +520,7 @@ _DISPATCH: dict[str, Any] = {
     "soil_data":          _h_soil_data,
     "season_summary":     _h_season_summary,
     "summary":            _h_season_summary,
+    "analysis_history":   _h_analysis_history,
     "chat":               _h_chat,
 }
 
@@ -534,12 +565,54 @@ class FarmingModule(BaseModule):
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
         t0 = time.monotonic()
+
         # Switch farm context when the query explicitly names another farm/owner
         named = _resolve_named_farm(query, context.get("profile", {}))
         if named and named.get("label") != context.get("default_farm", {}).get("label"):
             context = dict(context)
             context["default_farm"] = named
             log.info("farm context → %s (query named it)", named["label"])
+
+        farm = context.get("default_farm", {})
+        _lat  = farm.get("lat") or farm.get("latitude")
+        _lon  = farm.get("lon") or farm.get("longitude")
+        _name = (farm.get("city") or farm.get("primary_location")
+                 or farm.get("location") or farm.get("label") or "")
+        _crop = farm.get("primary_crop") or ""
+
+        # ── Delegate to farming server when it's running ──────────────────────
+        # Photo diagnosis and data-write actions (add_plot, plant_crop, log_spray, etc.)
+        # still go through the local dispatch table. Everything else the farming app
+        # answers better — it has its own weather + soil pipeline and the full KB.
+        _LOCAL_ONLY_KEYWORDS = {
+            "photo", "image", "picture", "diagnos",      # photo analysis
+            "add plot", "new plot", "register plot",      # plot creation
+            "plant crop", "planted", "sow",               # crop planting
+            "log spray", "spray log",                     # spray logging
+            "log observation", "observation",             # field notes
+            "mandi", "apmc", "market price", "rate",     # mandi — farming app has no price data
+            "my plots", "list plots", "show plots",       # list from PA DB
+            "my crops", "list crops", "show crops",       # list from PA DB
+            "analysis history", "past analyses",          # history from farming server via client
+        }
+        q_lower = query.lower()
+        is_local = any(kw in q_lower for kw in _LOCAL_ONLY_KEYWORDS)
+
+        if not is_local and farming_server_running():
+            log.info("delegating to farming server: q=%r", query[:80])
+            result = farming_ask(query=query, crop=_crop, location=_name)
+            if "reply" in result:
+                ms = int((time.monotonic() - t0) * 1000)
+                log.info("farming server replied in %dms", ms)
+                return ModuleResponse(
+                    text=result["reply"],
+                    module=self.name,
+                    data={"source": "farming_server", "modules": result.get("modules", [])},
+                )
+            # Server returned an error — fall through to local handlers
+            log.warning("farming server ask failed: %s — falling back", result.get("error"))
+
+        # ── Local fallback: PA's own LLM + dispatch table ─────────────────────
         try:
             action = _call_llm(query, context)
         except Exception as e:

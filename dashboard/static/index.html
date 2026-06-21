@@ -48,21 +48,27 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .nav-link:hover{color:var(--cyan);border-color:var(--cyan)}
 
 /* ── Grid: 4-col × 3-row ──────────────────────────────────────────────────── */
-#grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;grid-template-rows:150px minmax(130px,160px) 1fr;gap:8px;padding:8px;height:calc(100vh - 44px)}
+#grid{position:relative;width:100%;height:calc(100vh - 44px);overflow:hidden}
 
-/* ── Panel ────────────────────────────────────────────────────────────────── */
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:10px 12px;position:relative;overflow:hidden;transition:border-color 0.25s,box-shadow 0.25s}
-.panel.clickable{cursor:pointer}
-.panel.clickable:hover{border-color:var(--cyan);box-shadow:inset 0 0 30px rgba(0,229,255,0.04),0 0 16px var(--glow-c)}
+/* ── Panel — free-form floating window ───────────────────────────────────── */
+.panel{position:absolute;box-sizing:border-box;background:rgba(6,14,24,0.68);border:1px solid var(--border);border-radius:3px;padding:10px 12px;overflow:hidden;transition:border-color 0.2s,box-shadow 0.2s;user-select:none}
+.panel.clickable:hover{border-color:var(--cyan);box-shadow:inset 0 0 30px rgba(0,229,255,0.04),0 0 14px var(--glow-c)}
 .panel.danger{border-color:rgba(255,34,85,0.5)}
 .panel.warn  {border-color:rgba(255,170,0,0.4)}
-.panel::before{content:'';position:absolute;top:4px;left:4px;width:10px;height:10px;border-top:1px solid var(--cyan);border-left:1px solid var(--cyan);opacity:0.4}
-.panel::after {content:'';position:absolute;bottom:4px;right:4px;width:10px;height:10px;border-bottom:1px solid var(--cyan);border-right:1px solid var(--cyan);opacity:0.4}
+.panel::before{content:'';position:absolute;top:4px;left:4px;width:10px;height:10px;border-top:1px solid var(--cyan);border-left:1px solid var(--cyan);opacity:0.3;pointer-events:none}
+/* resize grip — bottom-right corner */
+.panel-resize{position:absolute;bottom:0;right:0;width:16px;height:16px;cursor:se-resize;z-index:5;opacity:0.35;transition:opacity 0.15s}
+.panel-resize::before,.panel-resize::after{content:'';position:absolute;background:var(--cyan);border-radius:1px}
+.panel-resize::before{right:3px;bottom:7px;width:10px;height:1px}
+.panel-resize::after {right:3px;bottom:3px;width:10px;height:1px;box-shadow:0 -3px 0 var(--cyan)}
+.panel:hover .panel-resize{opacity:0.7}
+/* drag cursor on label */
+.panel-label{cursor:move}
 .panel-label{font-size:9px;letter-spacing:3px;color:var(--dim);margin-bottom:7px;display:flex;align-items:center;gap:6px}
 .panel-label::before{content:'';display:inline-block;width:3px;height:3px;border:1px solid var(--dim);transform:rotate(45deg);flex-shrink:0}
 .click-hint{position:absolute;bottom:5px;right:9px;font-size:8px;letter-spacing:2px;color:#0a2535;transition:color 0.2s}
 .panel.clickable:hover .click-hint{color:var(--dim)}
-.panel-btn{font-size:8px;letter-spacing:2px;padding:2px 7px;border-radius:2px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--dim);font-family:inherit;transition:all 0.15s;margin-left:auto}
+.panel-btn{font-size:8px;letter-spacing:2px;padding:2px 7px;border-radius:2px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--dim);font-family:inherit;transition:all 0.15s;margin-left:auto;display:inline-flex;align-items:center;line-height:1}
 .panel-btn:hover:not(:disabled){color:var(--cyan);border-color:var(--cyan)}
 .panel-btn:disabled{opacity:0.4;cursor:default}
 .panel-btn.running{color:var(--amber);border-color:var(--amber);animation:blink-alert 1s infinite}
@@ -91,7 +97,7 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .failover-alert{margin-top:6px;padding:4px 8px;background:rgba(255,34,85,0.08);border:1px solid rgba(255,34,85,0.35);border-radius:2px;font-size:9px;letter-spacing:2px;color:var(--red);animation:blink-fast 0.7s infinite}
 
 /* diary write button */
-.diary-write-btn{font-size:8px;letter-spacing:2px;padding:2px 6px;background:rgba(210,168,255,0.08);border:1px solid rgba(210,168,255,0.25);color:#d2a8ff;border-radius:2px;cursor:pointer;flex-shrink:0}
+.diary-write-btn{font-size:8px;letter-spacing:2px;padding:2px 6px;background:rgba(210,168,255,0.08);border:1px solid rgba(210,168,255,0.25);color:#d2a8ff;border-radius:2px;cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;line-height:1}
 .diary-write-btn:hover{background:rgba(210,168,255,0.15);border-color:#d2a8ff}
 .diary-photo-stat{font-size:8px;letter-spacing:1px;color:#5a3a7a;margin-top:2px}
 /* diary review questions */
@@ -176,6 +182,13 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .issue-row .sev.MEDIUM{color:var(--amber)}
 .issue-row .loc{color:var(--dim);font-size:10px;margin-bottom:2px}
 .issue-row .msg{color:#8ab0b8}
+.threat-acc{margin-bottom:4px;border:1px solid rgba(255,34,85,0.2);border-radius:2px;background:rgba(255,34,85,0.03)}
+.threat-acc.fixed{border-color:rgba(34,255,136,0.25);background:rgba(34,255,136,0.03)}
+.threat-acc-hdr{display:flex;align-items:center;padding:6px 8px;cursor:pointer;gap:4px;user-select:none}
+.threat-acc-hdr:hover{background:rgba(255,255,255,0.03)}
+.tacc-arrow{font-size:8px;color:var(--dim);transition:transform 0.15s;flex-shrink:0}
+.tacc-arrow.open{transform:rotate(90deg)}
+.threat-acc-body{padding:6px 10px 8px;border-top:1px solid rgba(255,34,85,0.1)}
 /* upgrade result */
 .upg-result{font-size:10px;color:#9ab8c4;padding:10px;border:1px solid var(--border);border-radius:2px;margin-top:10px;white-space:pre-wrap;max-height:200px;overflow-y:auto}
 
@@ -221,7 +234,14 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .book-page{position:absolute;inset:0;padding:18px 24px;overflow-y:auto;color:#9ab8c4;line-height:1.85;font-size:12px}
 .book-page .pg-title{font-size:11px;letter-spacing:4px;color:var(--cyan);text-shadow:0 0 8px var(--glow-c);margin-bottom:12px;padding-bottom:7px;border-bottom:1px solid var(--border)}
 .book-page p{margin-bottom:10px;color:#8ab8c8}
-.book-page .photo-note{font-size:10px;letter-spacing:2px;color:var(--dim);margin-top:12px}
+.book-page .photo-note{font-size:10px;letter-spacing:2px;color:var(--cyan);margin-top:12px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.book-page .photo-note:hover{color:#fff}
+#photo-lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:600;align-items:center;justify-content:center;flex-direction:column}
+#photo-lightbox.open{display:flex}
+#photo-lightbox img{max-width:90vw;max-height:82vh;border:1px solid var(--cyan);border-radius:2px;box-shadow:0 0 40px rgba(0,229,255,0.18)}
+#photo-lightbox-name{color:var(--dim);font-size:9px;letter-spacing:2px;margin-top:8px}
+#photo-lightbox-close{position:absolute;top:16px;right:20px;color:var(--cyan);font-size:18px;cursor:pointer;letter-spacing:2px}
+#photo-lightbox-err{color:var(--red);font-size:9px;letter-spacing:2px;margin-top:8px;display:none}
 .book-page .empty-note{font-size:10px;letter-spacing:2px;color:#0c2535;padding:28px 0;text-align:center}
 .book-footer{display:flex;align-items:center;justify-content:space-between;padding:7px 18px;border-top:1px solid var(--border);flex-shrink:0}
 .book-nav-btn{font-size:9px;letter-spacing:2px;padding:3px 10px;border-radius:2px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--dim);font-family:inherit;transition:all 0.15s}
@@ -240,11 +260,17 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .news-scroll-wrap{flex:1;overflow:hidden;position:relative}
 .news-scroll-inner{display:flex;flex-direction:column;gap:5px}
 .news-scroll-inner.animating{animation:news-scroll linear infinite;animation-duration:var(--scroll-dur,60s)}
-.news-card{display:block;padding:7px 10px;border:1px solid var(--border);border-radius:2px;background:rgba(0,0,0,0.2);cursor:pointer;transition:all 0.15s;flex-shrink:0}
+.news-card{display:flex;align-items:flex-start;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:2px;background:rgba(0,0,0,0.2);cursor:pointer;transition:all 0.15s;flex-shrink:0}
 .news-card:hover{border-color:var(--cyan);background:rgba(0,229,255,0.04)}
+.news-card-body{flex:1;min-width:0}
 .news-card-title{font-size:11px;color:#9ab8c4;line-height:1.4;margin-bottom:3px}
 .news-card-meta{font-size:8px;letter-spacing:1px;color:#0c2535}
 .news-card-meta span{color:var(--dim)}
+.news-card-badge{font-size:7px;letter-spacing:2px;padding:1px 5px;border-radius:1px;flex-shrink:0;margin-top:1px;align-self:flex-start}
+.news-card-badge.world{background:rgba(255,165,0,0.12);border:1px solid rgba(255,165,0,0.3);color:#e8a020}
+.news-card-badge.farming{background:rgba(0,229,100,0.08);border:1px solid rgba(0,229,100,0.25);color:#00c864}
+.news-card-dismiss{font-size:13px;color:#2a3a44;cursor:pointer;flex-shrink:0;align-self:flex-start;line-height:1;padding:0 2px;transition:color 0.15s}
+.news-card-dismiss:hover{color:var(--red)}
 .news-footer{font-size:8px;letter-spacing:2px;color:var(--dim);margin-top:4px;flex-shrink:0}
 
 /* ── Voice panel ──────────────────────────────────────────────────────────── */
@@ -269,8 +295,138 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .ti-dot.q3{color:var(--dim)}
 .ti-dot.q4{color:#0c2535}
 .ti-text{flex:1;color:#9ab8c4;line-height:1.4}
-.todo-mini-link{font-size:8px;letter-spacing:3px;color:var(--dim);text-decoration:none;border:1px solid var(--border);padding:2px 7px;border-radius:2px;transition:all 0.15s;margin-left:auto}
+.todo-mini-link{font-size:8px;letter-spacing:3px;color:var(--dim);text-decoration:none;border:1px solid var(--border);padding:2px 7px;border-radius:2px;transition:all 0.15s;margin-left:auto;display:inline-flex;align-items:center;line-height:1}
 .todo-mini-link:hover{color:var(--amber);border-color:var(--amber)}
+
+/* ── Todo full modal ──────────────────────────────────────────────────────── */
+/* ── Todo full-screen HUD ─────────────────────────────────────────────────── */
+#modal-todo-full{display:none;position:fixed;inset:0;background:#010912;z-index:350;flex-direction:column;overflow:hidden}
+#modal-todo-full.open{display:flex}
+/* dot-grid background */
+#modal-todo-full::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background-image:radial-gradient(rgba(0,229,255,0.07) 1px,transparent 1px);
+  background-size:36px 36px;background-position:0 0;}
+/* top command bar */
+#modal-todo-header{display:flex;align-items:center;gap:20px;padding:0 32px;height:56px;flex-shrink:0;position:relative;z-index:1;background:rgba(1,9,18,0.96)}
+#modal-todo-header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,229,255,0.5) 20%,rgba(0,229,255,0.5) 80%,transparent)}
+/* left identity block */
+#modal-todo-brand{display:flex;flex-direction:column;gap:2px;flex-shrink:0;border-right:1px solid rgba(0,229,255,0.1);padding-right:20px}
+#modal-todo-title{font-size:14px;letter-spacing:8px;color:var(--cyan);text-shadow:0 0 24px rgba(0,229,255,0.6);line-height:1}
+#modal-todo-sys{font-size:7px;letter-spacing:3px;color:rgba(0,229,255,0.3)}
+/* add bar */
+#modal-todo-add{display:flex;gap:10px;flex:1;min-width:0;align-items:center}
+#modal-todo-add input{flex:1;min-width:0;height:30px;background:transparent;border:none;border-bottom:1px solid rgba(0,229,255,0.18);color:var(--cyan);font-family:inherit;font-size:11px;letter-spacing:1px;padding:0 6px;outline:none;transition:border-color 0.2s,background 0.2s;box-sizing:border-box}
+#modal-todo-add input:focus{border-bottom-color:var(--cyan);background:rgba(0,229,255,0.03)}
+#modal-todo-add input::placeholder{color:rgba(0,229,255,0.2)}
+#modal-todo-add select{height:30px;background:rgba(0,20,40,0.8);border:1px solid rgba(0,229,255,0.14);color:rgba(0,229,255,0.65);font-family:inherit;font-size:8px;letter-spacing:1px;padding:0 10px;outline:none;cursor:pointer;box-sizing:border-box}
+#modal-todo-add button{height:30px;display:inline-flex;align-items:center;background:transparent;color:var(--cyan);border:1px solid rgba(0,229,255,0.4);font-family:inherit;font-size:8px;letter-spacing:3px;padding:0 20px;cursor:pointer;white-space:nowrap;transition:all 0.15s;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px));box-sizing:border-box}
+#modal-todo-add button:hover{background:rgba(0,229,255,0.1);box-shadow:0 0 18px rgba(0,229,255,0.18)}
+/* right actions — all items share the same 30px height */
+#modal-todo-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.modal-todo-btn{height:30px;display:inline-flex;align-items:center;background:transparent;border:1px solid rgba(0,229,255,0.1);color:rgba(0,229,255,0.3);font-family:inherit;font-size:7px;letter-spacing:2px;padding:0 14px;cursor:pointer;transition:all 0.15s;clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,6px 100%,0 calc(100% - 6px));box-sizing:border-box}
+.modal-todo-btn:hover{border-color:rgba(0,229,255,0.4);color:var(--cyan)}
+.modal-todo-btn.active{border-color:var(--amber);color:var(--amber)}
+#modal-todo-closebtn{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,34,85,0.22);color:rgba(255,34,85,0.4);cursor:pointer;font-size:14px;flex-shrink:0;transition:all 0.15s;clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,6px 100%,0 calc(100% - 6px));box-sizing:border-box}
+#modal-todo-closebtn:hover{background:rgba(255,34,85,0.1);border-color:var(--red);color:var(--red)}
+/* 2×2 matrix — 1px separator is the grid bg color */
+#modal-todo-matrix{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1px;flex:1;min-height:0;background:rgba(0,229,255,0.07);position:relative}
+/* quadrant base */
+.modal-quad{display:flex;flex-direction:column;overflow:hidden;min-height:0;position:relative}
+/* corner-bracket decoration via pseudo-elements */
+.modal-quad::before,.modal-quad::after{content:'';position:absolute;width:20px;height:20px;z-index:2;pointer-events:none}
+/* Q1 — red, top-left */
+#modal-q1{background:rgba(255,34,85,0.025)}
+#modal-q1::before{top:0;left:0;border-top:2px solid rgba(255,34,85,0.7);border-left:2px solid rgba(255,34,85,0.7)}
+#modal-q1::after{bottom:0;right:0;border-bottom:2px solid rgba(255,34,85,0.2);border-right:2px solid rgba(255,34,85,0.2)}
+/* Q2 — cyan, top-right */
+#modal-q2{background:rgba(0,229,255,0.015)}
+#modal-q2::before{top:0;right:0;border-top:2px solid rgba(0,229,255,0.65);border-right:2px solid rgba(0,229,255,0.65)}
+#modal-q2::after{bottom:0;left:0;border-bottom:2px solid rgba(0,229,255,0.18);border-left:2px solid rgba(0,229,255,0.18)}
+/* Q3 — amber, bottom-left */
+#modal-q3{background:rgba(255,170,0,0.018)}
+#modal-q3::before{top:0;left:0;border-top:2px solid rgba(255,170,0,0.65);border-left:2px solid rgba(255,170,0,0.65)}
+#modal-q3::after{bottom:0;right:0;border-bottom:2px solid rgba(255,170,0,0.18);border-right:2px solid rgba(255,170,0,0.18)}
+/* Q4 — steel, bottom-right */
+#modal-q4{background:rgba(30,70,90,0.05)}
+#modal-q4::before{top:0;right:0;border-top:2px solid rgba(50,150,180,0.45);border-right:2px solid rgba(50,150,180,0.45)}
+#modal-q4::after{bottom:0;left:0;border-bottom:2px solid rgba(50,150,180,0.15);border-left:2px solid rgba(50,150,180,0.15)}
+/* quadrant header */
+.modal-quad-hdr{display:flex;align-items:center;gap:14px;padding:13px 22px;flex-shrink:0;border-bottom:1px solid;position:relative;z-index:1}
+.q1-hdr{border-color:rgba(255,34,85,0.18);background:rgba(255,34,85,0.055)}
+.q2-hdr{border-color:rgba(0,229,255,0.12);background:rgba(0,229,255,0.045)}
+.q3-hdr{border-color:rgba(255,170,0,0.15);background:rgba(255,170,0,0.04)}
+.q4-hdr{border-color:rgba(50,150,180,0.15);background:rgba(50,150,180,0.04)}
+.modal-quad-label{font-size:10px;letter-spacing:5px;font-weight:bold}
+.q1-hdr .modal-quad-label{color:#ff4466;text-shadow:0 0 16px rgba(255,34,85,0.55)}
+.q2-hdr .modal-quad-label{color:var(--cyan);text-shadow:0 0 16px rgba(0,229,255,0.45)}
+.q3-hdr .modal-quad-label{color:var(--amber);text-shadow:0 0 16px rgba(255,170,0,0.45)}
+.q4-hdr .modal-quad-label{color:#3ab4cc}
+.modal-quad-sub{font-size:8px;letter-spacing:1.5px;color:rgba(255,255,255,0.2);flex:1}
+.modal-quad-qn{font-size:28px;font-weight:bold;opacity:0.2;line-height:1;font-variant-numeric:tabular-nums;flex-shrink:0;letter-spacing:0}
+.q1-hdr .modal-quad-qn{color:#ff4466} .q2-hdr .modal-quad-qn{color:var(--cyan)}
+.q3-hdr .modal-quad-qn{color:var(--amber)} .q4-hdr .modal-quad-qn{color:#3ab4cc}
+.modal-quad-cnt{font-size:22px;font-weight:bold;line-height:1;font-variant-numeric:tabular-nums;flex-shrink:0;opacity:0.45}
+.q1-hdr .modal-quad-cnt{color:#ff4466} .q2-hdr .modal-quad-cnt{color:var(--cyan)}
+.q3-hdr .modal-quad-cnt{color:var(--amber)} .q4-hdr .modal-quad-cnt{color:#3ab4cc}
+/* task list scroll area */
+.modal-quad-tasks{flex:1;overflow-y:auto;padding:10px 16px}
+.modal-quad-tasks::-webkit-scrollbar{width:2px}
+.modal-quad-tasks::-webkit-scrollbar-thumb{background:rgba(0,229,255,0.1)}
+/* task rows */
+.modal-task-item{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;margin-bottom:3px;border-left:2px solid transparent;background:rgba(255,255,255,0.018);transition:all 0.12s;position:relative}
+#modal-q1 .modal-task-item{border-left-color:rgba(255,34,85,0.22)}
+#modal-q1 .modal-task-item:hover{border-left-color:#ff4466;background:rgba(255,34,85,0.05)}
+#modal-q2 .modal-task-item{border-left-color:rgba(0,229,255,0.18)}
+#modal-q2 .modal-task-item:hover{border-left-color:var(--cyan);background:rgba(0,229,255,0.04)}
+#modal-q3 .modal-task-item{border-left-color:rgba(255,170,0,0.22)}
+#modal-q3 .modal-task-item:hover{border-left-color:var(--amber);background:rgba(255,170,0,0.04)}
+#modal-q4 .modal-task-item{border-left-color:rgba(50,150,180,0.2)}
+#modal-q4 .modal-task-item:hover{border-left-color:#3ab4cc;background:rgba(50,150,180,0.04)}
+.modal-task-item.done{opacity:0.22;text-decoration:line-through}
+.modal-task-cb{width:14px;height:14px;margin-top:2px;flex-shrink:0;accent-color:var(--green);cursor:pointer}
+.modal-task-text{flex:1;font-size:11px;color:rgba(180,222,238,0.82);line-height:1.5;word-break:break-word;letter-spacing:0.4px}
+.modal-task-del{background:transparent;border:none;color:transparent;cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0;transition:color 0.12s}
+.modal-task-item:hover .modal-task-del{color:rgba(255,34,85,0.28)}
+.modal-task-del:hover{color:var(--red)!important}
+.modal-quad-empty{font-size:9px;letter-spacing:4px;color:rgba(255,255,255,0.08);text-align:center;padding:36px 0}
+.modal-task-item[draggable=true]{cursor:grab}
+.modal-task-item.tq-dragging{opacity:0.18;border-left-style:dashed}
+.modal-quad-tasks.tq-over{background:rgba(0,229,255,0.07);outline:1px dashed rgba(0,229,255,0.38)}
+.modal-task-item.verify-fail{border-left-color:#ff4466!important;background:rgba(255,34,85,0.06)!important}
+/* ── Verifier badges ─────────────────────────────────────────────── */
+.tq-verify-badge{position:relative;font-size:9px;letter-spacing:.8px;padding:2px 6px;border-radius:2px;flex-shrink:0;font-family:monospace;cursor:default;user-select:none}
+.tq-verify-badge.fail{background:rgba(255,34,85,0.18);color:#ff4466;border:1px solid rgba(255,34,85,0.4)}
+.tq-verify-badge.ok{background:rgba(50,200,100,0.12);color:#32c864;border:1px solid rgba(50,200,100,0.3)}
+.tq-verify-badge.pending{background:rgba(0,229,255,0.08);color:rgba(0,229,255,0.6);border:1px solid rgba(0,229,255,0.2)}
+/* Tooltip bubble via ::after */
+.tq-verify-badge[data-tooltip]::before,
+.tq-verify-badge[data-tooltip]::after{
+  content:'';position:absolute;bottom:calc(100% + 7px);right:0;
+  opacity:0;pointer-events:none;transition:opacity 0.15s ease;z-index:200
+}
+.tq-verify-badge[data-tooltip]::after{
+  content:attr(data-tooltip);
+  background:#040d1a;
+  font-size:10px;font-family:monospace;letter-spacing:.3px;line-height:1.5;
+  padding:6px 10px;border-radius:3px;white-space:pre-wrap;
+  max-width:260px;min-width:120px;width:max-content;text-align:left;
+  box-shadow:0 4px 16px rgba(0,0,0,.6)
+}
+.tq-verify-badge[data-tooltip]::before{
+  content:'';width:0;height:0;bottom:calc(100% + 1px);
+  border-left:5px solid transparent;border-right:5px solid transparent;right:8px
+}
+/* Hover — show */
+.tq-verify-badge[data-tooltip]:hover::before,
+.tq-verify-badge[data-tooltip]:hover::after{opacity:1}
+/* Colour variants */
+.tq-verify-badge.fail[data-tooltip]::after{color:#ff4466;border:1px solid rgba(255,34,85,0.45)}
+.tq-verify-badge.fail[data-tooltip]::before{border-top:6px solid rgba(255,34,85,0.45)}
+.tq-verify-badge.ok[data-tooltip]::after{color:#32c864;border:1px solid rgba(50,200,100,0.35)}
+.tq-verify-badge.ok[data-tooltip]::before{border-top:6px solid rgba(50,200,100,0.35)}
+.tq-verify-badge.pending[data-tooltip]::after{color:rgba(0,229,255,0.85);border:1px solid rgba(0,229,255,0.25)}
+.tq-verify-badge.pending[data-tooltip]::before{border-top:6px solid rgba(0,229,255,0.25)}
+.tq-verify-toast{position:absolute;right:40px;background:#1a0810;border:1px solid #ff4466;color:#ff4466;font-size:10px;padding:4px 8px;border-radius:3px;white-space:nowrap;z-index:10;pointer-events:none;margin-top:-2px}
 
 /* ── Tour ─────────────────────────────────────────────────────────────────── */
 #tour-highlight{display:none;position:fixed;box-shadow:0 0 0 9999px rgba(0,0,0,0.82);border:2px solid var(--cyan);box-sizing:border-box;border-radius:4px;z-index:8000;pointer-events:none;transition:all 0.3s ease}
@@ -295,6 +451,7 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
     <a href="/mindmap" class="nav-link">MIND MAP</a>
     <a href="/todo"    class="nav-link" style="color:var(--amber)">TODO</a>
     <a href="/guide"   class="nav-link" style="color:var(--green)">GUIDE</a>
+    <span class="nav-link" onclick="resetPanelLayout()" style="cursor:pointer;color:#1a4a5e" title="Reset all panels to default positions">⊞ RESET</span>
     <div id="clock">--:--:-- --/--/----</div>
     <div class="status-dot" title="Live"></div>
   </div>
@@ -312,10 +469,11 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
     <div id="iface-list"></div>
     <div class="failover-alert" id="failover-alert" style="display:none">⚠ PRIMARY DOWN</div>
     <span class="click-hint">DETAILS</span>
+    <div class="panel-resize"></div>
   </div>
 
   <!-- SYSTEM — 4-level colored bars -->
-  <div class="panel clickable" id="p-system" onclick="openModal('system')">
+  <div class="panel clickable" id="p-system" onclick="openModal('system')" style="display:flex;flex-direction:column">
     <div class="panel-label">SYSTEM</div>
     <div class="metric">
       <div class="metric-header"><span class="metric-name">CPU</span><span><span class="metric-val lv1" id="cpu-val">--%</span><span class="metric-sub" id="cpu-sub"></span></span></div>
@@ -334,6 +492,7 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
       <div class="bar-track"><div class="bar-fill lv1" id="disk-bar" style="width:0%"></div></div>
     </div>
     <span class="click-hint">DETAILS</span>
+    <div class="panel-resize"></div>
   </div>
 
   <!-- WEATHER -->
@@ -353,15 +512,16 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
       <div><div class="wx-lbl">SOIL H₂O</div><div class="wx-data" id="wx-soil">--</div></div>
     </div>
     <span class="click-hint">7-DAY FORECAST + SOIL TREND</span>
+    <div class="panel-resize"></div>
   </div>
 
   <!-- GUARDIAN — blink speed = severity -->
   <div class="panel clickable" id="p-guardian" onclick="openModal('guardian')">
-    <div class="panel-label" style="justify-content:space-between">
+    <div class="panel-label">
       GUARDIAN
-      <div style="display:flex;gap:5px">
-        <button class="panel-btn" onclick="event.stopPropagation();runCodeAnalysis()" id="g-scan-btn" title="Analyze codebase: LOC, complexity, security">◈ SCAN</button>
-        <button class="panel-btn" id="g-upd-btn" onclick="event.stopPropagation();triggerUpdate()">⬆ UPDATE</button>
+      <div style="display:flex;gap:5px;align-items:center;margin-left:auto">
+        <button class="panel-btn" style="margin-left:0" onclick="event.stopPropagation();runCodeAnalysis()" id="g-scan-btn" title="Analyze codebase: LOC, complexity, security">◈ SCAN</button>
+        <button class="panel-btn" style="margin-left:0" id="g-upd-btn" onclick="event.stopPropagation();triggerUpdate()">⬆ UPDATE</button>
       </div>
     </div>
     <div class="guardian-status">
@@ -379,10 +539,11 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
     </div>
     <div id="g-code-summary" style="display:none;margin-top:6px;font-size:9px;letter-spacing:1px;color:var(--dim);border-top:1px solid var(--border);padding-top:5px"></div>
     <span class="click-hint">DETAILS</span>
+    <div class="panel-resize"></div>
   </div>
 
   <!-- DIARY — row 2, col 1-3 -->
-  <div class="panel clickable" id="p-diary" style="grid-column:1/4;grid-row:2;display:flex;flex-direction:column" onclick="openDiaryBook(null)">
+  <div class="panel clickable" id="p-diary" style="display:flex;flex-direction:column" onclick="openDiaryBook(null)">
     <div class="panel-label" style="justify-content:space-between">
       DIARY
       <button class="diary-write-btn" id="diary-write-btn" title="Write diary from ~/Pictures (Ctrl+D)" onclick="event.stopPropagation();writeDiaryFromPhotos()">✎ FROM PHOTOS</button>
@@ -392,19 +553,21 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
     <div class="diary-photo-stat" id="diary-photo-stat"></div>
     <div class="diary-questions" id="diary-questions" style="display:none"></div>
     <span class="click-hint">CLICK TO OPEN BOOK</span>
+    <div class="panel-resize"></div>
   </div>
 
   <!-- MINI-TODO — row 2, col 4 -->
-  <div class="panel" id="p-todo-mini" style="grid-column:4/5;grid-row:2;display:flex;flex-direction:column">
+  <div class="panel" id="p-todo-mini" style="display:flex;flex-direction:column">
     <div class="panel-label" style="justify-content:space-between">
       TODO
-      <a href="/todo" class="todo-mini-link">FULL →</a>
+      <span class="todo-mini-link" onclick="openTodoFull()" style="cursor:pointer">FULL →</span>
     </div>
     <div id="todo-mini-list" style="flex:1;overflow-y:auto"></div>
+    <div class="panel-resize"></div>
   </div>
 
   <!-- NEWS — row 3, col 1-3 -->
-  <div class="panel" id="p-news" style="grid-column:1/4;grid-row:3;display:flex;flex-direction:column">
+  <div class="panel" id="p-news" style="display:flex;flex-direction:column">
     <div class="panel-label" style="justify-content:space-between">
       NEWS · FARMING · INDIA
       <button class="panel-btn" id="news-refresh-btn" onclick="refreshNews()">↻ REFRESH</button>
@@ -413,16 +576,18 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
       <div class="news-scroll-inner" id="news-list"><div style="font-size:10px;letter-spacing:2px;color:#0c2535;padding:8px">loading…</div></div>
     </div>
     <div class="news-footer" id="news-footer">—</div>
+    <div class="panel-resize"></div>
   </div>
 
   <!-- VOICE — row 3, col 4 -->
-  <div class="panel" id="p-voice" style="grid-column:4/5;grid-row:3;display:flex;flex-direction:column">
+  <div class="panel" id="p-voice" style="display:flex;flex-direction:column">
     <div class="panel-label">VOICE QUERY</div>
     <div class="voice-status" id="voice-status">READY · CLICK TO SPEAK</div>
     <button class="voice-btn" id="voice-btn" onclick="voiceToggle()">🎤 SPEAK</button>
     <div class="voice-level" id="voice-level"><div class="voice-level-bar" id="voice-level-bar"></div></div>
     <div class="voice-transcript" id="voice-transcript"></div>
     <div class="voice-response"   id="voice-response"></div>
+    <div class="panel-resize"></div>
   </div>
 
 </div><!-- #grid -->
@@ -434,11 +599,50 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 <div class="modal" id="modal-weather"><span class="modal-close" onclick="closeModal()">✕</span><div class="modal-title">◈ WEATHER DETAILS</div><div id="modal-wx-body"></div></div>
 <div class="modal" id="modal-guardian"><span class="modal-close" onclick="closeModal()">✕</span><div class="modal-title">◈ SECURITY GUARDIAN</div><div id="modal-g-body"></div></div>
 
+<!-- TODO FULL MODAL -->
+<div id="modal-todo-full">
+  <div id="modal-todo-header">
+    <div id="modal-todo-brand">
+      <span id="modal-todo-title">◈ TASK MATRIX</span>
+      <span id="modal-todo-sys">PRIORITY ENGINE  /  EISENHOWER PROTOCOL</span>
+    </div>
+    <div id="modal-todo-add">
+      <input id="modal-todo-input" placeholder="/ NEW TASK…" onkeydown="if(event.key==='Enter')modalAddTask()">
+      <select id="modal-todo-quad">
+        <option value="q1">Q1 — DO FIRST</option>
+        <option value="q2" selected>Q2 — SCHEDULE</option>
+        <option value="q3">Q3 — DELEGATE</option>
+        <option value="q4">Q4 — ELIMINATE</option>
+      </select>
+      <button onclick="modalAddTask()">+ EXECUTE</button>
+    </div>
+    <div id="modal-todo-actions">
+      <button class="modal-todo-btn" onclick="modalToggleDone()">SHOW DONE</button>
+      <button class="modal-todo-btn" style="color:rgba(255,34,85,0.5);border-color:rgba(255,34,85,0.2)" onclick="modalClearDone()">PURGE DONE</button>
+      <span id="modal-todo-closebtn" onclick="closeTodoFull()">✕</span>
+    </div>
+  </div>
+  <div id="modal-todo-matrix">
+    <div class="modal-quad" id="modal-q1"><div class="modal-quad-hdr q1-hdr"><span class="modal-quad-qn">01</span><div style="flex:1;min-width:0"><div class="modal-quad-label">DO FIRST</div><div class="modal-quad-sub">Urgent · Important</div></div><span class="modal-quad-cnt" id="mqcnt-q1"></span></div><div class="modal-quad-tasks" id="mqlist-q1" ondragover="tqOver(event)" ondragenter="tqEnter(event)" ondragleave="tqLeave(event)" ondrop="tqDrop(event,'q1')"></div></div>
+    <div class="modal-quad" id="modal-q2"><div class="modal-quad-hdr q2-hdr"><span class="modal-quad-qn">02</span><div style="flex:1;min-width:0"><div class="modal-quad-label">SCHEDULE</div><div class="modal-quad-sub">Important · Not Urgent</div></div><span class="modal-quad-cnt" id="mqcnt-q2"></span></div><div class="modal-quad-tasks" id="mqlist-q2" ondragover="tqOver(event)" ondragenter="tqEnter(event)" ondragleave="tqLeave(event)" ondrop="tqDrop(event,'q2')"></div></div>
+    <div class="modal-quad" id="modal-q3"><div class="modal-quad-hdr q3-hdr"><span class="modal-quad-qn">03</span><div style="flex:1;min-width:0"><div class="modal-quad-label">DELEGATE</div><div class="modal-quad-sub">Urgent · Not Important</div></div><span class="modal-quad-cnt" id="mqcnt-q3"></span></div><div class="modal-quad-tasks" id="mqlist-q3" ondragover="tqOver(event)" ondragenter="tqEnter(event)" ondragleave="tqLeave(event)" ondrop="tqDrop(event,'q3')"></div></div>
+    <div class="modal-quad" id="modal-q4"><div class="modal-quad-hdr q4-hdr"><span class="modal-quad-qn">04</span><div style="flex:1;min-width:0"><div class="modal-quad-label">ELIMINATE</div><div class="modal-quad-sub">Not Urgent · Not Important</div></div><span class="modal-quad-cnt" id="mqcnt-q4"></span></div><div class="modal-quad-tasks" id="mqlist-q4" ondragover="tqOver(event)" ondragenter="tqEnter(event)" ondragleave="tqLeave(event)" ondrop="tqDrop(event,'q4')"></div></div>
+  </div>
+</div>
+
 <!-- DIARY BOOK -->
 <div class="book-modal" id="modal-diary">
   <div class="book-header"><span class="book-title">◈ DIARY — <span id="book-week-label">--</span></span><span id="book-status-badge"></span><span class="book-close" onclick="closeDiaryBook()">✕</span></div>
   <div class="book-body"><div class="book-chapters" id="book-chapters"></div><div class="book-spine"></div><div class="book-page-area" id="book-page-area"><div class="book-page" id="book-page-active"></div></div></div>
   <div class="book-footer"><button class="book-nav-btn" id="book-prev" onclick="bookPrevPage()">← PREV</button><span class="book-counter" id="book-counter">PAGE 1 / 1</span><button class="book-nav-btn" id="book-next" onclick="bookNextPage()">NEXT →</button></div>
+</div>
+
+<!-- PHOTO LIGHTBOX -->
+<div id="photo-lightbox" onclick="if(event.target===this||event.target.id==='photo-lightbox')closePhotoLightbox()">
+  <span id="photo-lightbox-close" onclick="closePhotoLightbox()">✕</span>
+  <img id="photo-lightbox-img" src="" alt="">
+  <div id="photo-lightbox-name"></div>
+  <div id="photo-lightbox-err">Photo not found</div>
 </div>
 
 <!-- NEWS popup -->
@@ -454,12 +658,27 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
         <div class="news-modal-text" id="news-modal-text"></div>
         <a class="news-modal-link" id="news-modal-link" href="#" target="_blank" rel="noopener">READ FULL ARTICLE →</a>
       </div>
-      <div class="news-modal-video">
-        <div class="news-modal-video-header">
-          RELATED VIDEO
-          <button class="video-fullscreen-btn" onclick="videoFullscreen()">⛶ FULL</button>
+      <div class="news-modal-video" id="news-media-panel">
+        <!-- image strip (any format — jpg/png/gif/webp/svg) -->
+        <div id="news-img-wrap" style="display:none;flex-shrink:0;overflow:hidden;background:#000;max-height:170px;border-bottom:1px solid var(--border)">
+          <img id="news-img" src="" alt="" style="width:100%;height:170px;object-fit:cover;display:block">
         </div>
-        <iframe id="news-video-frame" src="" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen" allowfullscreen></iframe>
+        <!-- video section header -->
+        <div id="news-video-hdr" class="news-modal-video-header" style="display:none">
+          <span id="news-video-label">RELATED VIDEO</span>
+          <button class="video-fullscreen-btn" id="news-vfull-btn" onclick="videoFullscreen()" style="display:none">⛶ FULL</button>
+        </div>
+        <div id="news-video-loading" style="display:none;align-items:center;justify-content:center;flex:1;font-size:9px;letter-spacing:2px;color:var(--dim)">SEARCHING…</div>
+        <iframe id="news-video-frame" src="" style="display:none;flex:1;border:none;width:100%;min-height:180px" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen" allowfullscreen></iframe>
+        <div id="news-video-none" style="display:none;align-items:center;justify-content:center;flex:1;flex-direction:column;gap:8px;padding:12px">
+          <div style="font-size:9px;color:var(--dim);letter-spacing:1px">NO VIDEO FOUND</div>
+          <a id="news-video-yt-link" href="#" target="_blank" rel="noopener" style="font-size:8px;letter-spacing:2px;color:var(--cyan);text-decoration:none;border:1px solid var(--cyan);padding:3px 8px;border-radius:2px">SEARCH YOUTUBE →</a>
+        </div>
+        <!-- shown only when no image AND no video -->
+        <div id="news-no-media" style="display:none;align-items:center;justify-content:center;flex:1;flex-direction:column;gap:6px">
+          <div style="font-size:18px;color:var(--dim);opacity:0.3">◫</div>
+          <div style="font-size:9px;color:var(--dim);letter-spacing:1px">NO MEDIA</div>
+        </div>
       </div>
     </div>
   </div>
@@ -654,6 +873,7 @@ function renderGuardian(g){
 }
 
 // ── Modals ─────────────────────────────────────────────────────────────────────
+function _typeLabel(t){return{lan:'ETHERNET',wifi:'WI-FI',vpn:'VPN',tethering:'USB/BT',unknown:'UNKNOWN'}[t]||(t||'?').toUpperCase()}
 function openModal(type){
   _openModal=type;
   if(type==='network'&&last.network){
@@ -728,15 +948,41 @@ function openModal(type){
     html+=row('Last run',g.vuln.at||'--');
     const tC2=g.threat.vulns===0?'var(--green)':'var(--red)';
     html+=row('Threat Intel',`<span style="color:${tC2}">${g.threat.vulns===0?'NOT VULNERABLE':g.threat.vulns+' VULNERABLE'}</span>`);
+    if(g.threat.items&&g.threat.items.length){
+      // Store patterns outside HTML attrs to avoid JSON double-quote breakage
+      _threatPatterns=g.threat.items.map(t=>t.pattern||null);
+      const fixableCount=_threatPatterns.filter(Boolean).length;
+      html+=`<div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 4px">`;
+      html+=`<div style="font-size:9px;letter-spacing:3px;color:var(--dim)">THREAT DETAILS</div>`;
+      if(fixableCount)html+=`<button class="panel-btn" id="fix-all-btn" style="margin:0;font-size:8px;padding:3px 8px;letter-spacing:2px" onclick="fixAllThreatPatterns()">⚡ FIX ALL (${fixableCount})</button>`;
+      html+=`</div>`;
+      g.threat.items.forEach((t,i)=>{
+        const hasFix=!!t.pattern;
+        const isOpen=_threatOpen.has(i);
+        html+=`<div class="threat-acc" id="tacc-${i}">`;
+        html+=`<div class="threat-acc-hdr" onclick="toggleThreat(${i})">`;
+        html+=`<span class="tacc-arrow${isOpen?' open':''}" id="tarr-${i}">▶</span>`;
+        html+=`<span class="sev HIGH" style="margin:0 6px;font-size:8px">${(t.type||'threat').toUpperCase()}</span>`;
+        html+=`<span style="color:var(--dim);font-size:9px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.id||''} — ${(t.title||'').substring(0,55)}</span>`;
+        if(hasFix)html+=`<button class="fix-btn panel-btn" id="fbtn-${i}" style="margin:0;font-size:8px;padding:2px 7px;letter-spacing:1px;flex-shrink:0" onclick="event.stopPropagation();fixThreatAt(${i})">FIX</button>`;
+        html+=`</div>`;
+        html+=`<div class="threat-acc-body" id="tbody-${i}" style="display:${isOpen?'block':'none'}">`;
+        html+=`<div class="msg" style="font-size:10px;margin-bottom:6px">${t.title||''}</div>`;
+        if(t.evidence)html+=`<div style="font-size:9px;color:var(--amber);margin-bottom:4px;word-break:break-word">⚠ ${t.evidence}</div>`;
+        if(t.details)html+=`<div style="font-size:9px;color:var(--dim);margin-bottom:4px">${t.details}</div>`;
+        if(t.pattern)html+=`<div style="font-size:9px;color:var(--dim);font-family:monospace;background:rgba(0,0,0,0.3);padding:4px 6px;border-radius:2px;word-break:break-all">pattern: ${t.pattern.pattern||''}</div>`;
+        html+=`</div></div>`;
+      });
+    }
     const auC2=g.audit.total===0?'var(--green)':g.audit_critical>0?'var(--red)':'var(--amber)';
     const sev=g.audit.severity;
     const sevStr=sev?`CRIT:${sev.CRITICAL||0} HIGH:${sev.HIGH||0} MED:${sev.MEDIUM||0}`:'';
     html+=row('Code Audit',`<span style="color:${auC2}">${g.audit.total===0?'CLEAN':g.audit.total+' ISSUE(S)'}</span>${sevStr?' · '+sevStr:''}`);
     if(g.audit.issues&&g.audit.issues.length){
       html+=sec('CODE ISSUES');
-      for(const iss of g.audit.issues){
-        html+=`<div class="issue-row"><div class="sev ${iss.severity}">${iss.severity}</div><div class="loc">${iss.file||''}${iss.line?':'+iss.line:''}</div><div class="msg">${(iss.issue||iss.message||'').substring(0,120)}</div></div>`;
-      }
+      g.audit.issues.forEach((iss,issIdx)=>{
+        html+=`<div class="issue-row"><div class="sev ${iss.severity}">${iss.severity}</div><div class="loc">${iss.file||''}${iss.line?':'+iss.line:''}</div><div class="msg">${(iss.issue||iss.message||'').substring(0,120)}</div><button class="fix-btn panel-btn" id="audit-fix-${issIdx}" style="margin:0;font-size:8px;padding:2px 7px;letter-spacing:1px;flex-shrink:0" onclick="event.stopPropagation();fixAuditIssue(${issIdx})">FIX</button></div>`;
+      });
     }
     if(g.schedule&&g.schedule.length){
       html+=sec('SCHEDULE');
@@ -754,9 +1000,11 @@ function openModal(type){
 function show(id){el('overlay').classList.add('open');el(id).classList.add('open')}
 function closeModal(){
   _openModal=null;
+  _threatOpen.clear();
   el('overlay').classList.remove('open');
   document.querySelectorAll('.modal').forEach(m=>m.classList.remove('open'));
   el('modal-diary').classList.remove('open');
+  el('modal-todo-full').classList.remove('open');
 }
 function closeDiaryBook(){closeModal()}
 function el(id){return document.getElementById(id)}
@@ -764,7 +1012,7 @@ function row(k,v){return `<div class="detail-row"><span class="detail-key">${k}<
 function sec(t){return `<div class="detail-section">${t}</div>`}
 
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){closeModal();closeNewsModal();}
+  if(e.key==='Escape'){closeModal();if(el('modal-news-overlay').classList.contains('open'))closeNewsModal();else _startNewsScroll();}
   if(e.ctrlKey&&e.key==='d'){e.preventDefault();writeDiaryFromPhotos();}
 });
 
@@ -832,6 +1080,84 @@ async function triggerUpdate(){
   }catch(e){btn.className='panel-btn';btn.textContent='⬆ ERR';setTimeout(()=>{btn.textContent='⬆ UPDATE';btn.disabled=false},2000)}
 }
 
+// ── Threat accordion ──────────────────────────────────────────────────────────
+const _threatOpen=new Set();    // persists across WS re-renders
+let _threatPatterns=[];         // set during modal render; avoids JSON-in-onclick
+
+function fixThreatAt(i){
+  const p=_threatPatterns[i];
+  if(p)fixThreats([p],i);
+}
+function fixAllThreatPatterns(){
+  const ps=_threatPatterns.filter(Boolean);
+  if(ps.length)fixThreats(ps,null);
+}
+
+function toggleThreat(i){
+  const body=el('tbody-'+i);
+  const arr=el('tarr-'+i);
+  if(!body||!arr)return;
+  if(_threatOpen.has(i)){
+    _threatOpen.delete(i);
+    body.style.display='none';
+    arr.classList.remove('open');
+  }else{
+    _threatOpen.add(i);
+    body.style.display='block';
+    arr.classList.add('open');
+  }
+}
+
+let _fixInFlight=false;
+async function fixThreats(patterns,singleIdx){
+  if(_fixInFlight)return;
+  _fixInFlight=true;
+  // Disable all fix buttons
+  document.querySelectorAll('.fix-btn,#fix-all-btn').forEach(b=>{
+    b.disabled=true;b.classList.add('running');
+  });
+  const target=singleIdx!=null?el('fbtn-'+singleIdx):el('fix-all-btn');
+  if(target)target.textContent='FIXING…';
+  try{
+    const r=await fetch('/api/guardian/fix-threat',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({patterns})
+    });
+    const d=await r.json();
+    if(d.ok){
+      const added=d.added||[];
+      // Mark fixed rows
+      if(singleIdx!=null){
+        const acc=el('tacc-'+singleIdx);
+        if(acc)acc.classList.add('fixed');
+        if(target){target.textContent='✓ FIXED';target.classList.remove('running');}
+        // Check if all are fixed → update Fix All button
+        const remaining=document.querySelectorAll('.fix-btn:not([data-fixed])').length;
+        if(remaining===0){const fa=el('fix-all-btn');if(fa){fa.textContent='✓ ALL FIXED';fa.classList.remove('running');}}
+      }else{
+        document.querySelectorAll('.threat-acc').forEach(a=>a.classList.add('fixed'));
+        document.querySelectorAll('.fix-btn').forEach(b=>{b.textContent='✓ FIXED';b.classList.remove('running');});
+        if(target){target.textContent='✓ ALL FIXED';target.classList.remove('running');}
+      }
+      // Re-enable Fix All only if something was added (others stay disabled once fixed)
+    }else{
+      alert('Fix failed: '+(d.error||'unknown error'));
+      document.querySelectorAll('.fix-btn,#fix-all-btn').forEach(b=>{
+        b.disabled=false;b.classList.remove('running');
+      });
+      if(target&&singleIdx!=null)target.textContent='FIX';
+      else if(target)target.textContent='⚡ FIX ALL';
+    }
+  }catch(e){
+    alert('Fix error: '+e.message);
+    document.querySelectorAll('.fix-btn,#fix-all-btn').forEach(b=>{
+      b.disabled=false;b.classList.remove('running');
+    });
+  }finally{
+    _fixInFlight=false;
+  }
+}
+
 async function runUpgrade(){
   const res=el('upg-result');
   res.style.display='block';res.textContent='Running pip upgrade…';
@@ -849,6 +1175,25 @@ async function runUpgrade(){
     }
     res.textContent=out||'Done.';
   }catch(e){res.textContent='Error: '+e.message}
+}
+
+async function fixAuditIssue(idx){
+  const iss=(last.guardian?.audit?.issues||[])[idx];
+  if(!iss)return;
+  const btn=el('audit-fix-'+idx);
+  if(btn){btn.textContent='FIXING…';btn.disabled=true;btn.classList.add('running');}
+  try{
+    const r=await fetch('/api/guardian/fix-audit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({issue:iss})});
+    const d=await r.json();
+    if(d.ok){
+      if(btn){btn.textContent='✓ FIXED';btn.classList.remove('running');btn.style.color='var(--green)';btn.style.borderColor='var(--green)';}
+      setTimeout(async()=>{try{const rd=await fetch('/api/data');const gd=await rd.json();if(gd.guardian){last.guardian=gd.guardian;renderGuardian(gd.guardian)}}catch(_){}},2000);
+    }else{
+      if(btn){btn.textContent='ERR';btn.disabled=false;btn.classList.remove('running');}
+    }
+  }catch(e){
+    if(btn){btn.textContent='ERR';btn.disabled=false;btn.classList.remove('running');}
+  }
 }
 
 // ── Farm health (NDVI + soil moisture) ───────────────────────────────────────
@@ -994,6 +1339,23 @@ function renderDiaryPanel(){
   list.innerHTML=html;
   footer.textContent=`${_diaryDrafts.length} entr${_diaryDrafts.length===1?'y':'ies'} · ${_diaryDrafts.filter(d=>d.approved).length} approved`;
 }
+async function retryDiaryWeek(week){
+  const btn=el('diary-retry-btn');
+  if(btn){btn.textContent='RETRYING…';btn.disabled=true;}
+  try{
+    const r=await fetch(`/api/diary/retry/${encodeURIComponent(week)}`,{method:'POST'});
+    const d=await r.json();
+    if(d.ok){
+      if(btn){btn.textContent='✓ STARTED';btn.style.color='var(--green)';btn.style.borderColor='var(--green)';}
+      setTimeout(()=>{loadDiaryList();},3000);
+    }else{
+      if(btn){btn.textContent='RETRY';btn.disabled=false;}
+      alert('Retry failed: '+(d.error||'unknown'));
+    }
+  }catch(e){
+    if(btn){btn.textContent='RETRY';btn.disabled=false;}
+  }
+}
 async function openDiaryBook(week){
   const target=week||(_diaryDrafts[0]&&_diaryDrafts[0].week);
   if(!target){alert('No diary entries yet. Say: "write diary from my photos"');return}
@@ -1002,12 +1364,14 @@ async function openDiaryBook(week){
 }
 function _buildBook(draft){
   const raw=(draft.draft||'').trim();
+  const hasError=raw.includes('[Could not generate');
   const sections=raw.split(/(?=^(?:──|##)\s)/m).filter(s=>s.trim());
   _bookPages=sections.length?sections.map(s=>{const nl=s.indexOf('\n');const title=s.substring(0,nl<0?undefined:nl).replace(/^──\s*/,'').replace(/\s*──\s*$/,'').replace(/^##\s*/,'').trim();return{title,body:nl<0?'':s.substring(nl+1).trim()}}):
     [{title:draft.week,body:raw||'(no content)'}];
   _bookPage=0;
   el('book-week-label').textContent=draft.week||'—';
-  el('book-status-badge').innerHTML=draft.approved?'<span class="badge ok">APPROVED</span>':'<span class="badge warn">DRAFT</span>';
+  const retryBtn=hasError?`<button onclick="retryDiaryWeek('${draft.week}')" style="font-size:8px;letter-spacing:2px;padding:2px 8px;border:1px solid var(--amber);border-radius:2px;background:transparent;color:var(--amber);cursor:pointer;font-family:inherit;margin-left:8px" id="diary-retry-btn">↺ RETRY</button>`:'';
+  el('book-status-badge').innerHTML=(draft.approved?'<span class="badge ok">APPROVED</span>':'<span class="badge warn">DRAFT</span>')+retryBtn;
   let ch='';
   _bookPages.forEach((p,i)=>ch+=`<div class="chapter-item${i===0?' active':''}" id="ch-${i}" onclick="bookGoTo(${i})">${p.title}</div>`);
   el('book-chapters').innerHTML=ch;
@@ -1016,9 +1380,24 @@ function _buildBook(draft){
 }
 function _formatPage(page){
   if(!page.body)return`<div class="pg-title">${page.title}</div><div class="empty-note">— no content —</div>`;
-  const body=page.body.replace(/📷[^\n]*/g,m=>`<div class="photo-note">${m}</div>`).split(/\n{2,}/).filter(p=>p.trim()).map(p=>p.startsWith('<div')?p:`<p>${p.replace(/\n/g,'<br>')}</p>`).join('');
+  const body=page.body.replace(/📷[^\n]*/g,m=>{
+    const fn=(m.match(/📷\s*(\S+)/)||[])[1]||'';
+    const safe=fn.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    return`<div class="photo-note" onclick="openPhotoLightbox('${safe}')">${m}</div>`;
+  }).split(/\n{2,}/).filter(p=>p.trim()).map(p=>p.startsWith('<div')?p:`<p>${p.replace(/\n/g,'<br>')}</p>`).join('');
   return`<div class="pg-title">${page.title}</div>${body}`;
 }
+function openPhotoLightbox(filename){
+  if(!filename)return;
+  const lb=el('photo-lightbox'),img=el('photo-lightbox-img'),nm=el('photo-lightbox-name'),err=el('photo-lightbox-err');
+  err.style.display='none';img.style.display='';img.src='';
+  nm.textContent=filename;
+  img.onload=()=>{err.style.display='none';img.style.display=''};
+  img.onerror=()=>{img.style.display='none';err.style.display=''};
+  img.src='/api/diary/photo/'+encodeURIComponent(filename);
+  lb.classList.add('open');
+}
+function closePhotoLightbox(){el('photo-lightbox').classList.remove('open');el('photo-lightbox-img').src=''}
 function _updateBookNav(){
   el('book-prev').disabled=_bookPage===0;
   el('book-next').disabled=_bookPage>=_bookPages.length-1;
@@ -1045,63 +1424,195 @@ function _animatePage(direction){
 loadDiaryList();
 
 // ── News — auto-scroll ─────────────────────────────────────────────────────────
-let _newsItems=[],_newsScrollTimer=null;
+let _newsItems=[],_newsScrollTimer=null,_newsDismissed=new Set();
 
+function _stopNewsScroll(){if(_newsScrollTimer){clearInterval(_newsScrollTimer);_newsScrollTimer=null}}
 function _startNewsScroll(){
   if(_newsScrollTimer)return;
   const wrap=el('news-scroll-wrap');
   if(!wrap)return;
   _newsScrollTimer=setInterval(()=>{
     wrap.scrollTop+=1;
-    // When we've scrolled past the first half (duplicate), reset smoothly
     const inner=el('news-list');
     if(inner&&wrap.scrollTop>=inner.offsetHeight/2)wrap.scrollTop=0;
-  },80);   // 1px per 80ms ≈ 12px/s — gentle scroll
+  },80);
+}
+function _restartNewsScroll(){_stopNewsScroll();el('news-scroll-wrap').scrollTop=0;_startNewsScroll()}
+// Set news list cards — only duplicate if content overflows the visible wrap height
+function _applyNewsCards(cards){
+  const list=el('news-list');
+  list.innerHTML=cards;
+  _stopNewsScroll();
+  requestAnimationFrame(()=>{
+    const wrap=el('news-scroll-wrap');
+    if(wrap&&list&&list.scrollHeight>wrap.clientHeight){
+      list.innerHTML=cards+cards;
+    }
+    _startNewsScroll();
+  });
 }
 
 async function loadNews(){
   try{const r=await fetch('/api/news');renderNews(await r.json())}
   catch(e){el('news-footer').textContent='unavailable'}
 }
+
 function renderNews(data){
-  _newsItems=data.items||[];
-  el('news-footer').textContent=_newsItems.length?`${_newsItems.length} articles · ${data.age_min===0?'live':data.age_min+'m ago'}`:'no articles';
+  const all=data.items||[];
+  _newsItems=all.filter(a=>!_newsDismissed.has(a.url));
+  const farming=_newsItems.filter(a=>a.category==='farming').length;
+  const world=_newsItems.filter(a=>a.category==='world').length;
+  const ageStr=data.age_min===0?'live':data.age_min+'m ago';
+  el('news-footer').textContent=_newsItems.length
+    ?`${farming} farming · ${world} world · ${ageStr}`:'no articles';
   if(!_newsItems.length){
     el('news-list').innerHTML='<div style="font-size:10px;letter-spacing:2px;color:#0c2535;padding:8px">No articles — click ↻ REFRESH</div>';
     return;
   }
-  // Duplicate cards for seamless looping
-  const cards=_newsItems.map((a,i)=>`
-    <div class="news-card" onclick="openNewsModal(${i})">
-      <div class="news-card-title">${a.title}</div>
-      <div class="news-card-meta"><span>${a.source}</span> · ${a.date}</div>
-    </div>`).join('');
-  el('news-list').innerHTML=cards+cards;   // duplicate for loop effect
-  _startNewsScroll();
+  const cards=_newsItems.map((a,i)=>{
+    const cat=a.category==='world'?'world':'farming';
+    const label=cat==='world'?'WORLD':'FARM';
+    const title=(a.title||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return`<div class="news-card">
+      <span class="news-card-badge ${cat}">${label}</span>
+      <div class="news-card-body" onclick="openNewsModal(${i})" style="min-width:0">
+        <div class="news-card-title">${title}</div>
+        <div class="news-card-meta"><span>${a.source||''}</span> · ${a.date||''}</div>
+      </div>
+      <span class="news-card-dismiss" title="Dismiss" onclick="dismissNews('${(a.url||'').replace(/'/g,'')}')">×</span>
+    </div>`;
+  }).join('');
+  _applyNewsCards(cards);
 }
+
+async function dismissNews(url){
+  if(!url)return;
+  _newsDismissed.add(url);
+  _newsItems=_newsItems.filter(a=>a.url!==url);
+  // Rebuild list without the dismissed item
+  const all=_newsItems;
+  if(!all.length){_stopNewsScroll();el('news-list').innerHTML='<div style="font-size:10px;letter-spacing:2px;color:#0c2535;padding:8px">No articles</div>';el('news-footer').textContent='0 articles';return}
+  const farming=all.filter(a=>a.category==='farming').length;
+  const world=all.filter(a=>a.category==='world').length;
+  el('news-footer').textContent=`${farming} farming · ${world} world`;
+  const cards=all.map((a,i)=>{
+    const cat=a.category==='world'?'world':'farming';
+    const label=cat==='world'?'WORLD':'FARM';
+    const title=(a.title||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return`<div class="news-card">
+      <span class="news-card-badge ${cat}">${label}</span>
+      <div class="news-card-body" onclick="openNewsModal(${i})" style="min-width:0">
+        <div class="news-card-title">${title}</div>
+        <div class="news-card-meta"><span>${a.source||''}</span> · ${a.date||''}</div>
+      </div>
+      <span class="news-card-dismiss" title="Dismiss" onclick="dismissNews('${(a.url||'').replace(/'/g,'')}')">×</span>
+    </div>`;
+  }).join('');
+  _applyNewsCards(cards);
+  // Also tell server so it stays dismissed across next refresh
+  fetch('/api/news/dismiss',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})}).catch(()=>{});
+}
+
 async function refreshNews(){
   const btn=el('news-refresh-btn');btn.disabled=true;btn.textContent='↻ …';
   try{const r=await fetch('/api/news/refresh',{method:'POST'});renderNews(await r.json());btn.textContent='↻ DONE';setTimeout(()=>{btn.textContent='↻ REFRESH';btn.disabled=false},1500)}
   catch(e){btn.textContent='↻ ERR';setTimeout(()=>{btn.textContent='↻ REFRESH';btn.disabled=false},2000)}
 }
 loadNews();
-setInterval(loadNews,2*60*1000);  // refresh from cache every 2 minutes
+setInterval(loadNews,5*60*1000);  // poll every 5 min to match server TTL
 
 // ── News popup ─────────────────────────────────────────────────────────────────
+let _nmHasImg=false, _nmHasVid=false, _nmImgPending=false;
+
+function _nmCheck(){
+  // Only declare NO MEDIA once both video resolved AND image is not still loading.
+  if(!_nmHasImg&&!_nmHasVid&&!_nmImgPending){
+    el('news-img-wrap').style.display='none';
+    el('news-video-hdr').style.display='none';
+    el('news-video-loading').style.display='none';
+    el('news-video-none').style.display='none';
+    el('news-no-media').style.display='flex';
+  }
+}
+
 function openNewsModal(idx){
   const a=_newsItems[idx%_newsItems.length];if(!a)return;
+  _nmHasImg=false;_nmHasVid=false;_nmImgPending=false;
+
   el('news-modal-title').textContent=a.title;
   el('news-modal-meta').innerHTML=`<span>${a.source}</span> · ${a.date}`;
   el('news-modal-text').textContent=a.body||'Click "Read Full Article" for full content.';
   el('news-modal-link').href=a.url;
-  const q=encodeURIComponent(a.title.replace(/[^\w\s]/g,'').slice(0,80));
-  el('news-video-frame').src=`https://www.youtube-nocookie.com/embed?listType=search&list=${q}&rel=0&modestbranding=1`;
+
+  // Reset all media states
+  el('news-img-wrap').style.display='none';
+  el('news-img').src='';
+  el('news-video-hdr').style.display='none';
+  el('news-vfull-btn').style.display='none';
+  el('news-video-loading').style.display='none';
+  el('news-video-frame').style.display='none';
+  el('news-video-frame').src='';
+  el('news-video-none').style.display='none';
+  el('news-no-media').style.display='none';
+
+  _stopNewsScroll();
   el('modal-news-overlay').classList.add('open');
+
+  // ── Image (jpg/png/gif/webp/svg — <img> handles all natively) ──
+  if(a.image){
+    _nmImgPending=true;
+    const img=el('news-img');
+    img.onload=()=>{
+      _nmHasImg=true;_nmImgPending=false;
+      el('news-img-wrap').style.display='block';
+    };
+    img.onerror=()=>{
+      _nmHasImg=false;_nmImgPending=false;
+      el('news-img-wrap').style.display='none';
+      _nmCheck(); // re-check now that image settled
+    };
+    img.src=a.image;
+  }
+
+  // ── Video (async DDGS search) ──
+  el('news-video-hdr').style.display='flex';
+  el('news-video-label').textContent='RELATED VIDEO';
+  el('news-video-loading').style.display='flex';
+
+  const q=a.title.replace(/[^\w\s]/g,' ').trim().slice(0,100);
+  const ytFallback=`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+  fetch(`/api/news/video?q=${encodeURIComponent(q)}`)
+    .then(r=>r.json())
+    .then(d=>{
+      el('news-video-loading').style.display='none';
+      if(d.video_id){
+        _nmHasVid=true;
+        el('news-video-frame').src=`https://www.youtube-nocookie.com/embed/${d.video_id}?rel=0&modestbranding=1&autoplay=0`;
+        el('news-video-frame').style.display='block';
+        el('news-vfull-btn').style.display='';
+      }else{
+        el('news-video-none').style.display='flex';
+        el('news-video-yt-link').href=ytFallback;
+        el('news-video-label').textContent='VIDEO';
+        _nmCheck();
+      }
+    })
+    .catch(()=>{
+      el('news-video-loading').style.display='none';
+      el('news-video-none').style.display='flex';
+      el('news-video-yt-link').href=ytFallback;
+      _nmCheck();
+    });
 }
+
 function closeNewsModal(){
   el('modal-news-overlay').classList.remove('open');
-  const fr=el('news-video-frame');fr.src='';
+  el('news-video-frame').src='';
+  el('news-video-frame').style.display='none';
+  el('news-img').src='';
+  _startNewsScroll();
 }
+
 function videoFullscreen(){
   const fr=el('news-video-frame');
   (fr.requestFullscreen||fr.webkitRequestFullscreen||fr.mozRequestFullScreen||function(){}).call(fr);
@@ -1233,6 +1744,234 @@ async function doneTask(id){
 }
 loadMiniTodo();
 setInterval(loadMiniTodo,30*1000);
+
+// ── Todo full modal ────────────────────────────────────────────────────────────
+let _todoFull=[], _todoShowDone=false;
+
+async function openTodoFull(){
+  el('overlay').classList.add('open');
+  el('modal-todo-full').classList.add('open');
+  _openModal='todo';
+  await _loadTodoFull();
+}
+function closeTodoFull(){
+  el('overlay').classList.remove('open');
+  el('modal-todo-full').classList.remove('open');
+  _openModal=null;
+}
+async function _loadTodoFull(){
+  try{
+    const r=await fetch('/api/todos?include_done='+(_todoShowDone?'true':'false'));
+    _todoFull=await r.json();
+    _renderTodoFull();
+  }catch(e){console.error('todo load failed',e)}
+}
+function _renderTodoFull(){
+  const quads=['q1','q2','q3','q4'];
+  for(const q of quads){
+    const tasks=_todoFull.filter(t=>t.quad===q);
+    const list=el('mqlist-'+q);
+    el('mqcnt-'+q).textContent=tasks.filter(t=>!t.done).length||'';
+    if(!tasks.length){list.innerHTML='<div class="modal-quad-empty">— empty —</div>';continue}
+    list.innerHTML=tasks.map(t=>{
+      const hasVerifier=!!t.verifier;
+      const verifyFailed=t.verified===-1;
+      const verifyOk=t.verified===1;
+      const _esc=s=>(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      const verifyBadge=hasVerifier
+        ? (verifyFailed
+            ? `<span class="tq-verify-badge fail" data-tooltip="BLOCKED — cannot mark done\n${_esc(t.verify_note||'verification failed')}">⚠ BLOCKED</span>`
+            : verifyOk
+              ? `<span class="tq-verify-badge ok" data-tooltip="Verified ✓\n${_esc(t.verify_note||'check passed')}">✓</span>`
+              : `<span class="tq-verify-badge pending" data-tooltip="Auto-verified task\nNot checked yet — will run within 10 min">⟳</span>`)
+        : '';
+      return `<div class="modal-task-item${t.done?' done':''}${verifyFailed?' verify-fail':''}" draggable="true" ondragstart="tqDragStart(event,'${t.id}')" ondragend="tqDragEnd(event)" onclick="modalToggleTask('${t.id}',${t.done?0:1})">
+        <input type="checkbox" class="modal-task-cb" ${t.done?'checked':''} onclick="event.stopPropagation()" onchange="modalToggleTask('${t.id}',this.checked)">
+        <span class="modal-task-text">${(t.text||'').replace(/</g,'&lt;')}</span>
+        ${verifyBadge}
+        <button class="modal-task-del" onclick="event.stopPropagation();modalDeleteTask('${t.id}')">×</button>
+      </div>`;
+    }).join('');
+  }
+}
+// ── Todo quadrant drag-and-drop ───────────────────────────────────────────────
+let _tqDragId=null;
+function tqDragStart(e,id){
+  _tqDragId=id;
+  e.dataTransfer.effectAllowed='move';
+  e.dataTransfer.setData('text/plain',id);
+  setTimeout(()=>{const el=e.target.closest('.modal-task-item');if(el)el.classList.add('tq-dragging')},0);
+}
+function tqDragEnd(e){
+  _tqDragId=null;
+  document.querySelectorAll('.modal-task-item.tq-dragging').forEach(el=>el.classList.remove('tq-dragging'));
+  document.querySelectorAll('.modal-quad-tasks.tq-over').forEach(el=>el.classList.remove('tq-over'));
+}
+function tqOver(e){e.preventDefault();e.dataTransfer.dropEffect='move';}
+function tqEnter(e){e.currentTarget.classList.add('tq-over');}
+function tqLeave(e){if(!e.currentTarget.contains(e.relatedTarget))e.currentTarget.classList.remove('tq-over');}
+async function tqDrop(e,quad){
+  e.preventDefault();
+  e.currentTarget.classList.remove('tq-over');
+  const id=_tqDragId||e.dataTransfer.getData('text/plain');
+  if(!id)return;
+  _tqDragId=null;
+  await fetch(`/api/todos/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({quad})});
+  await _loadTodoFull();
+  loadMiniTodo();
+}
+
+async function modalToggleTask(id,done){
+  const r=await fetch(`/api/todos/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({done:done?1:0})});
+  const d=await r.json();
+  if(d.blocked){
+    // Verifier blocked the done mark — show the reason inline
+    const item=document.querySelector(`[ondragstart*="${id}"]`);
+    if(item){
+      item.classList.add('verify-fail');
+      let tip=item.querySelector('.tq-verify-toast');
+      if(!tip){tip=document.createElement('div');tip.className='tq-verify-toast';item.appendChild(tip);}
+      tip.textContent='⚠ '+d.reason;
+      setTimeout(()=>{if(tip&&tip.parentNode)tip.parentNode.removeChild(tip);item.classList.remove('verify-fail');},4000);
+    }
+  }
+  await _loadTodoFull();
+  loadMiniTodo();
+}
+async function modalDeleteTask(id){
+  await fetch(`/api/todos/${id}`,{method:'DELETE'});
+  await _loadTodoFull();
+  loadMiniTodo();
+}
+async function modalAddTask(){
+  const inp=el('modal-todo-input'),text=inp.value.trim();
+  if(!text)return;
+  const quad=el('modal-todo-quad').value;
+  await fetch('/api/todos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,quad})});
+  inp.value='';
+  await _loadTodoFull();
+  loadMiniTodo();
+}
+function modalToggleDone(){
+  _todoShowDone=!_todoShowDone;
+  const btn=document.querySelector('.modal-todo-btn');
+  btn.textContent=_todoShowDone?'HIDE DONE':'SHOW DONE';
+  btn.classList.toggle('active',_todoShowDone);
+  _loadTodoFull();
+}
+async function modalClearDone(){
+  const done=_todoFull.filter(t=>t.done);
+  await Promise.all(done.map(t=>fetch(`/api/todos/${t.id}`,{method:'DELETE'})));
+  await _loadTodoFull();
+  loadMiniTodo();
+}
+
+// ── Panel layout — movable / resizable / transparent ──────────────────────────
+const _PL={};          // {panelId: {x,y,w,h,z}}
+let _maxZ=20, _drag=null, _dragMoved=false;
+const _PMIN_W=160, _PMIN_H=80;
+const _LSKEY='gk_panel_layout_v2';
+
+function _defaultLayout(){
+  const W=window.innerWidth, H=window.innerHeight-44;
+  const g=8, cw=Math.floor((W-g*5)/4);
+  const r1=150, r2=145, r3=Math.max(100,H-r1-r2-g*4);
+  return{
+    'p-network':  {x:g,        y:g,          w:cw,       h:r1,  z:10},
+    'p-system':   {x:g*2+cw,   y:g,          w:cw,       h:r1,  z:10},
+    'p-weather':  {x:g*3+cw*2, y:g,          w:cw,       h:r1,  z:10},
+    'p-guardian': {x:g*4+cw*3, y:g,          w:cw,       h:r1,  z:10},
+    'p-diary':    {x:g,        y:g*2+r1,     w:cw*3+g*2, h:r2,  z:10},
+    'p-todo-mini':{x:g*4+cw*3, y:g*2+r1,     w:cw,       h:r2,  z:10},
+    'p-news':     {x:g,        y:g*3+r1+r2,  w:cw*3+g*2, h:r3,  z:10},
+    'p-voice':    {x:g*4+cw*3, y:g*3+r1+r2,  w:cw,       h:r3,  z:10},
+  };
+}
+
+function _applyPanel(id){
+  const p=_PL[id]; if(!p)return;
+  const d=document.getElementById(id); if(!d)return;
+  d.style.left=p.x+'px'; d.style.top=p.y+'px';
+  d.style.width=p.w+'px'; d.style.height=p.h+'px';
+  d.style.zIndex=p.z;
+}
+
+function _bringToFront(id){
+  if(!_PL[id])return;
+  _maxZ++;
+  _PL[id].z=_maxZ;
+  const d=document.getElementById(id); if(d)d.style.zIndex=_maxZ;
+}
+
+function _savePanelLayout(){
+  try{localStorage.setItem(_LSKEY,JSON.stringify(_PL))}catch(e){}
+}
+
+function _initPanelLayout(){
+  const defs=_defaultLayout();
+  let saved={};
+  try{saved=JSON.parse(localStorage.getItem(_LSKEY)||'{}')}catch(e){}
+  for(const id of Object.keys(defs)){
+    const s=saved[id];
+    _PL[id]=s&&typeof s.x==='number'?{x:s.x,y:s.y,w:Math.max(_PMIN_W,s.w),h:Math.max(_PMIN_H,s.h),z:s.z||10}:{...defs[id]};
+    _applyPanel(id);
+  }
+  _maxZ=Math.max(20,...Object.values(_PL).map(p=>p.z||10));
+}
+
+function resetPanelLayout(){
+  localStorage.removeItem(_LSKEY);
+  const defs=_defaultLayout();
+  for(const id of Object.keys(defs)){_PL[id]={...defs[id]};_applyPanel(id);}
+  _savePanelLayout();
+}
+
+// Pointer events — drag (from label) and resize (from grip)
+document.addEventListener('mousedown',e=>{
+  const resizeEl=e.target.closest('.panel-resize');
+  const labelEl =e.target.closest('.panel-label');
+  const panelEl =e.target.closest('.panel[id]');
+  if(!panelEl)return;
+  const id=panelEl.id; if(!_PL[id])return;
+  _bringToFront(id); _dragMoved=false;
+  if(resizeEl){
+    e.preventDefault();
+    _drag={type:'resize',id,startX:e.clientX,startY:e.clientY,origW:_PL[id].w,origH:_PL[id].h};
+  }else if(labelEl&&!e.target.closest('button')&&!e.target.closest('input')&&!e.target.closest('a')&&!e.target.closest('select')&&!e.target.closest('span[onclick]')){
+    _drag={type:'move',id,startX:e.clientX,startY:e.clientY,origX:_PL[id].x,origY:_PL[id].y};
+  }
+},true);
+
+document.addEventListener('mousemove',e=>{
+  if(!_drag)return;
+  const dx=e.clientX-_drag.startX, dy=e.clientY-_drag.startY;
+  if(!_dragMoved&&Math.abs(dx)<4&&Math.abs(dy)<4)return;
+  _dragMoved=true;
+  const p=_PL[_drag.id];
+  if(_drag.type==='move'){
+    p.x=Math.max(0,_drag.origX+dx);
+    p.y=Math.max(0,_drag.origY+dy);
+  }else{
+    p.w=Math.max(_PMIN_W,_drag.origW+dx);
+    p.h=Math.max(_PMIN_H,_drag.origH+dy);
+  }
+  _applyPanel(_drag.id);
+});
+
+document.addEventListener('mouseup',e=>{
+  if(_drag&&_dragMoved)_savePanelLayout();
+  _drag=null;
+});
+
+// Cancel click only on panel elements after a drag — lets modal/todo clicks through
+document.addEventListener('click',e=>{
+  if(_dragMoved){
+    if(e.target.closest('.panel[id]')){e.stopPropagation();e.preventDefault();}
+    _dragMoved=false;
+  }
+},true);
+
+_initPanelLayout();
 
 // ── Tour ───────────────────────────────────────────────────────────────────────
 const TOUR=[

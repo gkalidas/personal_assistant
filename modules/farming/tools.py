@@ -44,7 +44,19 @@ def plant_crop(plot_name: str, crop_name: str, variety: str | None = None,
                VALUES (?,?,?,?,?,?,?)""",
             (plot["id"], crop_name, variety, planted_date, expected_harvest, notes, now),
         )
-        return {"id": cur.lastrowid, "plot": plot_name, "crop": crop_name, "planted": planted_date}
+        crop_id = cur.lastrowid
+
+        # Mirror into crop_plots so the farming server sees new crops from GK
+        try:
+            c.execute(
+                "INSERT OR IGNORE INTO crop_plots (crop, location, planted_at, lat, lon, notes, created_at) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (crop_name, plot_name, planted_date, plot.get("lat"), plot.get("lon"), notes, now),
+            )
+        except Exception:
+            pass  # crop_plots may not exist in standalone PA DB
+
+        return {"id": crop_id, "plot": plot_name, "crop": crop_name, "planted": planted_date}
 
 
 def list_crops(plot_name: str | None = None, status: str = "active") -> list[dict]:

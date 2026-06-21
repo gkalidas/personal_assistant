@@ -32,12 +32,31 @@ def _is_vision_available() -> bool:
         return False
 
 
+def _known_faces_in_photo(photo_path: str) -> list[str]:
+    """Return names of identified people in this photo from the face cluster DB."""
+    try:
+        from modules.faces.db import faces_for_photo
+        faces = faces_for_photo(photo_path)
+        seen = []
+        for f in faces:
+            name = f.get("person_name")
+            if name and name != "Unknown" and name not in seen:
+                seen.append(name)
+        return seen
+    except Exception:
+        return []
+
+
 def caption_photo(photo_path: str | Path, prompt: str = _CAPTION_PROMPT) -> str:
     """
     Return a 2-3 sentence description of the photo.
     Returns empty string if vision model is unavailable or the image can't be read.
     """
     photo_path = Path(photo_path)
+    # Prepend known face names so the vision model can refer to them by name
+    known = _known_faces_in_photo(str(photo_path))
+    if known:
+        prompt = f"People identified in this photo: {', '.join(known)}. " + prompt
     if not photo_path.exists():
         log.warning("caption_photo: file not found %s", photo_path)
         return ""

@@ -96,7 +96,7 @@ def route(query: str, modules: dict[str, BaseModule]) -> list[str]:
         resp = httpx.post(
             f"{OLLAMA_URL}/api/chat",
             json=payload,
-            timeout=120.0,
+            timeout=300.0,  # i3-4005U CPU cold-start can take 2-3 min
         )
         resp.raise_for_status()
         content = resp.json()["message"]["content"]

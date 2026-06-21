@@ -66,6 +66,55 @@ def analyse_photo(
         return {"error": f"Could not reach farming server: {e}"}
 
 
+def ask(query: str, crop: str = "", location: str = "") -> dict:
+    """
+    Delegate a free-form farming question to the farming server's /api/ask endpoint.
+    The server runs weather + soil context then answers via the text LLM + KB.
+    Returns {"reply": str, "modules": [...]} or {"error": str}.
+    """
+    if not is_running():
+        return {"error": "Farming server not running"}
+    try:
+        r = httpx.post(
+            f"{FARMING_SERVER}/api/ask",
+            json={"query": query, "crop": crop, "location": location},
+            timeout=_TIMEOUT,
+        )
+        r.raise_for_status()
+        return r.json()
+    except httpx.HTTPStatusError as e:
+        return {"error": f"Farming server error: {e.response.status_code}"}
+    except Exception as e:
+        return {"error": f"Could not reach farming server: {e}"}
+
+
+def get_plots() -> list[dict]:
+    """Fetch all plots/crops from the farming server (reads from crop_plots table)."""
+    if not is_running():
+        return []
+    try:
+        r = httpx.get(f"{FARMING_SERVER}/api/plots", timeout=10.0)
+        r.raise_for_status()
+        data = r.json()
+        return data if isinstance(data, list) else data.get("plots", [])
+    except Exception:
+        return []
+
+
+def get_history(limit: int = 20) -> list[dict]:
+    """Fetch recent analysis history from the farming server (reads from analyses table)."""
+    if not is_running():
+        return []
+    try:
+        r = httpx.get(f"{FARMING_SERVER}/api/history", timeout=10.0)
+        r.raise_for_status()
+        data = r.json()
+        rows = data if isinstance(data, list) else data.get("history", [])
+        return rows[:limit]
+    except Exception:
+        return []
+
+
 def format_diagnosis(result: dict) -> str:
     """Format a farming server diagnosis result into a readable response."""
     if "error" in result:

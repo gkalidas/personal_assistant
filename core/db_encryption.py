@@ -27,7 +27,10 @@ _KEY_SIZE = 32  # AES-256
 
 # DBs considered sensitive — encrypt these
 SENSITIVE_DBS = [
-    "personal_assistant.db",   # diary drafts, events, health data
+    "personal_assistant.db",   # diary drafts, interaction events, core memory
+    "health.db",               # BP, steps, weight, sleep, glucose readings
+    "finance.db",              # transactions, budgets, financial goals
+    "faces.db",                # face embeddings (biometric data)
 ]
 
 

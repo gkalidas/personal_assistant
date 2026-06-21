@@ -1,10 +1,22 @@
 """Reads guardian security reports from logs/security/ for dashboard display."""
 
 import json
+import re
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+
+def _extract_pattern(fix_text: str) -> dict | None:
+    """Pull the JSON pattern dict out of a threat intel fix instruction string."""
+    m = re.search(r'(\{[^}]+\})', fix_text)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except Exception:
+            pass
+    return None
 
 _LOG_DIR = Path(__file__).parent.parent / "logs" / "security"
 
@@ -66,24 +78,24 @@ def get_guardian_status() -> dict[str, Any]:
     for task, interval in _INTERVALS.items():
         wall_ts = last_wall.get(task, 0.0)
         if wall_ts == 0.0:
-            elapsed = now
-            last_label = "never"
+            last_label  = "never"
+            next_label  = "OVERDUE — never run"
+            next_status = "danger"
         else:
             elapsed = now - wall_ts
             m = int(elapsed / 60)
             last_label = f"{m}m ago" if m < 60 else f"{m//60}h ago"
-
-        ratio = elapsed / interval
-        if ratio >= 3.0:
-            next_label = f"OVERDUE ({ratio:.0f}×)"
-            next_status = "danger"
-        elif ratio >= 1.0:
-            next_label = "DUE — waiting idle"
-            next_status = "warn"
-        else:
-            remain_m = int((interval - elapsed) / 60)
-            next_label = f"in ~{remain_m}m"
-            next_status = "ok"
+            ratio = elapsed / interval
+            if ratio >= 3.0:
+                next_label  = f"OVERDUE ({ratio:.0f}×)"
+                next_status = "danger"
+            elif ratio >= 1.0:
+                next_label  = "DUE — waiting idle"
+                next_status = "warn"
+            else:
+                remain_m   = int((interval - elapsed) / 60)
+                next_label  = f"in ~{remain_m}m"
+                next_status = "ok"
 
         schedule.append({
             "task":        task,
@@ -115,6 +127,18 @@ def get_guardian_status() -> dict[str, Any]:
             "at":     (threat.get("checked_at") or "")[:16],
             "tested": threat.get("new_threats_tested", 0),
             "vulns":  threat_vulns,
+            "items": [
+                {
+                    "id":       v.get("threat", {}).get("id", ""),
+                    "title":    v.get("threat", {}).get("title", ""),
+                    "type":     v.get("threat", {}).get("threat_type", "general"),
+                    "severity": v.get("threat", {}).get("severity", "INFO"),
+                    "evidence": v.get("result", {}).get("evidence", ""),
+                    "details":  v.get("result", {}).get("details", ""),
+                    "pattern":  _extract_pattern(v.get("result", {}).get("fix", "")),
+                }
+                for v in threat.get("vulnerabilities", [])
+            ],
         },
         "audit": {
             "at":       (audit.get("audited_at") or "")[:16],

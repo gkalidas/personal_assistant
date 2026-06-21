@@ -16,6 +16,104 @@ from core.config import OLLAMA_URL, TEXT_MODEL
 log = logging.getLogger(__name__)
 
 
+def _day_context(date_str: str) -> str:
+    """
+    Pull cross-module context for a given diary date.
+    Returns a plain-text block injected into the diary LLM prompt so the entry
+    reflects health readings, farm activity, spending, and completed tasks — not
+    just photos.
+    """
+    parts = []
+
+    # ── Health readings ────────────────────────────────────────────────────────
+    try:
+        from modules.health.db import conn as _hconn
+        with _hconn() as c:
+            rows = c.execute(
+                "SELECT type, value1, value2, unit FROM health_readings "
+                "WHERE date=? ORDER BY time", (date_str,)
+            ).fetchall()
+        health_lines = []
+        for r in rows:
+            t = r["type"]
+            if t == "bp":
+                health_lines.append(f"BP {int(r['value1'])}/{int(r['value2'])} mmHg")
+            elif t == "steps":
+                health_lines.append(f"{int(r['value1'])} steps")
+            elif t == "sleep":
+                health_lines.append(f"slept {r['value1']}h")
+            elif t == "weight":
+                health_lines.append(f"weight {r['value1']} kg")
+            elif t == "sugar":
+                health_lines.append(f"sugar {r['value1']} mg/dL")
+            elif t == "mood":
+                health_lines.append(f"mood: {r['unit'] or r['value1']}")
+        if health_lines:
+            parts.append("Health: " + ", ".join(health_lines))
+    except Exception:
+        pass
+
+    # ── Farm activities ────────────────────────────────────────────────────────
+    try:
+        from modules.farming.db import conn as _fconn
+        with _fconn() as c:
+            sprays = c.execute(
+                "SELECT p.name as plot, s.chemical, s.quantity "
+                "FROM spray_logs s JOIN plots p ON s.plot_id=p.id WHERE s.date=?",
+                (date_str,)
+            ).fetchall()
+            obs = c.execute(
+                "SELECT p.name as plot, o.type, o.description, o.severity "
+                "FROM observations o JOIN plots p ON o.plot_id=p.id WHERE o.date=?",
+                (date_str,)
+            ).fetchall()
+        farm_lines = []
+        for s in sprays:
+            qty = f" ({s['quantity']})" if s["quantity"] else ""
+            farm_lines.append(f"sprayed {s['chemical']}{qty} on {s['plot']}")
+        for o in obs:
+            sev = f" [{o['severity']}]" if o["severity"] else ""
+            farm_lines.append(f"{o['type']} on {o['plot']}: {o['description'][:60]}{sev}")
+        if farm_lines:
+            parts.append("Farm: " + "; ".join(farm_lines))
+    except Exception:
+        pass
+
+    # ── Finance transactions ───────────────────────────────────────────────────
+    try:
+        from modules.finance.db import conn as _finconn
+        from core.crypto import decrypt as _dec
+        with _finconn() as c:
+            rows = c.execute(
+                "SELECT amount, type, category, description FROM transactions "
+                "WHERE date(ts)=? ORDER BY ts", (date_str,)
+            ).fetchall()
+        fin_lines = []
+        for r in rows:
+            desc = _dec(r["description"]) if r["description"] else ""
+            sign = "+" if r["type"] == "income" else "-"
+            label = f"{sign}₹{r['amount']:.0f} {r['category']}"
+            if desc:
+                label += f" ({desc[:40]})"
+            fin_lines.append(label)
+        if fin_lines:
+            parts.append("Spending: " + "; ".join(fin_lines))
+    except Exception:
+        pass
+
+    # ── Completed todos ────────────────────────────────────────────────────────
+    try:
+        from dashboard.todo_store import list_todos as _todos
+        done = [t["text"] for t in _todos(include_done=True)
+                if t.get("done") == 1 and (t.get("updated_at") or "")[:10] == date_str]
+        if done:
+            parts.append("Completed tasks: " + "; ".join(d[:60] for d in done))
+    except Exception:
+        pass
+
+    return "\n".join(parts)
+
+
 _SYSTEM = """You are writing a personal diary for Ganesh Kalidas, a farmer and entrepreneur
 from Barloni village, Solapur district, Maharashtra, India.
 
@@ -24,8 +122,10 @@ He has pomegranate and sugarcane farms, a family, and splits time between the fa
 and city (Pune/Bavdhan). He uses his iPhone to take photos.
 
 Rules:
-- Ground the entry in what's in the photos and their timestamps — don't invent events
-- If you see farming activity, mention it naturally
+- Ground the entry in the photos, their timestamps, and the day context below
+- Weave health stats naturally ("walked a lot today", "BP was on the higher side") — don't list them robotically
+- Mention farm activities if they happened that day
+- Note significant spending only if it tells a story (e.g., "bought seeds for the new plot")
 - Keep it 150-250 words
 - Simple English, natural — occasional Hindi/Marathi word is fine (pani, bhai, masala, etc.)
 - End with one line about what you're thinking or feeling
@@ -88,6 +188,9 @@ def write_diary_entry(
     times = [m["time_str"] for m in photos if m.get("time_str")]
     time_range = f"{times[0]} to {times[-1]}" if len(times) > 1 else (times[0] if times else "")
 
+    # Cross-module context: health, farming, finance, todos
+    day_ctx = _day_context(date_str)
+
     prompt = f"""Write a diary entry for: {date_human} {device_note}
 
 Photos taken {time_range}:
@@ -96,8 +199,11 @@ Photos taken {time_range}:
 Profile context:
 - Farms: {farm_names or 'Barloni farm'}
 - Homes: {home_names or 'Barloni, Pune'}
+{f'''
+Day context (weave naturally into the entry):
+{day_ctx}''' if day_ctx else ''}
 
-Write the diary entry now (150-250 words, first person, grounded only in what's described above):"""
+Write the diary entry now (150-250 words, first person):"""
 
     payload = {
         "model": TEXT_MODEL,

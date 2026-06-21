@@ -5,8 +5,11 @@ FARMING_DB = os.getenv("FARMING_DB", "farming.db")
 
 
 def conn() -> sqlite3.Connection:
-    c = sqlite3.connect(FARMING_DB)
+    # Re-read env each call so tests can override FARMING_DB after import
+    path = os.getenv("FARMING_DB", FARMING_DB)
+    c = sqlite3.connect(path, timeout=10.0)
     c.row_factory = sqlite3.Row
+    c.execute("PRAGMA journal_mode=WAL")  # allow concurrent readers while writing
     return c
 
 

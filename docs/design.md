@@ -295,7 +295,7 @@ PII never leaves the machine. Generic anonymized queries go out: "what medicatio
 
 ---
 
-## Current Status (updated 2026-06-10)
+## Current Status (updated 2026-06-21)
 
 All planned Phase 4 modules are **built and running**. System is fully operational.
 
@@ -312,7 +312,7 @@ All planned Phase 4 modules are **built and running**. System is fully operation
 | `modules/health/` | ✅ BP, steps, weight, sleep, blood sugar |
 | `modules/system/` | ✅ CPU heatmap, load pattern, scheduler |
 | `modules/diary/` | ✅ Photo EXIF → vision captions → LLM diary; generates review questions |
-| `modules/search/` | ✅ DuckDuckGo + LLM summarise (streaming) |
+| `modules/search/` | ✅ SearXNG (self-hosted, when SEARXNG_URL set) + DDGS fallback + LLM summarise (streaming) |
 | `modules/code/` — code directory analyzer | ✅ LOC, complexity (AST), bandit security scan, LLM explain |
 | `modules/farming/ndvi.py` — NASA MODIS NDVI | ✅ 16-day composite at 250m; 12h SQLite cache; Barloni default |
 | `dashboard/server.py` — FastAPI + WebSocket | ✅ :8765; graph/ndvi/soil/diary-questions/backup-dbs endpoints |
@@ -378,14 +378,32 @@ Answers are stored in `diary_questions` table and used when regenerating entries
 - Two `# nosec` suppressions: `todo_store.py:87` (SQL allow-list), `run_dashboard.py:25` (`0.0.0.0` for Tailscale)
 - Schedule: weekly (7-day interval), runs when system is idle
 
+### What's Now Live (Phase 5 — 2026-06-21)
+| Component | Notes |
+|---|---|
+| `modules/health/module.py` refactor | `_execute()` cc=51 → cc=2; dispatch table + per-action handler functions |
+| `modules/digest/` — weekly email digest | diary + finance + health summary; HTML + plaintext email via Gmail SMTP; auto-fires Sunday 19:00; `POST /api/digest/send`, `GET /api/digest/preview` |
+| `modules/search/module.py` — SearXNG backend | SearXNG when `SEARXNG_URL` set, DDGS fallback; `_search()` unified function; `backend` field logged |
+| `modules/faces/` — face clustering | InsightFace buffalo_sc (CPU ONNX); DBSCAN clustering; `faces.db`; REST API `/api/faces/scan`, `/api/faces/cluster`, `/api/faces/clusters`, `/api/faces/photo`, `/api/faces/clusters/{id}` |
+| `core/db_encryption.py` — expanded coverage | Now encrypts: `personal_assistant.db`, `health.db`, `finance.db`, `faces.db` |
+| `core/knowledge_graph.py` — search + neighborhood | `search_nodes()` full-text; `node_neighborhood()` BFS subgraph; `delete_node()`; REST: `/api/graph/search`, `/api/graph/node/{id}`, `/api/graph/node/{id}/neighborhood`, `DELETE /api/graph/node/{id}` |
+| `dashboard/news_widget.py` — fresh news | DDGS `timelimit='d'` (last 24h, fallback week); RSS date filter (48h cutoff); dismissed URLs persisted to `logs/news_dismissed.json` (7-day TTL); sorted newest-first |
+
+### Configuration Added (`.env`)
+```
+SEARXNG_URL=          # set to http://localhost:8888 after: docker run -d -p 8888:8080 --name searxng searxng/searxng
+DIGEST_FROM=ganesh.hrwosit1003@gmail.com
+DIGEST_TO=ganesh.hrwosit1003@gmail.com
+DIGEST_EMAIL_PASS=    # Gmail App Password (Google Account → Security → 2-Step → App passwords)
+```
+
 ### Deferred (Future Development)
 | Item | Notes |
 |---|---|
 | GodsView AI | Global tracking platform, NOT farming API. Has MODIS tile proxy but no numeric NDVI. Use NASA MODIS directly (already implemented). |
-| Weekly email digest | Diary + finance weekly summary via email |
-| SearXNG private search | Self-hosted privacy proxy for web queries |
-| Face clustering | InsightFace on `~/Uploads` — surface unknown faces one at a time |
 | OPSEC who-knows-what map | Per-person `knows[]` derived from knowledge graph |
+| Local passphrase unlock on startup | Secure boot gate |
+| SearXNG instance setup | Docker: `docker run -d -p 8888:8080 --name searxng searxng/searxng` then set `SEARXNG_URL` |
 
 ---
 
@@ -395,7 +413,4 @@ Open `/home/ganesh/projects/personal_assistant/docs/design.md` in a new session 
 
 > "Read the design doc. Resume the build."
 
-**System is complete as of 2026-06-10.** All Phase 4 work done. Next priorities if continuing:
-1. Weekly email digest (diary + finance summary via SMTP)
-2. SearXNG self-hosted private search
-3. Face clustering with InsightFace
+**System is complete as of 2026-06-21.** All Phase 5 work done.
