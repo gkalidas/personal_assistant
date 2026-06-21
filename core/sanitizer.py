@@ -22,7 +22,7 @@ MAX_QUERY_LEN = 1000
 _BASE_INJECTION_PATTERNS = [
     r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?",
     r"ignore\s+prior",
-    r"forget\s+(everything|all)\s+(you|i)\s+(know|said|told)",
+    r"forget\s+(everything|all)(\s+(you|i)\s+(know|said|told))?",
     r"you\s+are\s+now\s+a?\s*(different|new|another)?\s*(assistant|ai|model|bot|system|dan)",
     r"\byou\s+are\s+now\s+a?\s*DAN\b",
     r"new\s+(system\s+)?instructions?\s*:",
