@@ -152,6 +152,7 @@ _ACTION_SCHEMA: dict[str, dict[str, dict[str, tuple]]] = {
 # Fields that are REQUIRED (cannot be None). All fields in the schema above
 # are required unless type(None) is explicitly listed in their allowed_types.
 def _is_required(allowed_types: tuple) -> bool:
+    """Return True if a field is mandatory (None is not an allowed type)."""
     return type(None) not in allowed_types
 
 
@@ -233,60 +234,99 @@ class ValidationResult:
     errors: list[str] = field(default_factory=list)
 
 
-def validate_action(module: str, action: dict) -> ValidationResult:
-    """
-    Validate that an LLM-generated action dict has safe field types
-    before it is executed. Returns corrected action if fixable,
-    or marks invalid if not.
-    """
-    warnings: list[str] = []
-    errors: list[str] = []
-    action = dict(action)
+def _coerce_numeric(val: str, allowed_types: tuple) -> float | None:
+    """Coerce a numeric-looking string to a float for int/float fields.
 
+    Strips commas, the rupee sign, and surrounding whitespace (so "₹1,200"
+    becomes 1200.0). Returns None if the field does not accept numbers or the
+    string is not a valid number — the caller then reports a type error.
+    """
+    if not (int in allowed_types or float in allowed_types):
+        return None
+    try:
+        return float(val.replace(",", "").replace("₹", "").strip())
+    except ValueError:
+        return None
+
+
+def _scan_string_field(fname: str, val: str) -> list[str]:
+    """Return error messages if a string field contains unsafe content.
+
+    Checks for prompt-injection patterns first, then shell-injection syntax.
+    Returns an empty list when the value is clean.
+    """
+    if _INJECTION_RE.search(val):
+        return [f"field '{fname}' contains injection pattern: {repr(val[:80])}"]
+    if _SHELL_META_RE.search(val):
+        return [f"field '{fname}' contains shell metacharacters: {repr(val[:80])}"]
+    return []
+
+
+def _validate_field(
+    fname: str, allowed_types: tuple, action: dict
+) -> tuple[list[str], list[str]]:
+    """Validate a single action field in place.
+
+    Performs, in order: required/None check, explicit bool rejection for
+    numeric fields, type check with numeric-string coercion (writing the
+    coerced value back into ``action``), and an injection/shell scan of any
+    string value. Returns ``(errors, warnings)`` for this field.
+    """
+    val = action.get(fname)
+
+    # Required check — None is only allowed if type(None) is in allowed_types.
+    if val is None:
+        if _is_required(allowed_types):
+            return [f"required field '{fname}' is missing or null"], []
+        return [], []
+
+    # bool is a subclass of int in Python — reject it for numeric fields.
+    if isinstance(val, bool) and (int in allowed_types or float in allowed_types):
+        return [f"field '{fname}' must be a number, got bool={repr(val)}"], []
+
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not isinstance(val, allowed_types):
+        coerced = _coerce_numeric(val, allowed_types) if isinstance(val, str) else None
+        if coerced is not None:
+            action[fname] = coerced
+            warnings.append(f"field '{fname}' coerced from string '{val}' to number {coerced}")
+            return errors, warnings
+        errors.append(
+            f"field '{fname}' has wrong type: expected {[t.__name__ for t in allowed_types]}, "
+            f"got {type(val).__name__} = {repr(val)[:60]}"
+        )
+
+    if isinstance(val, str):
+        errors.extend(_scan_string_field(fname, val))
+
+    return errors, warnings
+
+
+def validate_action(module: str, action: dict) -> ValidationResult:
+    """Validate an LLM-generated action dict before it is executed.
+
+    Blocks the action outright if it names an action not in the module's
+    schema. Otherwise validates each schema field via :func:`_validate_field`,
+    accumulating errors and warnings. Returns a :class:`ValidationResult` whose
+    ``action`` carries any coerced field values.
+    """
+    action = dict(action)
     a = action.get("action", "")
     module_schema = _ACTION_SCHEMA.get(module, {})
 
     if a not in module_schema:
-        errors.append(f"action '{a}' is not an allowed action for module '{module}' — blocked")
-        return ValidationResult(valid=False, action=action, errors=errors)
+        return ValidationResult(
+            valid=False, action=action,
+            errors=[f"action '{a}' is not an allowed action for module '{module}' — blocked"],
+        )
 
-    field_schema = module_schema[a]
-    for fname, allowed_types in field_schema.items():
-        val = action.get(fname)
-        if val is None:
-            # None is only acceptable if type(None) is listed in allowed_types
-            if _is_required(allowed_types):
-                errors.append(f"required field '{fname}' is missing or null")
-            continue
+    errors: list[str] = []
+    warnings: list[str] = []
+    for fname, allowed_types in module_schema[a].items():
+        f_errors, f_warnings = _validate_field(fname, allowed_types, action)
+        errors.extend(f_errors)
+        warnings.extend(f_warnings)
 
-        # bool is a subclass of int in Python — reject it explicitly for numeric fields
-        if isinstance(val, bool) and (int in allowed_types or float in allowed_types):
-            errors.append(
-                f"field '{fname}' must be a number, got bool={repr(val)}"
-            )
-            continue
-
-        if not isinstance(val, allowed_types):
-            # Try to coerce numbers
-            if (int in allowed_types or float in allowed_types) and isinstance(val, str):
-                try:
-                    coerced = float(val.replace(",", "").replace("₹", "").strip())
-                    action[fname] = coerced
-                    warnings.append(f"field '{fname}' coerced from string '{val}' to number {coerced}")
-                    continue
-                except ValueError:
-                    pass
-            errors.append(
-                f"field '{fname}' has wrong type: expected {[t.__name__ for t in allowed_types]}, "
-                f"got {type(val).__name__} = {repr(val)[:60]}"
-            )
-
-        # Check for injection and shell metacharacters in string fields
-        if isinstance(val, str):
-            if _INJECTION_RE.search(val):
-                errors.append(f"field '{fname}' contains injection pattern: {repr(val[:80])}")
-            elif _SHELL_META_RE.search(val):
-                errors.append(f"field '{fname}' contains shell metacharacters: {repr(val[:80])}")
-
-    valid = len(errors) == 0
-    return ValidationResult(valid=valid, action=action, warnings=warnings, errors=errors)
+    return ValidationResult(valid=not errors, action=action, warnings=warnings, errors=errors)
