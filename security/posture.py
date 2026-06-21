@@ -50,11 +50,12 @@ class PostureReport:
 
 # ── Component weights ──────────────────────────────────────────────────────────
 WEIGHTS = {
-    "cve":         0.25,   # dependency vulnerabilities
-    "code_audit":  0.20,   # bandit + custom code issues
-    "red_team":    0.30,   # attack simulation bypass rate (highest weight)
+    "cve":         0.20,   # dependency vulnerabilities
+    "code_audit":  0.15,   # bandit + custom code issues
+    "red_team":    0.25,   # input-side attack simulation bypass rate
+    "jailbreak":   0.20,   # output-side jail containment (new)
     "patterns":    0.10,   # injection pattern freshness and count
-    "anomaly":     0.15,   # recent log anomaly alerts
+    "anomaly":     0.10,   # recent log anomaly alerts
 }
 
 
@@ -175,6 +176,23 @@ def _score_red_team(data: dict | None) -> tuple[float, str]:
     return round(score, 1), detail
 
 
+def _score_jailbreak(data: dict | None) -> tuple[float, str]:
+    if data is None:
+        return 50.0, "No jailbreak simulation run yet"
+
+    total     = data.get("total", 0)
+    escaped   = data.get("escaped", 0)
+    contained = data.get("contained", 0)
+
+    if total == 0:
+        return 50.0, "Jailbreak sim ran but no tests found"
+
+    escape_pct = escaped / total * 100
+    score = max(10.0, 100.0 - escape_pct * 3)   # each escape costs 3 points per %
+    detail = f"{contained}/{total} contained ({escape_pct:.0f}% escape rate)"
+    return round(score, 1), detail
+
+
 def _score_patterns(data: dict | None) -> tuple[float, str]:
     if data is None:
         # Try reading patterns.json directly
@@ -270,6 +288,19 @@ def calculate_posture(verbose: bool = True) -> PostureReport:
             "Add sanitize_input() call on all external API response strings "
             "before returning them in module handlers"
         )
+
+    # ── Jailbreak sim ────────────────────────────────────────────────────────
+    jb_data   = _read_latest("jailbreak")
+    stale, lr = _is_stale(jb_data, max_hours=72)
+    raw, det  = _score_jailbreak(jb_data)
+    components.append(PostureComponent(
+        name="Jailbreak Sim", score=raw * WEIGHTS["jailbreak"], weight=WEIGHTS["jailbreak"],
+        raw_score=raw, detail=det, stale=stale, last_run=lr
+    ))
+    if stale:
+        recommendations.append("Run `python security/jailbreak_sim.py` — jail test overdue")
+    if raw < 70:
+        alerts.append(f"Jailbreak: escape(s) detected in output jail ({det})")
 
     # ── Patterns ──────────────────────────────────────────────────────────────
     pat_data  = _read_latest("pattern_update")

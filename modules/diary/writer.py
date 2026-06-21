@@ -12,6 +12,7 @@ from datetime import datetime
 import httpx
 
 from core.config import OLLAMA_URL, TEXT_MODEL
+from core.sanitizer import sanitize_external_text
 
 log = logging.getLogger(__name__)
 
@@ -73,7 +74,8 @@ def _day_context(date_str: str) -> str:
             farm_lines.append(f"sprayed {s['chemical']}{qty} on {s['plot']}")
         for o in obs:
             sev = f" [{o['severity']}]" if o["severity"] else ""
-            farm_lines.append(f"{o['type']} on {o['plot']}: {o['description'][:60]}{sev}")
+            desc = sanitize_external_text(o["description"][:60], label="ctx:obs")
+            farm_lines.append(f"{o['type']} on {o['plot']}: {desc}{sev}")
         if farm_lines:
             parts.append("Farm: " + "; ".join(farm_lines))
     except Exception:
@@ -91,10 +93,11 @@ def _day_context(date_str: str) -> str:
         fin_lines = []
         for r in rows:
             desc = _dec(r["description"]) if r["description"] else ""
+            desc = sanitize_external_text(desc[:40], label="ctx:finance") if desc else ""
             sign = "+" if r["type"] == "income" else "-"
             label = f"{sign}₹{r['amount']:.0f} {r['category']}"
             if desc:
-                label += f" ({desc[:40]})"
+                label += f" ({desc})"
             fin_lines.append(label)
         if fin_lines:
             parts.append("Spending: " + "; ".join(fin_lines))
@@ -107,7 +110,8 @@ def _day_context(date_str: str) -> str:
         done = [t["text"] for t in _todos(include_done=True)
                 if t.get("done") == 1 and (t.get("updated_at") or "")[:10] == date_str]
         if done:
-            parts.append("Completed tasks: " + "; ".join(d[:60] for d in done))
+            safe_done = [sanitize_external_text(d[:60], label="ctx:todo") for d in done]
+            parts.append("Completed tasks: " + "; ".join(safe_done))
     except Exception:
         pass
 

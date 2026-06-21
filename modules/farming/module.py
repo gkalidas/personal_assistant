@@ -9,7 +9,7 @@ from core.config import OLLAMA_URL, TEXT_MODEL
 
 from core.base_module import BaseModule, ModuleResponse
 from core.memory import recent_events
-from core.sanitizer import validate_action
+from core.sanitizer import validate_action, sanitize_external_text
 
 from modules.farming import db, tools
 from modules.farming import weather as wx
@@ -127,8 +127,8 @@ def _recent_history(limit: int = 4) -> list[dict]:
             q = e.get("query", "").strip()
             r = e.get("response", "").strip()
             if q and r and len(pairs) < limit:
-                pairs.append({"role": "user", "content": q})
-                pairs.append({"role": "assistant", "content": r})
+                pairs.append({"role": "user",      "content": q})
+                pairs.append({"role": "assistant",  "content": sanitize_external_text(r, label="mem:farming")})
         return pairs
     except Exception:
         return []
@@ -328,8 +328,9 @@ def _h_open_observations(action, _lat, _lon, _name):
         return "No open observations.", None
     lines = ["Open observations:"]
     for o in obs:
-        sev = f" [{o['severity']}]" if o.get("severity") else ""
-        lines.append(f"  {o['date']} | {o['plot_name']} | {o['type']}{sev}: {o['description'][:80]}")
+        sev  = f" [{o['severity']}]" if o.get("severity") else ""
+        desc = sanitize_external_text(o["description"][:80], label="obs:display")
+        lines.append(f"  {o['date']} | {o['plot_name']} | {o['type']}{sev}: {desc}")
     return "\n".join(lines), obs
 
 def _h_mandi_price(action, _lat, _lon, _name):

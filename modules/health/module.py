@@ -10,7 +10,7 @@ from core.config import OLLAMA_URL, TEXT_MODEL
 
 from core.base_module import BaseModule, ModuleResponse
 from core.memory import recent_events
-from core.sanitizer import validate_action
+from core.sanitizer import validate_action, sanitize_external_text
 from modules.health import db, tools
 
 log = logging.getLogger(__name__)
@@ -105,8 +105,8 @@ def _recent_history(limit: int = 4) -> list[dict]:
             q = e.get("query", "").strip()
             r = e.get("response", "").strip()
             if q and r and len(pairs) < limit:
-                pairs.append({"role": "user", "content": q})
-                pairs.append({"role": "assistant", "content": r})
+                pairs.append({"role": "user",      "content": q})
+                pairs.append({"role": "assistant",  "content": sanitize_external_text(r, label="mem:health")})
         return pairs
     except Exception:
         return []

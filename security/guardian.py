@@ -59,7 +59,8 @@ MIN_INTERVAL = {
     "anomaly_detect":       3600,   # at most once/h — quick check, low load
     "pattern_update":   6 * 3600,   # every 6h — light NVD + file write
     "threat_intel":    12 * 3600,   # every 12h — network + sanitizer tests
-    "red_team":        24 * 3600,   # daily — attack simulation against all layers
+    "red_team":        24 * 3600,   # daily — input-side attack simulation
+    "jailbreak":       24 * 3600,   # daily — output-side jail containment test
     "vuln_scan":       24 * 3600,   # daily — OSV batch query
     "code_audit":       7 * 86400,  # weekly — bandit + regex scan
 }
@@ -239,7 +240,8 @@ def task_red_team() -> dict:
     else:
         log.info("  All attacks blocked — no auto-defense needed")
 
-    # Compute fresh posture score after red team
+    # Run jailbreak sim then compute fresh posture
+    jb_results = task_jailbreak(quiet=True)
     posture = calculate_posture(verbose=False)
     log.info(f"  Posture score: {posture.overall}/100 Grade {posture.grade}")
 
@@ -248,9 +250,22 @@ def task_red_team() -> dict:
         "blocked":         report.blocked,
         "bypassed":        report.bypassed,
         "bypass_rate_pct": report.bypass_rate_pct,
+        "jailbreak_escaped": jb_results.get("escaped", 0),
         "posture_score":   posture.overall,
         "posture_grade":   posture.grade,
     }
+
+
+def task_jailbreak(quiet: bool = False) -> dict:
+    from security.jailbreak_sim import run_jailbreak_sim
+    log.info("=== Jailbreak Simulation (output-side jail) ===")
+    results  = run_jailbreak_sim(llm=False, verbose=not quiet)
+    contained = sum(1 for r in results if r.contained)
+    escaped   = sum(1 for r in results if not r.contained)
+    log.info(f"  {contained}/{len(results)} contained, {escaped} escaped")
+    if escaped > 0:
+        log.warning(f"  !! {escaped} jail escape(s) detected")
+    return {"total": len(results), "contained": contained, "escaped": escaped}
 
 
 def task_anomaly_detect() -> dict:
@@ -309,6 +324,7 @@ def _full_scan() -> dict:
         ("anomaly_detect",  task_anomaly_detect),
         ("pattern_update",  task_pattern_update),
         ("red_team",        task_red_team),
+        ("jailbreak",       task_jailbreak),
         ("vuln_scan",       lambda: task_vuln_scan(auto_patch=True)),
         ("code_audit",      task_code_audit),
         ("threat_intel",    task_threat_intel),
@@ -414,6 +430,7 @@ def _run_one(name: str) -> None:
         "pattern_update":  task_pattern_update,
         "threat_intel":    task_threat_intel,
         "red_team":        task_red_team,
+        "jailbreak":       task_jailbreak,
         "vuln_scan":       lambda: task_vuln_scan(auto_patch=True),
         "code_audit":      task_code_audit,
     }
@@ -545,7 +562,8 @@ def main() -> None:
         "anomaly":    task_anomaly_detect,
         "patch":      lambda: task_vuln_scan(auto_patch=True),
         "intel":      task_threat_intel,
-        "redteam":    _cmd_redteam,       # run attack simulation
+        "redteam":    _cmd_redteam,       # run input-side attack simulation
+        "jailbreak":  lambda: __import__("security.jailbreak_sim", fromlist=["run_jailbreak_sim"]).run_jailbreak_sim(llm="--llm" in sys.argv, verbose=True),
         "autodefense":_cmd_autodefense,   # auto-fix bypasses from red team
         "posture":    _cmd_posture,       # show security score
         "load":       _cmd_load,

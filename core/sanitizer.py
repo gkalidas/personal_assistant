@@ -22,6 +22,19 @@ log = logging.getLogger(__name__)
 
 MAX_QUERY_LEN = 1000
 
+# Shell metacharacters that must never appear in LLM action field values.
+# These are legitimate in free-text user queries ("I earned $500; split it")
+# but have no place in structured action field values like plot names or amounts.
+_SHELL_META_RE = re.compile(
+    r'(?:'
+    r'\$\(|\`'                          # command substitution $() or backtick
+    r'|&&|\|\|'                         # shell logical operators
+    r'|\b(?:rm|chmod|chown|curl|wget|nc|bash|sh|python|perl)\s+-'  # dangerous commands with flags
+    r'|\.\./\.\.'                       # path traversal
+    r')',
+    re.IGNORECASE,
+)
+
 # Built-in base patterns — always active even if patterns.json is missing
 _BASE_INJECTION_PATTERNS = [
     r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?",
@@ -228,9 +241,8 @@ def validate_action(module: str, action: dict) -> ValidationResult:
     module_schema = _ACTION_SCHEMA.get(module, {})
 
     if a not in module_schema:
-        # Unknown action — pass through with a warning (new actions may not be in schema yet)
-        warnings.append(f"action '{a}' not in validation schema for module '{module}'")
-        return ValidationResult(valid=True, action=action, warnings=warnings)
+        errors.append(f"action '{a}' is not an allowed action for module '{module}' — blocked")
+        return ValidationResult(valid=False, action=action, errors=errors)
 
     field_schema = module_schema[a]
     for fname, allowed_types in field_schema.items():
@@ -263,9 +275,12 @@ def validate_action(module: str, action: dict) -> ValidationResult:
                 f"got {type(val).__name__} = {repr(val)[:60]}"
             )
 
-        # Check for injection in string fields
-        if isinstance(val, str) and _INJECTION_RE.search(val):
-            errors.append(f"field '{fname}' contains injection pattern: {repr(val[:80])}")
+        # Check for injection and shell metacharacters in string fields
+        if isinstance(val, str):
+            if _INJECTION_RE.search(val):
+                errors.append(f"field '{fname}' contains injection pattern: {repr(val[:80])}")
+            elif _SHELL_META_RE.search(val):
+                errors.append(f"field '{fname}' contains shell metacharacters: {repr(val[:80])}")
 
     valid = len(errors) == 0
     return ValidationResult(valid=valid, action=action, warnings=warnings, errors=errors)
