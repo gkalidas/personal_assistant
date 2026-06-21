@@ -1,0 +1,269 @@
+# Code-Quality Pass — Handoff Document
+
+> **Purpose:** A complete, self-contained plan so any AI (or developer) can continue
+> the codebase-wide quality pass exactly as started. Read this top-to-bottom before
+> touching code.
+>
+> **Started:** 2026-06-22  •  **Owner of decisions:** Ganesh (user)
+> **Last updated by:** Claude (Opus 4.8)
+
+---
+
+## 1. What this effort is
+
+A systematic, file-by-file quality pass over the entire `personal_assistant`
+codebase. The user explicitly chose:
+
+- **Scope:** *Everything, prioritized* — in this order:
+  `security/` → `core/` → `modules/` → `dashboard/` → `scripts/`
+- **Depth:** *Thorough* —
+  1. **Docstring every function** (all ~604 functions).
+  2. **Split** any function that is **>~40 lines** *or* has **mixed concerns**
+     into smaller single-responsibility functions.
+  3. **Optimize** real time/space-complexity problems (not micro-tuning).
+  4. **Break files into multiple files** where a module has grown to mix
+     unrelated concerns.
+  5. **Test after every file**, fix any breakage before moving on.
+  6. **One commit per file.**
+
+This is behavior-preserving refactoring. **No functional changes** unless fixing
+a bug that is explicitly flagged and verified.
+
+---
+
+## 2. The per-file process (follow exactly)
+
+For each file, in priority order:
+
+1. **Audit** the file:
+   ```bash
+   python3 - <<'EOF'
+   import ast
+   p='PATH/TO/FILE.py'
+   tree=ast.parse(open(p).read())
+   for n in ast.walk(tree):
+       if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)):
+           ln=(n.end_lineno or n.lineno)-n.lineno+1
+           d=bool(ast.get_docstring(n))
+           if not d or ln>40:
+               print(f"  L{n.lineno} {n.name}: {ln}ln doc={d}")
+   EOF
+   ```
+2. **Read** the whole file. Understand what each function *actually* does vs. its name.
+3. **Refactor**:
+   - Add a concise docstring to every function (1 line for trivial, a short
+     paragraph for non-obvious — say *what* + *why*, not line-by-line *how*).
+   - Extract helpers from long/multi-concern functions. Prefer hoisting big
+     inline literals (prompt strings, config dicts, lookup tables) to module
+     constants. Use the **table-driven pattern** when you see repeated blocks
+     (see `security/posture.py` `_COMPONENT_SPECS` for the reference example).
+   - Extract `_print_*` / `_save_*` / `_render_*` helpers to keep orchestration
+     functions short (see `security/jailbreak_sim.py` for the reference pattern).
+   - Flag (don't silently fix) any function that doesn't do what its name says.
+     If it's a clear bug, fix it **and add/extend a test**, and call it out in
+     the commit message.
+4. **Re-audit** the file — confirm 0 missing docstrings and no >40-line functions
+   (a function that is 41–45 lines *including its docstring* and is a single
+   cohesive loop is acceptable; use judgment, don't over-split display loops).
+5. **Test** (see §5). Everything that passed before must still pass.
+6. **Commit** the single file with a descriptive message (see §6).
+7. Update the `TodoWrite` list / this doc's checklist.
+
+**Guideline, not dogma:** the ~40-line threshold has a tilde. Don't shatter a
+cohesive loop into unreadable fragments just to hit a number. Single
+responsibility and readability win.
+
+---
+
+## 3. Progress so far
+
+| # | File | Status | Commit | Notes |
+|---|------|--------|--------|-------|
+| 1 | `core/sanitizer.py` | ✅ done | `adf86d2` | Split `validate_action` → `_coerce_numeric`, `_scan_string_field`, `_validate_field`; docstring `_is_required`. |
+| 2 | `security/jailbreak_sim.py` | ✅ done | `23b3278` | Docstrings all; split `_run_track_b` → `_probe_llm`, `_assess_track_b`; hoisted prompts/action-sets to constants; `_print_track_a/b/c` helpers. |
+| 3 | `security/posture.py` | ✅ done | `9c0a49d` | Table-driven `_COMPONENT_SPECS` + `_evaluate_component` (was 120-line `calculate_posture`); `_grade_for`, `_save_posture`; docstrings all. |
+
+**Reference commits** — study these to match the established style before
+continuing. `9c0a49d` (table-driven) and `23b3278` (extract + constants) are
+the two key patterns.
+
+---
+
+## 4. Bugs found
+
+### 4a. Already fixed (earlier in session, before the quality pass)
+These came from a "does the system work as built" check and are **committed**:
+
+| Bug | Fix commit | Summary |
+|-----|-----------|---------|
+| Stale guardian daemon | (ops, no code) | PID predated `red_team`/`jailbreak` tasks; restarted service. |
+| Farming actions blocked by validator | `137cae3` | `ndvi_health`, `analysis_history`, `summary` had handlers but weren't in `_ACTION_SCHEMA`; after the "block unknown actions" change they were rejected. Added to schema. |
+| Shell-meta false positive | `137cae3` | `_SHELL_META_RE` matched bare `&&`/`||`; narrowed to unambiguous injection syntax. |
+| Stale dashboard server | (ops, no code) | Server predated module edits; restarted. |
+| Dashboard bound to `0.0.0.0` | `703102d` | No-auth dashboard exposed to LAN. Now binds to Tailscale IP (see §7). |
+
+### 4b. ⚠️ FOUND, NOT YET FIXED — `security/red_team.py` `_test_validator`
+**This is a real latent bug. Fix it as part of the `red_team.py` file pass.**
+
+At `red_team.py:258`:
+```python
+ok, msg = validate_action(module, action)   # WRONG
+return not ok, msg
+```
+`validate_action()` returns a `ValidationResult` dataclass, **not** a tuple.
+Unpacking it raises `TypeError: cannot unpack non-iterable ValidationResult`,
+which is swallowed by the `except Exception` below, so `_test_validator` **always**
+returns `(False, ...)`. **The validator layer is never actually tested.** This is
+masked because the `action_injection` payloads contain `DROP TABLE`, which the
+*sanitizer* catches — so the attacks still show "blocked", just by the wrong layer.
+
+**Fix:**
+```python
+result = validate_action(module, action)
+return (not result.valid), "; ".join(result.errors)
+```
+After fixing, verify the `action_injection` rows in red_team output now show
+`[validator]` (or `[sanitizer+validator]`) and the run is still 34/34 blocked.
+
+---
+
+## 5. Testing — run after every file
+
+Always `source ~/envs/evn_personal_assistant/bin/activate` first (see §7).
+
+```bash
+# 1. Import sanity (catches syntax / import-cycle breakage)
+python3 -c "import MODULE.PATH; print('OK')"
+
+# 2. Security regression triad (fast, no LLM) — must stay green
+python security/red_team.py    2>/dev/null | grep RESULTS      # 34/34 blocked, 0 bypassed
+python security/jailbreak_sim.py 2>/dev/null | grep "JAILBREAK SIM"  # 16/16 contained
+python security/posture.py --json 2>/dev/null | python3 -c "import sys,json;d=json.load(sys.stdin);print(d['grade'])"
+
+# 3. Full functional suite (234 tests across 19 sections) — must stay 0 failures
+python scripts/full_test_suite.py 2>/dev/null | grep "Failed:"
+
+# 4. Optional: live-LLM jailbreak (slow, needs Ollama up)
+python security/jailbreak_sim.py --llm 2>/dev/null | grep "JAILBREAK SIM"  # 21/21
+```
+
+**Known-good baselines (as of this handoff):** red_team 34/34 blocked (0%
+bypass); jailbreak 16/16 (21/21 with `--llm`); full suite 234/234; posture grade A.
+
+> Note: posture *score* may read 95 (not 100) when the guardian daemon resets
+> `pattern_update_latest.json` to a "skipped" status — that's expected and not a
+> regression. Grade stays A.
+
+---
+
+## 6. Commit conventions
+
+- One file per commit. Conventional-commit style: `refactor(<area>): …` for
+  quality passes, `fix(<area>): …` when a bug is corrected.
+- Body: bullet what was extracted/split/optimized; end with a line confirming
+  tests still pass.
+- **Always** end the commit message with:
+  ```
+  Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+  ```
+- We are on branch `dev`. Do **not** push or open PRs unless the user asks.
+
+---
+
+## 7. Environment & operational notes (important)
+
+- **venv (always use this):** `~/envs/evn_personal_assistant`
+  → `source ~/envs/evn_personal_assistant/bin/activate`
+- **Large downloads:** use `aria2c -c -x 16 -s 16 <URL>` (exception: `ollama pull`).
+- **Guardian daemon:** `systemctl --user restart gk-guardian.service`. The running
+  process holds code in memory — **restart it after editing `security/guardian.py`**
+  or scheduled tasks run stale code.
+- **Dashboard server:** runs via `uvicorn dashboard.server:app`. Plain uvicorn has
+  **no `--reload`**, so **restart it after editing any `dashboard/` or imported
+  `modules/` code** or it serves stale code.
+  - **Binding (security):** bind to the **Tailscale IP** (`100.67.193.127`), never
+    `0.0.0.0` — the dashboard has **no auth** and serves health/finance data.
+    `scripts/run_dashboard.py` now does this via `_resolve_host()`
+    (override → Tailscale IP → `127.0.0.1` fallback).
+  - **Port inconsistency to resolve (not yet done):** `scripts/startup.sh` launches
+    on `127.0.0.1:8080`; `scripts/run_dashboard.py` defaults to port `8765`;
+    `docs/remote_access.md` lists `8765`. Pick one port and make all three agree
+    when you reach the `scripts/` bucket.
+- **Never commit:** `user_profile.json`, `*.db`, `.env`, `~/.config/gk/master.key`
+  (all gitignored — keep them so).
+
+---
+
+## 8. Remaining work queue
+
+Counts = files still needing work / missing docstrings / functions >40 lines.
+(Generated 2026-06-22; re-run the §9 audit to refresh.)
+
+| Bucket | Files | No-doc | >40ln | Priority |
+|--------|-------|--------|-------|----------|
+| `security/` | 10 | 44 | 22 | **1 (in progress)** |
+| `core/` | 13 | 43 | 10 | 2 |
+| `modules/` | 27 | 138 | 28 | 3 |
+| `dashboard/` | 9 | 72 | 11 | 4 |
+| `scripts/` | 7 | 37 | 8 | 5 |
+
+### `security/` bucket — remaining files (current priority)
+
+| File | No-doc | Long functions (>40ln) | Notes |
+|------|--------|------------------------|-------|
+| `red_team.py` | 4 | `run_red_team:103` | **Fix `_test_validator` bug (§4b)**; split `run_red_team` into per-attack eval + aggregation + the existing `_print_summary`. |
+| `autodefense.py` | 4 | `run_autodefense:108` | Split: per-bypass proposal generation, validation, promotion already partly factored — extract the loop body. |
+| `guardian.py` | 14 | `_full_scan:65`, `run_daemon:71`, `main:54` | Biggest. `main` is a dispatch dict — extract command handlers. `run_daemon` is the scheduler loop — extract idle-check + pick-next. **Restart service after editing.** |
+| `threat_intel.py` | 14 | 7 long (`fetch_nvd`, `fetch_github_advisories`, `fetch_cisa_kev`, `_replicate_*`, `run_threat_intel:106`) | Most work. The `fetch_*` functions share shape → consider a common `_fetch_json` helper. |
+| `watcher.py` | 4 | `update_patterns:93`, `detect_anomalies:98` | Both long; split fetch vs. parse vs. write. |
+| `load_monitor.py` | 3 | `observe:54`, `report:48` | |
+| `patcher.py` | 1 | `patch_vulnerability:51`, `auto_patch_all:73` | |
+| `auditor.py` | 0 | `_check_ollama_exposure:42` | Only needs the one split. |
+| `scanner.py` | 0 | `scan_packages:49` | Only needs the one split. |
+| `jailbreak_sim.py` | 0 | `_run_track_b:43`, `_run_track_c:41` | **Already passed** — these two are cohesive loops w/ docstrings; acceptable, leave as-is. |
+
+After `security/`, move to `core/` (13 files), then `modules/`, `dashboard/`,
+`scripts/`. Re-run the §9 audit at the start of each bucket for an exact list.
+
+---
+
+## 9. Full-codebase audit script
+
+Run this anytime to regenerate the queue:
+
+```bash
+cd /home/ganesh/projects/personal_assistant
+python3 - <<'EOF'
+import ast, pathlib
+for area in ['security','core','modules','dashboard','scripts']:
+    files=[]
+    for p in sorted(pathlib.Path(area).rglob('*.py')):
+        if any(x in str(p) for x in ('/.git/','/env','__pycache__')): continue
+        try: tree=ast.parse(p.read_text())
+        except: continue
+        funcs=nodoc=0; longs=[]
+        for n in ast.walk(tree):
+            if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)):
+                funcs+=1
+                if not ast.get_docstring(n): nodoc+=1
+                ln=(n.end_lineno or n.lineno)-n.lineno+1
+                if ln>40: longs.append(f"{n.name}:{ln}")
+        if funcs and (nodoc or longs):
+            files.append((str(p),nodoc,longs))
+    print(f"\n== {area} ==")
+    for f,nd,longs in files:
+        print(f"  {f:<40} {nd:>2}nd  {','.join(longs)}")
+EOF
+```
+
+---
+
+## 10. Definition of done
+
+- Every function in the codebase has a docstring.
+- No function mixes unrelated concerns; long functions are split (judgment on
+  the ~40-line line).
+- Genuine complexity problems optimized; files split where concerns diverged.
+- `red_team.py` `_test_validator` bug fixed and verified.
+- After every file: security triad green, full suite 234/234, posture grade A.
+- One commit per file, co-author trailer present, still on `dev`.
