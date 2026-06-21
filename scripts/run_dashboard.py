@@ -22,7 +22,6 @@ import uvicorn
 from dashboard.server import app
 
 PORT  = int(os.getenv("DASHBOARD_PORT", "8765"))
-HOST  = os.getenv("DASHBOARD_HOST", "0.0.0.0")  # nosec B104 — intentional for Tailscale mobile access
 _ROOT = Path(__file__).parent.parent
 _ACCESS_FILE = _ROOT / "docs" / "remote_access.md"
 
@@ -34,6 +33,25 @@ def _tailscale_ip() -> str:
         return out.decode().strip()
     except Exception:
         return ""
+
+
+def _resolve_host(ts_ip: str) -> str:
+    """Pick the bind address for the dashboard.
+
+    The dashboard has no authentication, so it must never bind to 0.0.0.0
+    (which would expose health/finance data to the entire local network).
+    Preference order:
+      1. Explicit DASHBOARD_HOST override (operator's choice — respected as-is).
+      2. The Tailscale interface IP — reachable from the user's own devices
+         over the encrypted Tailscale mesh, but invisible to the local LAN.
+      3. Localhost only — safe default when Tailscale is down.
+    """
+    override = os.getenv("DASHBOARD_HOST", "").strip()
+    if override:
+        return override
+    if ts_ip:
+        return ts_ip
+    return "127.0.0.1"
 
 
 def _update_access_file(ts_ip: str) -> None:
@@ -52,13 +70,21 @@ def _update_access_file(ts_ip: str) -> None:
     )
 
 
-def _open_browser():
+def _open_browser(host: str):
+    """Open the dashboard in the local browser at the bound host.
+
+    Uses 'localhost' when the server is on the loopback interface, otherwise
+    the actual bind IP (e.g. the Tailscale address), since 'localhost' will
+    not resolve to a server bound only to a specific non-loopback interface.
+    """
     time.sleep(1.8)
-    webbrowser.open(f"http://localhost:{PORT}")
+    url_host = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host
+    webbrowser.open(f"http://{url_host}:{PORT}")
 
 
 if __name__ == "__main__":
     ts_ip = _tailscale_ip()
+    HOST  = _resolve_host(ts_ip)
     _update_access_file(ts_ip)
 
     print(f"\n  GK Dashboard")
@@ -74,5 +100,5 @@ if __name__ == "__main__":
     print(f"  Ref → docs/remote_access.md  (commit to see on GitHub)")
     print(f"  Ctrl-C to stop\n")
 
-    threading.Thread(target=_open_browser, daemon=True).start()
+    threading.Thread(target=_open_browser, args=(HOST,), daemon=True).start()
     uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
