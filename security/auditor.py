@@ -139,48 +139,58 @@ def _fix_file_permissions() -> list[str]:
     return fixed
 
 
-def _check_ollama_exposure() -> dict:
+_OLLAMA_PORT = 11434
+
+
+def _ollama_exposed_via_proc() -> bool | None:
+    """Check Ollama's bind address from /proc/net/tcp.
+
+    Returns True if port 11434 is bound to 0.0.0.0 (addr hex 00000000), False if
+    bound only to localhost, or None when /proc/net/tcp is unavailable (non-Linux)
+    so the caller can fall back to a connection probe.
     """
-    Check if Ollama is bound to 0.0.0.0 (network-exposed) vs 127.0.0.1 (localhost only).
-    Reads /proc/net/tcp which shows the actual bound address in hex.
-    0100007F = 127.0.0.1 (safe)  |  00000000 = 0.0.0.0 (exposed)
-    """
-    result = {"exposed": False, "details": "Ollama bound to localhost only (safe)"}
-    port_hex = format(11434, '04X')[::-1]  # little-endian hex of port
-    # Pad to 4 chars: 11434 = 0x2C8A → hex '2C8A' → reversed per byte '8A2C' → '8A2C'
-    port_hex_le = "".join(
-        format(11434, '04X')[i:i+2] for i in range(2, -1, -2)
-    )
     try:
         tcp_data = Path("/proc/net/tcp").read_text()
-        for line in tcp_data.splitlines()[1:]:
-            parts = line.split()
-            if len(parts) < 4:
-                continue
-            local_addr = parts[1]  # e.g. "00000000:2C8A"
-            addr_hex, p_hex = local_addr.split(":")
-            if p_hex.upper() == port_hex_le.upper() or int(p_hex, 16) == 11434:
-                if addr_hex == "00000000":
-                    result["exposed"] = True
-                    result["details"] = (
-                        "Ollama port 11434 is bound to 0.0.0.0 — "
-                        "accessible from any network interface. "
-                        "Fix: set OLLAMA_HOST=127.0.0.1 in your environment."
-                    )
-                break
     except Exception:
-        # /proc/net/tcp unavailable (non-Linux) — fall back to connection test
+        return None
+    for line in tcp_data.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        addr_hex, p_hex = parts[1].split(":")   # local_addr e.g. "00000000:2C8A"
+        if int(p_hex, 16) == _OLLAMA_PORT:
+            return addr_hex == "00000000"
+    return False
+
+
+def _ollama_exposed_via_probe() -> bool:
+    """Fallback: try connecting to Ollama on typical LAN addresses. True if reachable."""
+    for host in ("10.0.0.1", "192.168.1.1"):
         try:
-            for host in ["10.0.0.1", "192.168.1.1"]:  # typical LAN addresses
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.settimeout(1)
-                if sock.connect_ex((host, 11434)) == 0:
-                    result["exposed"] = True
-                    result["details"] = f"Ollama reachable at {host}:11434"
-                sock.close()
+                if sock.connect_ex((host, _OLLAMA_PORT)) == 0:
+                    return True
         except Exception:
             pass
-    return result
+    return False
+
+
+def _check_ollama_exposure() -> dict:
+    """Report whether Ollama is network-exposed (bound to 0.0.0.0) vs localhost.
+
+    Prefers the authoritative /proc/net/tcp check, falling back to a LAN probe.
+    Returns {"exposed": bool, "details": str}.
+    """
+    exposed = _ollama_exposed_via_proc()
+    if exposed is None:
+        exposed = _ollama_exposed_via_probe()
+    if exposed:
+        return {"exposed": True, "details": (
+            "Ollama port 11434 is bound to 0.0.0.0 — accessible from any network "
+            "interface. Fix: set OLLAMA_HOST=127.0.0.1 in your environment."
+        )}
+    return {"exposed": False, "details": "Ollama bound to localhost only (safe)"}
 
 
 def _check_env_file() -> list[dict]:
