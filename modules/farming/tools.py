@@ -8,6 +8,7 @@ from modules.farming.db import conn
 
 def add_plot(name: str, area_acres: float | None = None, soil_type: str | None = None,
              lat: float | None = None, lon: float | None = None, notes: str = "") -> dict:
+    """Create a plot and return its id and name."""
     now = datetime.now().isoformat()
     with conn() as c:
         cur = c.execute(
@@ -18,11 +19,13 @@ def add_plot(name: str, area_acres: float | None = None, soil_type: str | None =
 
 
 def list_plots() -> list[dict]:
+    """Return all plots ordered by name."""
     with conn() as c:
         return [dict(r) for r in c.execute("SELECT * FROM plots ORDER BY name").fetchall()]
 
 
 def get_plot(name: str) -> dict | None:
+    """Return the plot matching a name (case-insensitive), or None."""
     with conn() as c:
         row = c.execute("SELECT * FROM plots WHERE lower(name) = lower(?)", (name,)).fetchone()
     return dict(row) if row else None
@@ -33,6 +36,7 @@ def get_plot(name: str) -> dict | None:
 def plant_crop(plot_name: str, crop_name: str, variety: str | None = None,
                planted_date: str | None = None, expected_harvest: str | None = None,
                notes: str = "") -> dict:
+    """Plant a crop on a plot (mirrored to crop_plots for the farming server). Returns its id."""
     plot = get_plot(plot_name)
     if not plot:
         return {"error": f"Plot '{plot_name}' not found"}
@@ -60,6 +64,7 @@ def plant_crop(plot_name: str, crop_name: str, variety: str | None = None,
 
 
 def list_crops(plot_name: str | None = None, status: str = "active") -> list[dict]:
+    """List crops of a given status, optionally filtered to one plot, with plot names."""
     with conn() as c:
         if plot_name:
             plot = get_plot(plot_name)
@@ -78,6 +83,7 @@ def list_crops(plot_name: str | None = None, status: str = "active") -> list[dic
 
 
 def update_crop_status(crop_id: int, status: str, yield_kg: float | None = None) -> dict:
+    """Update a crop's status (and yield) and return the updated row."""
     with conn() as c:
         c.execute("UPDATE crops SET status=?, yield_kg=? WHERE id=?", (status, yield_kg, crop_id))
         row = c.execute("SELECT * FROM crops WHERE id=?", (crop_id,)).fetchone()
@@ -88,6 +94,7 @@ def update_crop_status(crop_id: int, status: str, yield_kg: float | None = None)
 
 def log_spray(plot_name: str, chemical: str, quantity: str | None = None,
               reason: str | None = None, date_str: str | None = None, notes: str = "") -> dict:
+    """Record a spray application on a plot and return its id."""
     plot = get_plot(plot_name)
     if not plot:
         return {"error": f"Plot '{plot_name}' not found"}
@@ -101,6 +108,7 @@ def log_spray(plot_name: str, chemical: str, quantity: str | None = None,
 
 
 def spray_history(plot_name: str, limit: int = 20) -> list[dict]:
+    """Return recent spray logs for a plot, newest first."""
     plot = get_plot(plot_name)
     if not plot:
         return []
@@ -116,6 +124,7 @@ def spray_history(plot_name: str, limit: int = 20) -> list[dict]:
 
 def log_observation(plot_name: str, obs_type: str, description: str,
                     severity: str | None = None, image_path: str | None = None) -> dict:
+    """Record a field observation (disease/pest/etc.) on a plot and return its id."""
     plot = get_plot(plot_name)
     if not plot:
         return {"error": f"Plot '{plot_name}' not found"}
@@ -129,6 +138,7 @@ def log_observation(plot_name: str, obs_type: str, description: str,
 
 
 def open_observations(plot_name: str | None = None) -> list[dict]:
+    """Return unresolved observations, optionally filtered to one plot, with plot names."""
     with conn() as c:
         if plot_name:
             plot = get_plot(plot_name)
@@ -148,6 +158,7 @@ def open_observations(plot_name: str | None = None) -> list[dict]:
 # ── Season Summary ────────────────────────────────────────────────────────────
 
 def season_summary() -> dict[str, Any]:
+    """Return season-wide counts: plots, active/harvested crops, yield, open obs, sprays this month."""
     with conn() as c:
         plots = c.execute("SELECT COUNT(*) as n FROM plots").fetchone()["n"]
         active = c.execute("SELECT COUNT(*) as n FROM crops WHERE status='active'").fetchone()["n"]
