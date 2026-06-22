@@ -133,6 +133,7 @@ _TECHNIQUE_PAYLOADS: dict[str, list[str]] = {
 # ── Seen-ID tracking ──────────────────────────────────────────────────────────
 
 def _load_seen() -> set[str]:
+    """Load the set of already-processed threat IDs from disk."""
     if SEEN_FILE.exists():
         try:
             return set(json.loads(SEEN_FILE.read_text()))
@@ -142,6 +143,7 @@ def _load_seen() -> set[str]:
 
 
 def _save_seen(seen: set[str]) -> None:
+    """Persist the set of processed threat IDs to disk."""
     INTEL_DIR.mkdir(parents=True, exist_ok=True)
     SEEN_FILE.write_text(json.dumps(sorted(seen), indent=2))
 
@@ -149,6 +151,7 @@ def _save_seen(seen: set[str]) -> None:
 # ── Threat classification ──────────────────────────────────────────────────────
 
 def _classify(text: str) -> str:
+    """Classify free text into a threat_type (prompt_injection/llm_attack/code_vuln/package_cve/general)."""
     t = text.lower()
     if any(k in t for k in _INJECTION_KEYWORDS):
         return "prompt_injection"
@@ -162,12 +165,14 @@ def _classify(text: str) -> str:
 
 
 def _keywords(text: str) -> list[str]:
+    """Return up to 10 injection/LLM keywords found in the text."""
     t = text.lower()
     found = [k for k in (_INJECTION_KEYWORDS | _LLM_KEYWORDS) if k in t]
     return list(set(found))[:10]
 
 
 def _severity_from_score(score: float) -> str:
+    """Map a CVSS base score to a severity band."""
     if score >= 9.0: return "CRITICAL"
     if score >= 7.0: return "HIGH"
     if score >= 4.0: return "MEDIUM"
@@ -186,7 +191,26 @@ _NVD_QUERIES = [
 ]
 
 
+def _nvd_item(cve: dict, keyword: str) -> ThreatItem:
+    """Build a ThreatItem from one NVD CVE object."""
+    cid  = cve.get("id", "")
+    desc = " ".join(d["value"] for d in cve.get("descriptions", [])
+                    if d.get("lang") == "en")[:500]
+    score = 0.0
+    for key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
+        ml = cve.get("metrics", {}).get(key, [])
+        if ml:
+            score = ml[0].get("cvssData", {}).get("baseScore", 0.0)
+            break
+    return ThreatItem(
+        id=cid, source="nvd", title=f"{cid} ({keyword})", description=desc,
+        severity=_severity_from_score(score), threat_type=_classify(desc),
+        published=cve.get("published", "")[:10], keywords=_keywords(desc),
+    )
+
+
 def fetch_nvd(hours: int = 48) -> list[ThreatItem]:
+    """Fetch AI/LLM-related CVEs from the NVD API as ThreatItems."""
     items = []
     for keyword in _NVD_QUERIES:
         try:
@@ -200,31 +224,8 @@ def fetch_nvd(hours: int = 48) -> list[ThreatItem]:
                 log.debug(f"NVD returned {resp.status_code} for '{keyword}'")
                 time.sleep(0.6)
                 continue
-
-            for v in resp.json().get("vulnerabilities", []):
-                cve  = v.get("cve", {})
-                cid  = cve.get("id", "")
-                desc = " ".join(
-                    d["value"] for d in cve.get("descriptions", [])
-                    if d.get("lang") == "en"
-                )[:500]
-
-                score = 0.0
-                for key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
-                    ml = cve.get("metrics", {}).get(key, [])
-                    if ml:
-                        score = ml[0].get("cvssData", {}).get("baseScore", 0.0)
-                        break
-
-                items.append(ThreatItem(
-                    id=cid, source="nvd",
-                    title=f"{cid} ({keyword})",
-                    description=desc,
-                    severity=_severity_from_score(score),
-                    threat_type=_classify(desc),
-                    published=cve.get("published", "")[:10],
-                    keywords=_keywords(desc),
-                ))
+            items.extend(_nvd_item(v.get("cve", {}), keyword)
+                         for v in resp.json().get("vulnerabilities", []))
             time.sleep(0.7)  # NVD: 5 req/30s unauthenticated
         except Exception as e:
             log.warning(f"NVD fetch failed for '{keyword}': {e}")
@@ -236,11 +237,35 @@ def fetch_nvd(hours: int = 48) -> list[ThreatItem]:
 _GITHUB_ADV_URL = "https://api.github.com/advisories"
 
 
-def fetch_github_advisories(hours: int = 48) -> list[ThreatItem]:
-    items = []
-    since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
+def _github_item(adv: dict) -> ThreatItem:
+    """Build a ThreatItem from one GitHub advisory object."""
+    ghsa = adv.get("ghsa_id", "")
+    sev  = (adv.get("severity") or "low").upper()
+    sev  = sev if sev in ("CRITICAL", "HIGH", "MEDIUM", "LOW") else "MEDIUM"
+    desc = adv.get("description", "")[:500]
+    title = adv.get("summary", ghsa)[:200]
+
+    package = fix_v = vuln_range = None
+    for vuln in adv.get("vulnerabilities", []):
+        pkg = vuln.get("package", {})
+        if pkg.get("ecosystem") == "pip":
+            package    = pkg.get("name")
+            vuln_range = vuln.get("vulnerable_version_range")
+            fix_v      = vuln.get("first_patched_version")
+            break
+
+    return ThreatItem(
+        id=adv.get("cve_id") or ghsa, source="github", title=title, description=desc,
+        severity=sev, threat_type=_classify(desc + " " + title),
+        published=adv.get("published_at", "")[:10],
+        package=package, vuln_range=vuln_range, fix_version=fix_v,
+        keywords=_keywords(desc),
     )
+
+
+def fetch_github_advisories(hours: int = 48) -> list[ThreatItem]:
+    """Fetch recent reviewed pip-ecosystem advisories from the GitHub API."""
+    since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         resp = httpx.get(
             _GITHUB_ADV_URL,
@@ -256,36 +281,10 @@ def fetch_github_advisories(hours: int = 48) -> list[ThreatItem]:
         if resp.status_code != 200:
             log.warning(f"GitHub Advisory API: {resp.status_code}")
             return []
-
-        for adv in resp.json():
-            ghsa = adv.get("ghsa_id", "")
-            cid  = adv.get("cve_id") or ghsa
-            sev  = (adv.get("severity") or "low").upper()
-            sev  = sev if sev in ("CRITICAL", "HIGH", "MEDIUM", "LOW") else "MEDIUM"
-            desc = adv.get("description", "")[:500]
-            title = adv.get("summary", ghsa)[:200]
-
-            package = fix_v = vuln_range = None
-            for vuln in adv.get("vulnerabilities", []):
-                pkg = vuln.get("package", {})
-                if pkg.get("ecosystem") == "pip":
-                    package    = pkg.get("name")
-                    vuln_range = vuln.get("vulnerable_version_range")
-                    fix_v      = vuln.get("first_patched_version")
-                    break
-
-            items.append(ThreatItem(
-                id=cid, source="github",
-                title=title, description=desc,
-                severity=sev,
-                threat_type=_classify(desc + " " + title),
-                published=adv.get("published_at", "")[:10],
-                package=package, vuln_range=vuln_range, fix_version=fix_v,
-                keywords=_keywords(desc),
-            ))
+        return [_github_item(adv) for adv in resp.json()]
     except Exception as e:
         log.warning(f"GitHub Advisory fetch failed: {e}")
-    return items
+        return []
 
 
 # ── Source 3: CISA Known Exploited Vulnerabilities ────────────────────────────
@@ -300,54 +299,50 @@ _OUR_STACK = {
 }
 
 
+def _kev_item(vuln: dict, cutoff) -> ThreatItem | None:
+    """Build a ThreatItem from one KEV entry, or None if too old or irrelevant."""
+    added_str = vuln.get("dateAdded", "2000-01-01")
+    try:
+        added = datetime.strptime(added_str, "%Y-%m-%d").date()
+    except Exception:
+        return None
+    if added < cutoff:
+        return None
+
+    product = (vuln.get("product") or "").lower()
+    vendor  = (vuln.get("vendorProject") or "").lower()
+    name    = vuln.get("vulnerabilityName", "")
+    desc    = vuln.get("shortDescription", "")[:400]
+    relevant = (
+        any(s in product or s in vendor for s in _OUR_STACK)
+        or any(k in desc.lower() or k in name.lower() for k in _LLM_KEYWORDS)
+    )
+    if not relevant:
+        return None
+
+    return ThreatItem(
+        id=vuln.get("cveID", f"KEV-{added_str}"), source="cisa_kev",
+        title=f"[ACTIVELY EXPLOITED] {name}",
+        description=f"{desc}  Required action: {vuln.get('requiredAction', '')}",
+        severity="HIGH",  # All KEV entries are exploited in the wild
+        threat_type=_classify(desc + " " + name),
+        published=added_str, keywords=_keywords(desc),
+    )
+
+
 def fetch_cisa_kev(hours: int = 168) -> list[ThreatItem]:
-    items = []
+    """Fetch CISA Known-Exploited-Vulnerabilities relevant to our stack or to LLMs."""
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).date()
     try:
-        resp = httpx.get(
-            _CISA_KEV_URL,
-            timeout=20.0,
-            headers={"User-Agent": "GK-Security-Guardian/1.0"},
-        )
+        resp = httpx.get(_CISA_KEV_URL, timeout=20.0,
+                         headers={"User-Agent": "GK-Security-Guardian/1.0"})
         if resp.status_code != 200:
             return []
-
-        for vuln in resp.json().get("vulnerabilities", []):
-            added_str = vuln.get("dateAdded", "2000-01-01")
-            try:
-                from datetime import date
-                added = datetime.strptime(added_str, "%Y-%m-%d").date()
-            except Exception:
-                continue
-            if added < cutoff:
-                continue
-
-            product = (vuln.get("product") or "").lower()
-            vendor  = (vuln.get("vendorProject") or "").lower()
-            name    = vuln.get("vulnerabilityName", "")
-            desc    = vuln.get("shortDescription", "")[:400]
-            action  = vuln.get("requiredAction", "")
-
-            relevant = (
-                any(s in product or s in vendor for s in _OUR_STACK)
-                or any(k in desc.lower() or k in name.lower() for k in _LLM_KEYWORDS)
-            )
-            if not relevant:
-                continue
-
-            items.append(ThreatItem(
-                id=vuln.get("cveID", f"KEV-{added_str}"),
-                source="cisa_kev",
-                title=f"[ACTIVELY EXPLOITED] {name}",
-                description=f"{desc}  Required action: {action}",
-                severity="HIGH",  # All KEV entries are exploited in the wild
-                threat_type=_classify(desc + " " + name),
-                published=added_str,
-                keywords=_keywords(desc),
-            ))
+        items = [_kev_item(v, cutoff) for v in resp.json().get("vulnerabilities", [])]
+        return [it for it in items if it is not None]
     except Exception as e:
         log.warning(f"CISA KEV fetch failed: {e}")
-    return items
+        return []
 
 
 # ── Source 4: Arxiv cs.CR — AI security research papers ─────────────────────
@@ -362,6 +357,7 @@ _ARXIV_FILTER = {
 
 
 def fetch_arxiv_ai_security(hours: int = 48) -> list[ThreatItem]:
+    """Fetch recent arxiv cs.CR papers matching AI-security keywords."""
     items = []
     try:
         resp = httpx.get(
@@ -404,6 +400,7 @@ def fetch_arxiv_ai_security(hours: int = 48) -> list[ThreatItem]:
 # ── Attack replication engine ─────────────────────────────────────────────────
 
 def _payloads_for_threat(threat: ThreatItem) -> list[str]:
+    """Derive up to 4 test payloads for a threat from its matched techniques."""
     payloads = []
     t = (threat.description + " " + threat.title + " " + " ".join(threat.keywords)).lower()
     for technique, technique_payloads in _TECHNIQUE_PAYLOADS.items():
@@ -417,6 +414,7 @@ def _payloads_for_threat(threat: ThreatItem) -> list[str]:
 
 
 def _replicate_sanitizer(threat: ThreatItem) -> ReplicationResult:
+    """Test a threat by running its payloads through the sanitizer; report any bypass."""
     payloads = _payloads_for_threat(threat)
     if not payloads:
         return ReplicationResult(
@@ -435,35 +433,12 @@ def _replicate_sanitizer(threat: ThreatItem) -> ReplicationResult:
             details="Import error",
         )
 
-    bypassed = []
-    for payload in payloads:
-        result = sanitize_input(payload)
-        if not result.warnings:
-            bypassed.append(payload)
-
+    bypassed = [p for p in payloads if not sanitize_input(p).warnings]
     if bypassed:
-        sample = bypassed[0]
-        # Build a simple pattern suggestion from significant words in the bypass
-        words = [
-            w for w in re.findall(r'\b[a-z]{5,}\b', sample.lower())
-            if w not in {"ignore","previous","instructions","system","restrictions",
-                         "guidelines","assistant","respond","please","would","could"}
-        ]
-        suggested = r"\\s+".join(words[:3]) if len(words) >= 2 else re.escape(sample[:25])
         return ReplicationResult(
-            threat_id=threat.id, vulnerable=True,
-            test_type="sanitizer",
-            evidence=f"Payload not blocked: '{sample[:100]}'",
-            fix=(
-                f"Add the missing pattern to security/patterns.json:\n"
-                f'    {{"id": "INJ-TI-{threat.id[:8].replace("-","")}", '
-                f'"pattern": "{suggested}", '
-                f'"severity": "high", "category": "prompt_injection", '
-                f'"source": "{threat.id}"}}\n'
-                f"  Then reload without restart:\n"
-                f"    python -c \"from core.sanitizer import reload_patterns; "
-                f"n=reload_patterns(); print(f'{{n}} patterns active')\""
-            ),
+            threat_id=threat.id, vulnerable=True, test_type="sanitizer",
+            evidence=f"Payload not blocked: '{bypassed[0][:100]}'",
+            fix=_sanitizer_fix_hint(threat.id, bypassed[0]),
             details=f"{len(bypassed)}/{len(payloads)} payloads bypassed sanitizer",
         )
 
@@ -475,7 +450,52 @@ def _replicate_sanitizer(threat: ThreatItem) -> ReplicationResult:
     )
 
 
+_PATTERN_STOPWORDS = {
+    "ignore", "previous", "instructions", "system", "restrictions",
+    "guidelines", "assistant", "respond", "please", "would", "could",
+}
+
+
+def _suggest_pattern(sample: str) -> str:
+    """Build a candidate regex from the significant words of a bypassing payload."""
+    words = [w for w in re.findall(r'\b[a-z]{5,}\b', sample.lower())
+             if w not in _PATTERN_STOPWORDS]
+    return r"\\s+".join(words[:3]) if len(words) >= 2 else re.escape(sample[:25])
+
+
+def _sanitizer_fix_hint(threat_id: str, sample: str) -> str:
+    """Produce the copy-pasteable 'add this pattern + reload' fix text for a bypass."""
+    suggested = _suggest_pattern(sample)
+    return (
+        f"Add the missing pattern to security/patterns.json:\n"
+        f'    {{"id": "INJ-TI-{threat_id[:8].replace("-","")}", '
+        f'"pattern": "{suggested}", '
+        f'"severity": "high", "category": "prompt_injection", '
+        f'"source": "{threat_id}"}}\n'
+        f"  Then reload without restart:\n"
+        f"    python -c \"from core.sanitizer import reload_patterns; "
+        f"n=reload_patterns(); print(f'{{n}} patterns active')\""
+    )
+
+
+def _in_vulnerable_range(installed: str, vuln_range: str) -> bool:
+    """True if ``installed`` falls in the spec ``vuln_range``.
+
+    If the range can't be parsed, assume affected (fail safe) when a range was
+    given at all.
+    """
+    if not vuln_range:
+        return False
+    try:
+        from packaging.version import Version
+        from packaging.specifiers import SpecifierSet
+        return Version(installed) in SpecifierSet(vuln_range)
+    except Exception:
+        return True
+
+
 def _replicate_package(threat: ThreatItem) -> ReplicationResult:
+    """Test whether an installed package falls in the threat's vulnerable version range."""
     if not threat.package:
         return ReplicationResult(
             threat_id=threat.id, vulnerable=False, test_type="package",
@@ -492,19 +512,8 @@ def _replicate_package(threat: ThreatItem) -> ReplicationResult:
             details=f"{threat.package} not in our environment",
         )
 
-    # Parse version range using packaging library
     vuln_range = threat.vuln_range or ""
-    vulnerable = False
-    try:
-        from packaging.version import Version
-        from packaging.specifiers import SpecifierSet
-        if vuln_range:
-            spec = SpecifierSet(vuln_range)
-            vulnerable = Version(installed) in spec
-    except Exception:
-        vulnerable = bool(vuln_range)  # If we can't parse, assume affected to be safe
-
-    if vulnerable:
+    if _in_vulnerable_range(installed, vuln_range):
         fix_v = threat.fix_version or "latest"
         venv  = "/home/ganesh/envs/evn_personal_assistant/bin/pip"
         return ReplicationResult(
@@ -527,22 +536,44 @@ def _replicate_package(threat: ThreatItem) -> ReplicationResult:
     )
 
 
-def _replicate_code(threat: ThreatItem) -> ReplicationResult:
-    t = (threat.description + " " + threat.title).lower()
-    patterns: list[tuple[str, str]] = []
-    if "eval" in t:
-        patterns.append((r'\beval\s*\(', "dangerous eval()"))
-    if "exec" in t or "arbitrary code" in t or "rce" in t:
-        patterns.append((r'\bexec\s*\(', "dangerous exec()"))
-    if "pickle" in t or "deserializ" in t:
-        patterns.append((r'\bpickle\.loads?\(', "unsafe pickle deserialization"))
-    if "yaml" in t:
-        patterns.append((r'yaml\.load\s*\([^)]*\)', "unsafe yaml.load()"))
-    if "sql" in t:
-        patterns.append((r'f["\'].*\{.*\}.*["\'].*execute', "f-string SQL injection"))
-    if "shell" in t or "command injection" in t:
-        patterns.append((r'shell\s*=\s*True', "subprocess shell=True"))
+# Threat keyword → (regex, human label) for the source-code scan.
+_CODE_PATTERN_RULES = [
+    (("eval",),                              r'\beval\s*\(',                       "dangerous eval()"),
+    (("exec", "arbitrary code", "rce"),      r'\bexec\s*\(',                       "dangerous exec()"),
+    (("pickle", "deserializ"),               r'\bpickle\.loads?\(',                "unsafe pickle deserialization"),
+    (("yaml",),                              r'yaml\.load\s*\([^)]*\)',            "unsafe yaml.load()"),
+    (("sql",),                               r'f["\'].*\{.*\}.*["\'].*execute',    "f-string SQL injection"),
+    (("shell", "command injection"),         r'shell\s*=\s*True',                  "subprocess shell=True"),
+]
 
+
+def _code_patterns_for(text: str) -> list[tuple[str, str]]:
+    """Select (regex, label) scan patterns whose keywords appear in the threat text."""
+    t = text.lower()
+    return [(rx, label) for kws, rx, label in _CODE_PATTERN_RULES if any(k in t for k in kws)]
+
+
+def _scan_source_for(patterns: list[tuple[str, str]]) -> list[str]:
+    """Scan core/modules/scripts for the given patterns. Returns 'file:line — label' hits."""
+    found: list[str] = []
+    for src in (PROJECT / "core", PROJECT / "modules", PROJECT / "scripts"):
+        if not src.exists():
+            continue
+        for py in src.rglob("*.py"):
+            try:
+                text = py.read_text(errors="ignore")
+            except Exception:
+                continue
+            for pat_str, label in patterns:
+                for m in re.finditer(pat_str, text, re.IGNORECASE):
+                    line = text[: m.start()].count("\n") + 1
+                    found.append(f"{py.relative_to(PROJECT)}:{line} — {label}: `{m.group(0)[:40]}`")
+    return found
+
+
+def _replicate_code(threat: ThreatItem) -> ReplicationResult:
+    """Scan our source for code patterns implicated by the threat (eval/pickle/yaml/etc.)."""
+    patterns = _code_patterns_for(threat.description + " " + threat.title)
     if not patterns:
         return ReplicationResult(
             threat_id=threat.id, vulnerable=False, test_type="code_scan",
@@ -550,22 +581,7 @@ def _replicate_code(threat: ThreatItem) -> ReplicationResult:
             details="Code scan skipped",
         )
 
-    src_dirs = [PROJECT / "core", PROJECT / "modules", PROJECT / "scripts"]
-    found: list[str] = []
-    for src in src_dirs:
-        if not src.exists():
-            continue
-        for py in src.rglob("*.py"):
-            try:
-                text = py.read_text(errors="ignore")
-                for pat_str, label in patterns:
-                    for m in re.finditer(pat_str, text, re.IGNORECASE):
-                        line = text[: m.start()].count("\n") + 1
-                        rel  = str(py.relative_to(PROJECT))
-                        found.append(f"{rel}:{line} — {label}: `{m.group(0)[:40]}`")
-            except Exception:
-                pass
-
+    found = _scan_source_for(patterns)
     if found:
         return ReplicationResult(
             threat_id=threat.id, vulnerable=True, test_type="code_scan",
@@ -577,11 +593,10 @@ def _replicate_code(threat: ThreatItem) -> ReplicationResult:
             details=f"{len(found)} code location(s) match the vulnerable pattern",
         )
 
-    py_count = sum(1 for d in src_dirs if d.exists() for _ in d.rglob("*.py"))
     return ReplicationResult(
         threat_id=threat.id, vulnerable=False, test_type="code_scan",
         evidence=None, fix="No vulnerable code pattern found",
-        details=f"Scanned {py_count} Python files — clean",
+        details="Scanned source — clean",
     )
 
 
@@ -610,6 +625,7 @@ def replicate_attack(threat: ThreatItem) -> ReplicationResult:
 # ── Alert formatting ───────────────────────────────────────────────────────────
 
 def _alert(threat: ThreatItem, result: ReplicationResult) -> str:
+    """Format a loud, fix-oriented alert block for a confirmed vulnerability."""
     bar = "=" * 72
     return "\n".join([
         "", bar,
@@ -635,109 +651,113 @@ def _alert(threat: ThreatItem, result: ReplicationResult) -> str:
 
 # ── Main entry point ───────────────────────────────────────────────────────────
 
-def run_threat_intel(hours: int = 48) -> dict:
-    """
-    Fetch intel from all 4 sources, replicate each new threat against our system,
-    alert if vulnerable. Deduplicates against seen threats to avoid re-testing.
-    Never auto-fixes — all findings require a manual fix by the user.
-    """
-    INTEL_DIR.mkdir(parents=True, exist_ok=True)
-    seen = _load_seen()
-
-    log.info("── Threat Intelligence Scan ─────────────────────────────────")
-
-    # Fetch all sources
+def _fetch_all_sources(hours: int) -> list[ThreatItem]:
+    """Fetch threats from all four intel sources and return the combined list."""
     threats: list[ThreatItem] = []
-
     log.info("[1/4] NVD CVE API — AI/LLM keywords...")
     threats.extend(fetch_nvd(hours=hours))
     time.sleep(1)
-
     log.info("[2/4] GitHub Advisory API — pip ecosystem...")
     threats.extend(fetch_github_advisories(hours=hours))
-
     log.info("[3/4] CISA Known Exploited Vulnerabilities...")
     threats.extend(fetch_cisa_kev(hours=hours * 3))  # wider window for KEV
-
     log.info("[4/4] Arxiv cs.CR — AI security papers...")
     threats.extend(fetch_arxiv_ai_security(hours=hours))
-
     log.info(f"  Total threats fetched: {len(threats)}")
+    return threats
 
-    # Deduplicate by ID within this batch
-    seen_this_run: set[str] = set()
+
+def _dedupe(threats: list[ThreatItem]) -> list[ThreatItem]:
+    """Drop duplicate threat IDs within a single batch, preserving order."""
+    seen_ids: set[str] = set()
     unique: list[ThreatItem] = []
     for t in threats:
-        if t.id not in seen_this_run:
-            seen_this_run.add(t.id)
+        if t.id not in seen_ids:
+            seen_ids.add(t.id)
             unique.append(t)
+    return unique
 
-    new = [t for t in unique if t.id not in seen]
+
+def _test_new_threats(new: list[ThreatItem], seen: set[str]) -> tuple[list[dict], list[str]]:
+    """Replicate each new threat; return (vulnerability records, alert texts).
+
+    Marks every tested threat as seen (mutates ``seen``).
+    """
+    vulnerabilities: list[dict] = []
+    alert_texts: list[str] = []
+    for threat in new:
+        seen.add(threat.id)
+        log.info(f"  Testing [{threat.threat_type}] {threat.id}: {threat.title[:55]}...")
+        result = replicate_attack(threat)
+        if result.vulnerable:
+            text = _alert(threat, result)
+            log.warning(text)
+            vulnerabilities.append({"threat": asdict(threat), "result": asdict(result), "alert": text})
+            alert_texts.append(text)
+        else:
+            log.info(f"    Not vulnerable: {result.details}")
+    return vulnerabilities, alert_texts
+
+
+def _log_intel_summary(vulnerabilities: list[dict], n_new: int, n_fetched: int) -> None:
+    """Log the closing summary banner for a threat-intel run."""
+    if vulnerabilities:
+        bar = "=" * 72
+        log.warning(f"\n{bar}")
+        log.warning(f"  THREAT INTEL SUMMARY: {len(vulnerabilities)} VULNERABILITY(-IES) FOUND")
+        log.warning(f"  Tested {n_new} new threats from {n_fetched} fetched across 4 sources")
+        log.warning(f"  Review full report: {INTEL_DIR / 'threat_intel_latest.json'}")
+        log.warning(f"{bar}\n")
+    else:
+        log.info(f"  Threat intel complete: {n_new} new threats tested — system not vulnerable")
+
+
+def _save_intel_report(report: dict) -> None:
+    """Write the report to a timestamped file and threat_intel_latest.json."""
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    payload = json.dumps(report, indent=2, ensure_ascii=False)
+    (INTEL_DIR / f"threat_intel_{ts}.json").write_text(payload)
+    (INTEL_DIR / "threat_intel_latest.json").write_text(payload)
+
+
+def run_threat_intel(hours: int = 48) -> dict:
+    """Fetch intel from all 4 sources, replicate each new threat, alert if vulnerable.
+
+    Deduplicates against previously-seen threats to avoid re-testing. Never
+    auto-fixes — every finding requires a manual fix. Returns the report dict
+    (also written to disk).
+    """
+    INTEL_DIR.mkdir(parents=True, exist_ok=True)
+    seen = _load_seen()
+    log.info("── Threat Intelligence Scan ─────────────────────────────────")
+
+    threats = _fetch_all_sources(hours)
+    unique  = _dedupe(threats)
+    new     = [t for t in unique if t.id not in seen]
     log.info(f"  New threats (not seen before): {len(new)}")
 
     if not new:
         log.info("  Nothing new — system up to date.")
         return {
-            "status": "clean",
-            "checked_at": datetime.now().isoformat(),
+            "status": "clean", "checked_at": datetime.now().isoformat(),
             "sources": 4, "total_fetched": len(threats),
-            "new_threats": 0, "vulnerabilities_found": 0,
-            "alerts": [],
+            "new_threats": 0, "vulnerabilities_found": 0, "alerts": [],
         }
 
-    # Replicate each new threat
-    vulnerabilities = []
-    alert_texts     = []
-
-    for threat in new:
-        seen.add(threat.id)
-        log.info(f"  Testing [{threat.threat_type}] {threat.id}: {threat.title[:55]}...")
-
-        result = replicate_attack(threat)
-
-        if result.vulnerable:
-            text = _alert(threat, result)
-            log.warning(text)
-            vulnerabilities.append({
-                "threat": asdict(threat),
-                "result": asdict(result),
-                "alert":  text,
-            })
-            alert_texts.append(text)
-        else:
-            log.info(f"    Not vulnerable: {result.details}")
-
+    vulnerabilities, alert_texts = _test_new_threats(new, seen)
     _save_seen(seen)
-
-    # Summary banner
-    if vulnerabilities:
-        bar = "=" * 72
-        log.warning(f"\n{bar}")
-        log.warning(f"  THREAT INTEL SUMMARY: {len(vulnerabilities)} VULNERABILITY(-IES) FOUND")
-        log.warning(f"  Tested {len(new)} new threats from {len(threats)} fetched across 4 sources")
-        log.warning(f"  Review full report: {INTEL_DIR / 'threat_intel_latest.json'}")
-        log.warning(f"{bar}\n")
-    else:
-        log.info(
-            f"  Threat intel complete: {len(new)} new threats tested — system not vulnerable"
-        )
+    _log_intel_summary(vulnerabilities, len(new), len(threats))
 
     report = {
-        "checked_at":           datetime.now().isoformat(),
-        "hours_lookback":       hours,
-        "sources":              4,
-        "total_fetched":        len(threats),
-        "unique_threats":       len(unique),
-        "new_threats_tested":   len(new),
+        "checked_at":            datetime.now().isoformat(),
+        "hours_lookback":        hours,
+        "sources":               4,
+        "total_fetched":         len(threats),
+        "unique_threats":        len(unique),
+        "new_threats_tested":    len(new),
         "vulnerabilities_found": len(vulnerabilities),
-        "alerts":               alert_texts,
-        "vulnerabilities":      vulnerabilities,
+        "alerts":                alert_texts,
+        "vulnerabilities":       vulnerabilities,
     }
-
-    ts      = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out     = INTEL_DIR / f"threat_intel_{ts}.json"
-    latest  = INTEL_DIR / "threat_intel_latest.json"
-    out.write_text(json.dumps(report, indent=2, ensure_ascii=False))
-    latest.write_text(json.dumps(report, indent=2, ensure_ascii=False))
-
+    _save_intel_report(report)
     return report
