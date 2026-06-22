@@ -13,6 +13,7 @@ psutil.cpu_percent(interval=None)
 
 
 def get_system_stats() -> dict:
+    """Return a snapshot of system stats: CPU, RAM, swap, disk, cores, uptime, load."""
     cpu_pct   = psutil.cpu_percent(interval=None)   # non-blocking — uses last sample
     ram       = psutil.virtual_memory()
     swap      = psutil.swap_memory()

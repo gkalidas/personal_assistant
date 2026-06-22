@@ -95,6 +95,7 @@ class FinanceSummary:
 # ── Resolvers ──────────────────────────────────────────────────────────────────
 
 def _resolve_system() -> SystemStats:
+    """GraphQL resolver: current system stats (CPU/RAM/disk/uptime)."""
     s = get_system_stats()
     return SystemStats(
         cpu_pct       = s["cpu_pct"],
@@ -114,6 +115,7 @@ def _resolve_system() -> SystemStats:
 
 
 def _resolve_weather() -> WeatherSummary:
+    """GraphQL resolver: the cached current weather summary."""
     w = _wx.get()
     return WeatherSummary(
         temp_c        = str(w.get("temp_c", "--")),
@@ -129,6 +131,7 @@ def _resolve_weather() -> WeatherSummary:
 
 
 def _resolve_guardian() -> GuardianSummary:
+    """GraphQL resolver: the security guardian posture summary."""
     g = get_guardian_status()
     return GuardianSummary(
         overall        = g["overall"],
@@ -141,6 +144,7 @@ def _resolve_guardian() -> GuardianSummary:
 
 
 def _resolve_farming() -> FarmingSummary:
+    """GraphQL resolver: farming counts (plots/crops/sprays/observations)."""
     farming_db.init()
     c = farming_db.conn()
     try:
@@ -159,6 +163,7 @@ def _resolve_farming() -> FarmingSummary:
 
 
 def _resolve_health() -> HealthSummary:
+    """GraphQL resolver: latest health metrics summary."""
     health_db.init()
     c = health_db.conn()
     try:
@@ -191,6 +196,7 @@ def _resolve_health() -> HealthSummary:
 
 
 def _resolve_finance() -> FinanceSummary:
+    """GraphQL resolver: monthly finance summary (income/expenses/net)."""
     import time
     finance_db.init()
     c = finance_db.conn()
