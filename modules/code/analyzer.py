@@ -58,6 +58,7 @@ _SKIP_EXTS = {
 
 
 def _should_skip(path: Path) -> bool:
+    """True if any path part is a skip-dir (or an .egg-info)."""
     return any(part in _SKIP_DIRS or part.endswith(".egg-info")
                for part in path.parts)
 
@@ -121,13 +122,86 @@ def _run_bandit_on_dir(target: Path) -> list[dict]:
     return []
 
 
-def scan_directory(target: str | Path, *, llm_context: bool = True) -> dict[str, Any]:
-    """
-    Full directory scan.
+def _walk_files(root: Path) -> dict:
+    """Walk a tree (skipping ignored dirs/exts), tallying LOC by language and structure.
 
-    Returns dict with:
-      path, total_files, total_loc, by_language, structure,
-      top_complex_functions, security_issues, llm_context
+    Returns {by_lang, structure, py_files, total_files, total_loc}.
+    """
+    by_lang: dict[str, dict] = defaultdict(lambda: {"files": 0, "loc": 0, "code_loc": 0})
+    structure: dict[str, list[str]] = defaultdict(list)
+    py_files: list[Path] = []
+    total_files = total_loc = 0
+
+    for fpath in root.rglob("*"):
+        if fpath.is_dir() or _should_skip(fpath):
+            continue
+        ext = fpath.suffix.lower()
+        if not ext or ext in _SKIP_EXTS:   # skip binaries/data and extensionless files
+            continue
+        total, code = _count_lines(fpath)
+        lang = _EXT_LANG.get(ext, "Other")
+        by_lang[lang]["files"] += 1
+        by_lang[lang]["loc"] += total
+        by_lang[lang]["code_loc"] += code
+        total_files += 1
+        total_loc += total
+        try:
+            parts = fpath.relative_to(root).parts
+            structure[parts[0] if len(parts) > 1 else "."].append(fpath.name)
+        except Exception:
+            pass
+        if ext == ".py":
+            py_files.append(fpath)
+
+    return {"by_lang": by_lang, "structure": structure, "py_files": py_files,
+            "total_files": total_files, "total_loc": total_loc}
+
+
+def _collect_complexity(py_files: list[Path], root: Path) -> list[dict]:
+    """Gather the most complex functions across all Python files (top 10)."""
+    funcs: list[dict] = []
+    for py in py_files:
+        for item in _py_complexity(py):
+            item["file"] = str(py.relative_to(root))
+            funcs.append(item)
+    funcs.sort(key=lambda x: -x["complexity"])
+    return funcs[:10]
+
+
+def _collect_security(py_files: list[Path], root: Path) -> list[dict]:
+    """Run bandit and normalize its issues (top 20). Empty if no Python files."""
+    if not py_files:
+        return []
+    return [
+        {"file": iss.get("filename", "").replace(str(root) + "/", ""),
+         "line": iss.get("line_number", 0),
+         "severity": iss.get("issue_severity", "LOW"),
+         "issue": iss.get("issue_text", "")}
+        for iss in _run_bandit_on_dir(root)[:20]
+    ]
+
+
+def _build_llm_context(root: Path, walk: dict, lang_sorted: list[dict],
+                       struct_summary: dict, top_complex: list[dict],
+                       sec_issues: list[dict]) -> str:
+    """Build the compact 'explain this codebase' context string for the LLM."""
+    lang_lines = ", ".join(f"{l['language']} ({l['code_loc']} LOC)" for l in lang_sorted[:5])
+    top_dirs = ", ".join(list(struct_summary.keys())[:8])
+    ctx = (f"Directory: {root.name}  |  {walk['total_files']} files  |  {walk['total_loc']} total lines\n"
+           f"Languages: {lang_lines}\nStructure: {top_dirs}\n")
+    if top_complex:
+        c = top_complex[0]
+        ctx += f"Most complex: {c['file']}:{c['function']} (complexity={c['complexity']})\n"
+    if sec_issues:
+        ctx += f"Security: {len(sec_issues)} bandit issue(s)\n"
+    return ctx
+
+
+def scan_directory(target: str | Path, *, llm_context: bool = True) -> dict[str, Any]:
+    """Full directory scan: LOC by language, structure, complexity, and security.
+
+    Returns a dict with path, total_files, total_loc, by_language, structure,
+    top_complex_functions, security_issues, and an llm_context string.
     """
     root = Path(target).expanduser().resolve()
     if not root.exists():
@@ -135,93 +209,23 @@ def scan_directory(target: str | Path, *, llm_context: bool = True) -> dict[str,
     if not root.is_dir():
         return {"error": f"Not a directory: {target}"}
 
-    by_lang: dict[str, dict] = defaultdict(lambda: {"files": 0, "loc": 0, "code_loc": 0})
-    all_py_files: list[Path] = []
-    structure: dict[str, list[str]] = defaultdict(list)
-    total_files = 0
-    total_loc = 0
-
-    for fpath in root.rglob("*"):
-        if fpath.is_dir() or _should_skip(fpath):
-            continue
-        ext = fpath.suffix.lower()
-        if ext in _SKIP_EXTS:
-            continue
-        # Skip extensionless files (binary model caches, git objects, etc.)
-        if not ext:
-            continue
-        lang = _EXT_LANG.get(ext, "Other")
-        total, code = _count_lines(fpath)
-        by_lang[lang]["files"] += 1
-        by_lang[lang]["loc"] += total
-        by_lang[lang]["code_loc"] += code
-        total_files += 1
-        total_loc += total
-        # Top-level structure: first 2 levels
-        try:
-            rel = fpath.relative_to(root)
-            parts = rel.parts
-            top = parts[0] if len(parts) > 1 else "."
-            structure[top].append(fpath.name)
-        except Exception:
-            pass
-        if ext == ".py":
-            all_py_files.append(fpath)
-
-    # Python complexity — top 10 most complex functions across all .py files
-    complex_funcs: list[dict] = []
-    for py in all_py_files:
-        for item in _py_complexity(py):
-            item["file"] = str(py.relative_to(root))
-            complex_funcs.append(item)
-    complex_funcs.sort(key=lambda x: -x["complexity"])
-    top_complex = complex_funcs[:10]
-
-    # Security scan (bandit) on Python files
-    sec_issues = []
-    if all_py_files:
-        raw_issues = _run_bandit_on_dir(root)
-        for iss in raw_issues[:20]:
-            sec_issues.append({
-                "file": iss.get("filename", "").replace(str(root) + "/", ""),
-                "line": iss.get("line_number", 0),
-                "severity": iss.get("issue_severity", "LOW"),
-                "issue": iss.get("issue_text", ""),
-            })
-
-    # Sort languages by code LOC descending
+    walk = _walk_files(root)
+    top_complex = _collect_complexity(walk["py_files"], root)
+    sec_issues  = _collect_security(walk["py_files"], root)
     lang_sorted = sorted(
-        [{"language": k, **v} for k, v in by_lang.items()],
+        [{"language": k, **v} for k, v in walk["by_lang"].items()],
         key=lambda x: -x["code_loc"],
     )
-
-    # Structure summary: top dirs + file count
-    struct_summary = {
-        k: len(v) for k, v in sorted(structure.items(), key=lambda x: -len(x[1]))
-    }
-
-    # LLM-ready context string
-    ctx = ""
-    if llm_context:
-        lang_lines = ", ".join(
-            f"{l['language']} ({l['code_loc']} LOC)" for l in lang_sorted[:5]
-        )
-        top_dirs = ", ".join(list(struct_summary.keys())[:8])
-        ctx = (
-            f"Directory: {root.name}  |  {total_files} files  |  {total_loc} total lines\n"
-            f"Languages: {lang_lines}\n"
-            f"Structure: {top_dirs}\n"
-        )
-        if top_complex:
-            ctx += f"Most complex: {top_complex[0]['file']}:{top_complex[0]['function']} (complexity={top_complex[0]['complexity']})\n"
-        if sec_issues:
-            ctx += f"Security: {len(sec_issues)} bandit issue(s)\n"
+    struct_summary = {k: len(v) for k, v in
+                      sorted(walk["structure"].items(), key=lambda x: -len(x[1]))}
+    ctx = _build_llm_context(root, walk, lang_sorted, struct_summary,
+                             top_complex, sec_issues) if llm_context else ""
 
     return {
         "path": str(root),
         "name": root.name,
-        "total_files": total_files,
-        "total_loc": total_loc,
+        "total_files": walk["total_files"],
+        "total_loc": walk["total_loc"],
         "by_language": lang_sorted,
         "structure": struct_summary,
         "top_complex_functions": top_complex,
