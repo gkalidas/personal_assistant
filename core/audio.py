@@ -31,6 +31,7 @@ _model_cache = None
 
 
 def is_available() -> bool:
+    """True if faster-whisper is installed (so transcription can run)."""
     try:
         import faster_whisper  # noqa: F401
         return True
@@ -39,6 +40,7 @@ def is_available() -> bool:
 
 
 def _load_model():
+    """Return the cached WhisperModel, loading it (CPU int8) on first use."""
     global _model_cache
     if _model_cache is None:
         from faster_whisper import WhisperModel
@@ -67,38 +69,39 @@ def record_and_transcribe(
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
         tmp_path = f.name
-
     try:
-        cmd = [
-            "arecord", "-q",
-            "-f", "S16_LE",
-            "-r", str(_SAMPLE_RATE),
-            "-c", str(_CHANNELS),
-            "-d", str(seconds),
-            tmp_path,
-        ]
-        if device:
-            cmd += ["-D", device]
-
-        log.info("recording %ds → %s", seconds, tmp_path)
-        r = subprocess.run(cmd, capture_output=True, timeout=seconds + 10)
-        if r.returncode != 0:
-            log.error("arecord failed: %s", r.stderr.decode())
+        if not _record_wav(seconds, device, tmp_path):
             return ""
-
         return _transcribe(tmp_path, lang)
-
-    except subprocess.TimeoutExpired:
-        log.error("arecord timed out")
-        return ""
-    except Exception as e:
-        log.error("record_and_transcribe failed: %s", e)
-        return ""
     finally:
         try:
             os.unlink(tmp_path)
         except OSError:
             pass
+
+
+def _record_wav(seconds: int, device: str | None, out_path: str) -> bool:
+    """Record mono 16-bit WAV from the mic via arecord. Returns True on success."""
+    cmd = [
+        "arecord", "-q", "-f", "S16_LE",
+        "-r", str(_SAMPLE_RATE), "-c", str(_CHANNELS),
+        "-d", str(seconds), out_path,
+    ]
+    if device:
+        cmd += ["-D", device]
+    log.info("recording %ds → %s", seconds, out_path)
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=seconds + 10)
+    except subprocess.TimeoutExpired:
+        log.error("arecord timed out")
+        return False
+    except Exception as e:
+        log.error("recording failed: %s", e)
+        return False
+    if r.returncode != 0:
+        log.error("arecord failed: %s", r.stderr.decode())
+        return False
+    return True
 
 
 def transcribe_file(path: str | Path, lang: str | None = None) -> str:
@@ -109,6 +112,7 @@ def transcribe_file(path: str | Path, lang: str | None = None) -> str:
 
 
 def _transcribe(path: str, lang: str | None) -> str:
+    """Transcribe an audio file with Whisper; returns the text ('' on failure)."""
     try:
         model = _load_model()
         opts = {}
