@@ -77,40 +77,39 @@ def _finance_section() -> tuple[str, str]:
         return "Finance unavailable.\n", "<p><em>Finance unavailable.</em></p>"
 
 
+_HEALTH_METRICS = [
+    ("bp",     "Blood Pressure", "mmHg"),
+    ("steps",  "Steps",          "steps/day"),
+    ("weight", "Weight",         "kg"),
+    ("sleep",  "Sleep",          "h/night"),
+    ("sugar",  "Blood Sugar",    "mg/dL"),
+]
+
+
+def _format_metric_value(ht, mtype: str, latest: dict, unit: str) -> str:
+    """Format one metric's latest 7-day average, with an interpretation tag where useful."""
+    v1 = latest.get("avg_v1", 0)
+    v2 = latest.get("avg_v2")
+    if mtype == "bp" and v2:
+        return f"{int(v1)}/{int(v2)} {unit} [{ht.interpret_bp(v1, v2)[0]}]"
+    if mtype == "steps":
+        return f"{int(v1):,} {unit} [{ht.interpret_steps(int(v1))[0]}]"
+    if mtype == "sleep":
+        return f"{v1:.1f} {unit} [{ht.interpret_sleep(v1)[0]}]"
+    return f"{v1} {unit}"
+
+
 def _health_section() -> tuple[str, str]:
-    """Return (text, html) for last 7 days of health metrics."""
+    """Return (text, html) for the last 7 days of health metrics."""
     try:
         from modules.health import tools as ht
-        metrics = [
-            ("bp",     "Blood Pressure", "mmHg"),
-            ("steps",  "Steps",          "steps/day"),
-            ("weight", "Weight",         "kg"),
-            ("sleep",  "Sleep",          "h/night"),
-            ("sugar",  "Blood Sugar",    "mg/dL"),
-        ]
         lines: list[str] = []
         rows_html = ""
-        for mtype, label, unit in metrics:
+        for mtype, label, unit in _HEALTH_METRICS:
             trend = ht.daily_trend(mtype, days=7)
             if not trend:
                 continue
-            latest = trend[-1]
-            v1 = latest.get("avg_v1", 0)
-            v2 = latest.get("avg_v2")
-            if mtype == "bp" and v2:
-                val = f"{int(v1)}/{int(v2)} {unit}"
-                cat, _ = ht.interpret_bp(v1, v2)
-                val += f" [{cat}]"
-            elif mtype == "steps":
-                val = f"{int(v1):,} {unit}"
-                cat, _ = ht.interpret_steps(int(v1))
-                val += f" [{cat}]"
-            elif mtype == "sleep":
-                val = f"{v1:.1f} {unit}"
-                cat, _ = ht.interpret_sleep(v1)
-                val += f" [{cat}]"
-            else:
-                val = f"{v1} {unit}"
+            val = _format_metric_value(ht, mtype, trend[-1], unit)
             lines.append(f"  {label}: {val}")
             rows_html += f"<tr><td>{label}</td><td>{val}</td></tr>"
 
@@ -118,8 +117,8 @@ def _health_section() -> tuple[str, str]:
             return "No health data recorded this week.\n", "<p><em>No health data this week.</em></p>"
 
         text = "7-day averages:\n" + "\n".join(lines) + "\n"
-        html = (f"<p><strong>7-day averages</strong></p>"
-                f"<table border=0 cellpadding=4 style='border-collapse:collapse'>"
+        html = ("<p><strong>7-day averages</strong></p>"
+                "<table border=0 cellpadding=4 style='border-collapse:collapse'>"
                 f"{rows_html}</table>")
         return text, html
     except Exception as e:
