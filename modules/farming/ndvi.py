@@ -39,12 +39,14 @@ _CACHE_TTL = 12 * 3600  # 12 hours — MODIS data is 16-day composite, no need t
 
 
 def _conn():
+    """Open the NDVI cache SQLite DB with a Row factory."""
     conn = sqlite3.connect(str(_DB_PATH))
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def _ensure_table():
+    """Create the ndvi_cache table if absent."""
     with _conn() as c:
         c.execute("""
             CREATE TABLE IF NOT EXISTS ndvi_cache (
@@ -56,6 +58,7 @@ def _ensure_table():
 
 
 def _cache_get(key: str) -> dict | None:
+    """Return cached NDVI data for a key if fresh (within TTL), else None."""
     try:
         with _conn() as c:
             row = c.execute("SELECT data, fetched_at FROM ndvi_cache WHERE key=?", (key,)).fetchone()
@@ -67,6 +70,7 @@ def _cache_get(key: str) -> dict | None:
 
 
 def _cache_set(key: str, data: dict):
+    """Write NDVI data to the cache (best-effort)."""
     try:
         _ensure_table()
         with _conn() as c:
@@ -98,6 +102,7 @@ def _interp_ndvi(ndvi: float) -> str:
 
 
 def _health_color(ndvi: float) -> str:
+    """Map an NDVI value to a status color (danger/warn/ok/good)."""
     if ndvi < 0.1: return "danger"
     if ndvi < 0.3: return "warn"
     if ndvi < 0.5: return "ok"
@@ -120,51 +125,23 @@ def get_ndvi(lat: float = _DEFAULT_LAT, lon: float = _DEFAULT_LON,
         return cached
 
     try:
-        # Get last N weeks of dates
-        end_dt   = datetime.now()
-        start_dt = end_dt - timedelta(weeks=weeks_back * 2)  # overshoot — MODIS is 16-day
-        start_md = _modis_date(start_dt)
-        end_md   = _modis_date(end_dt)
-
-        url = (f"{_BASE_URL}/{_PRODUCT}/subset"
-               f"?latitude={lat}&longitude={lon}"
-               f"&band={_BAND}"
-               f"&startDate={start_md}&endDate={end_md}"
-               f"&kmAboveBelow=0&kmLeftRight=0")
-
-        resp = httpx.get(url, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-
-        scale = float(data.get("scale", _SCALE))
-        history = []
-        for entry in data.get("subset", []):
-            raw = entry.get("data", [None])[0]
-            if raw is None or raw <= _FILL_VAL:
-                continue
-            ndvi = round(raw * scale, 4)
-            history.append({
-                "date":  entry["calendar_date"],
-                "ndvi":  ndvi,
-                "label": _interp_ndvi(ndvi),
-                "color": _health_color(ndvi),
-            })
-
+        data    = _fetch_modis(lat, lon, weeks_back)
+        history = _parse_ndvi_history(data)
         if not history:
             return {"error": "No NDVI data available for this location / period"}
 
         latest = history[-1]
         result = {
-            "latest_ndvi":     latest["ndvi"],
-            "latest_date":     latest["date"],
-            "interpretation":  latest["label"],
-            "health_color":    latest["color"],
-            "history":         history,
-            "lat":             lat,
-            "lon":             lon,
-            "source":          "NASA MODIS MOD13Q1 (250m, 16-day composite)",
-            "from_cache":      False,
-            "fetched_at":      datetime.now().isoformat(),
+            "latest_ndvi":    latest["ndvi"],
+            "latest_date":    latest["date"],
+            "interpretation": latest["label"],
+            "health_color":   latest["color"],
+            "history":        history,
+            "lat":            lat,
+            "lon":            lon,
+            "source":         "NASA MODIS MOD13Q1 (250m, 16-day composite)",
+            "from_cache":     False,
+            "fetched_at":     datetime.now().isoformat(),
         }
         _cache_set(cache_key, result)
         log.info("NDVI fetched: lat=%.4f lon=%.4f ndvi=%.3f (%s)",
@@ -176,6 +153,37 @@ def get_ndvi(lat: float = _DEFAULT_LAT, lon: float = _DEFAULT_LON,
     except Exception as e:
         log.error("NDVI fetch failed: %s", e)
         return {"error": str(e)}
+
+
+def _fetch_modis(lat: float, lon: float, weeks_back: int) -> dict:
+    """Query the NASA MODIS subset API for recent NDVI. Returns the parsed JSON."""
+    end_dt   = datetime.now()
+    start_dt = end_dt - timedelta(weeks=weeks_back * 2)  # overshoot — MODIS is 16-day
+    url = (f"{_BASE_URL}/{_PRODUCT}/subset"
+           f"?latitude={lat}&longitude={lon}&band={_BAND}"
+           f"&startDate={_modis_date(start_dt)}&endDate={_modis_date(end_dt)}"
+           f"&kmAboveBelow=0&kmLeftRight=0")
+    resp = httpx.get(url, timeout=15)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _parse_ndvi_history(data: dict) -> list[dict]:
+    """Turn a MODIS subset response into a list of {date, ndvi, label, color} points."""
+    scale = float(data.get("scale", _SCALE))
+    history = []
+    for entry in data.get("subset", []):
+        raw = entry.get("data", [None])[0]
+        if raw is None or raw <= _FILL_VAL:
+            continue
+        ndvi = round(raw * scale, 4)
+        history.append({
+            "date":  entry["calendar_date"],
+            "ndvi":  ndvi,
+            "label": _interp_ndvi(ndvi),
+            "color": _health_color(ndvi),
+        })
+    return history
 
 
 def format_ndvi_report(data: dict, plot_name: str = "Barloni farm") -> str:
