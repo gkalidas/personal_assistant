@@ -30,12 +30,46 @@ _NODE_COLORS = {
 
 
 def _conn():
+    """Open the knowledge-graph SQLite DB with a Row factory."""
     conn = sqlite3.connect(str(_DB))
     conn.row_factory = sqlite3.Row
     return conn
 
 
+def _hydrate(row) -> dict:
+    """Turn a kg_nodes row into a dict with properties/aliases parsed from JSON."""
+    d = dict(row)
+    d["properties"] = json.loads(d.get("properties") or "{}")
+    d["aliases"]    = json.loads(d.get("aliases")    or "[]")
+    return d
+
+
+def _to_vis_node(n, focus_id: int | None = None) -> dict:
+    """Convert a kg_nodes row to a vis-network node dict (bold if it's the focus)."""
+    node = {
+        "id":    n["id"],
+        "label": n["label"],
+        "group": n["type"],
+        "color": _NODE_COLORS.get(n["type"], "#888"),
+        "title": f"{n['type'].upper()}: {n['label']}",
+    }
+    if focus_id is not None:
+        node["font"] = {"bold": n["id"] == focus_id}
+    return node
+
+
+def _to_vis_edge(e) -> dict:
+    """Convert a kg_edges row to a vis-network edge dict."""
+    return {
+        "from":  e["src_id"],
+        "to":    e["dst_id"],
+        "label": e["rel"],
+        "width": min(5, max(1, int(e["weight"]))),
+    }
+
+
 def init_graph_tables():
+    """Create the kg_nodes and kg_edges tables and indexes if absent."""
     with _conn() as c:
         c.executescript("""
             CREATE TABLE IF NOT EXISTS kg_nodes (
@@ -89,18 +123,14 @@ def upsert_node(type_: str, label: str, properties: dict | None = None,
 
 
 def get_node(node_id: int) -> dict | None:
+    """Return the node with the given id (properties/aliases parsed), or None."""
     with _conn() as c:
         row = c.execute("SELECT * FROM kg_nodes WHERE id=?", (node_id,)).fetchone()
-    if not row:
-        return None
-    d = dict(row)
-    d["properties"] = json.loads(d.get("properties") or "{}")
-    d["aliases"]    = json.loads(d.get("aliases")    or "[]")
-    return d
+    return _hydrate(row) if row else None
 
 
 def find_node(label: str, type_: str | None = None) -> dict | None:
-    """Find node by label (or alias match)."""
+    """Find a node by exact label (optionally typed), falling back to alias match."""
     with _conn() as c:
         if type_:
             row = c.execute(
@@ -112,21 +142,16 @@ def find_node(label: str, type_: str | None = None) -> dict | None:
             ).fetchone()
         if not row:
             # Try alias search
-            rows = c.execute("SELECT * FROM kg_nodes").fetchall()
-            for r in rows:
+            for r in c.execute("SELECT * FROM kg_nodes").fetchall():
                 aliases = json.loads(r["aliases"] or "[]")
                 if label.lower() in [a.lower() for a in aliases]:
                     row = r
                     break
-    if not row:
-        return None
-    d = dict(row)
-    d["properties"] = json.loads(d.get("properties") or "{}")
-    d["aliases"]    = json.loads(d.get("aliases")    or "[]")
-    return d
+    return _hydrate(row) if row else None
 
 
 def list_nodes(type_: str | None = None, limit: int = 100) -> list[dict]:
+    """List nodes (optionally filtered by type), ordered by label."""
     with _conn() as c:
         if type_:
             rows = c.execute(
@@ -136,13 +161,7 @@ def list_nodes(type_: str | None = None, limit: int = 100) -> list[dict]:
             rows = c.execute(
                 "SELECT * FROM kg_nodes ORDER BY type, label LIMIT ?", (limit,)
             ).fetchall()
-    result = []
-    for r in rows:
-        d = dict(r)
-        d["properties"] = json.loads(d.get("properties") or "{}")
-        d["aliases"]    = json.loads(d.get("aliases")    or "[]")
-        result.append(d)
-    return result
+    return [_hydrate(r) for r in rows]
 
 
 def search_nodes(query: str, type_: str | None = None, limit: int = 20) -> list[dict]:
@@ -163,13 +182,7 @@ def search_nodes(query: str, type_: str | None = None, limit: int = 20) -> list[
                 ") ORDER BY label LIMIT ?",
                 (q, q, q, limit),
             ).fetchall()
-    result = []
-    for r in rows:
-        d = dict(r)
-        d["properties"] = json.loads(d.get("properties") or "{}")
-        d["aliases"]    = json.loads(d.get("aliases")    or "[]")
-        result.append(d)
-    return result
+    return [_hydrate(r) for r in rows]
 
 
 def delete_node(node_id: int) -> None:
@@ -179,68 +192,52 @@ def delete_node(node_id: int) -> None:
         c.execute("DELETE FROM kg_nodes WHERE id=?", (node_id,))
 
 
+def _bfs_node_ids(c, node_id: int, depth: int) -> set[int]:
+    """Breadth-first walk from node_id up to `depth` hops; returns all reached ids."""
+    visited: set[int] = {node_id}
+    frontier: set[int] = {node_id}
+    for _ in range(depth):
+        next_frontier: set[int] = set()
+        for nid in frontier:
+            rows = c.execute(
+                "SELECT src_id, dst_id FROM kg_edges WHERE src_id=? OR dst_id=?", (nid, nid)
+            ).fetchall()
+            for row in rows:
+                for neighbour in (row["src_id"], row["dst_id"]):
+                    if neighbour not in visited:
+                        next_frontier.add(neighbour)
+        visited.update(next_frontier)
+        frontier = next_frontier
+    return visited
+
+
 def node_neighborhood(node_id: int, depth: int = 1) -> dict[str, list]:
-    """
-    Return the subgraph (vis-network format) around `node_id` up to `depth` hops.
-    depth=1 returns the node + all its immediate neighbours + connecting edges.
+    """Return the vis-network subgraph around `node_id` up to `depth` hops.
+
+    depth=1 returns the node + its immediate neighbours + connecting edges.
     """
     with _conn() as c:
-        visited_ids: set[int] = {node_id}
-        frontier: set[int]    = {node_id}
-
-        for _ in range(depth):
-            next_frontier: set[int] = set()
-            for nid in frontier:
-                rows = c.execute(
-                    "SELECT src_id, dst_id FROM kg_edges WHERE src_id=? OR dst_id=?",
-                    (nid, nid),
-                ).fetchall()
-                for row in rows:
-                    for neighbour in (row["src_id"], row["dst_id"]):
-                        if neighbour not in visited_ids:
-                            next_frontier.add(neighbour)
-            visited_ids.update(next_frontier)
-            frontier = next_frontier
-
+        ids = _bfs_node_ids(c, node_id, depth)
+        placeholders = ",".join("?" * len(ids))
         nodes = c.execute(
-            f"SELECT * FROM kg_nodes WHERE id IN ({','.join('?' * len(visited_ids))})",
-            list(visited_ids),
+            f"SELECT * FROM kg_nodes WHERE id IN ({placeholders})", list(ids)
         ).fetchall()
-
         edges = c.execute(
-            "SELECT * FROM kg_edges WHERE src_id IN "
-            f"({','.join('?' * len(visited_ids))}) AND dst_id IN "
-            f"({','.join('?' * len(visited_ids))})",
-            list(visited_ids) + list(visited_ids),
+            f"SELECT * FROM kg_edges WHERE src_id IN ({placeholders}) AND dst_id IN ({placeholders})",
+            list(ids) + list(ids),
         ).fetchall()
 
-    vis_nodes = [
-        {
-            "id":    n["id"],
-            "label": n["label"],
-            "group": n["type"],
-            "color": _NODE_COLORS.get(n["type"], "#888"),
-            "title": f"{n['type'].upper()}: {n['label']}",
-            "font":  {"bold": n["id"] == node_id},
-        }
-        for n in nodes
-    ]
-    vis_edges = [
-        {
-            "from":  e["src_id"],
-            "to":    e["dst_id"],
-            "label": e["rel"],
-            "width": min(5, max(1, int(e["weight"]))),
-        }
-        for e in edges
-    ]
-    return {"nodes": vis_nodes, "edges": vis_edges}
+    return {
+        "nodes": [_to_vis_node(n, focus_id=node_id) for n in nodes],
+        "edges": [_to_vis_edge(e) for e in edges],
+    }
 
 
 # ── Edge CRUD ─────────────────────────────────────────────────────────────────
 
 def add_edge(src_id: int, dst_id: int, rel: str,
              weight: float = 1.0, properties: dict | None = None) -> int:
+    """Add an edge, or bump the weight of an existing (src, dst, rel). Returns edge id."""
     now = datetime.now().isoformat()
     with _conn() as c:
         # Avoid duplicate edges (same src, dst, rel)
@@ -278,6 +275,7 @@ def get_edges(node_id: int, direction: str = "both") -> list[dict]:
 # ── Graph stats ───────────────────────────────────────────────────────────────
 
 def graph_stats() -> dict:
+    """Return node/edge totals, per-type counts, and the 5 most-connected nodes."""
     with _conn() as c:
         total_nodes = c.execute("SELECT COUNT(*) FROM kg_nodes").fetchone()[0]
         total_edges = c.execute("SELECT COUNT(*) FROM kg_edges").fetchone()[0]
@@ -309,24 +307,8 @@ def get_graph_json(max_nodes: int = 200) -> dict[str, list]:
         all_edges = [dict(r) for r in rows]
 
     node_ids = {n["id"] for n in nodes}
-    vis_nodes = [
-        {
-            "id":    n["id"],
-            "label": n["label"],
-            "group": n["type"],
-            "color": _NODE_COLORS.get(n["type"], "#888"),
-            "title": f"{n['type'].upper()}: {n['label']}",
-        }
-        for n in nodes
-    ]
-    vis_edges = [
-        {
-            "from":  e["src_id"],
-            "to":    e["dst_id"],
-            "label": e["rel"],
-            "width": min(5, max(1, int(e["weight"]))),
-        }
-        for e in all_edges
-        if e["src_id"] in node_ids and e["dst_id"] in node_ids
-    ]
-    return {"nodes": vis_nodes, "edges": vis_edges}
+    return {
+        "nodes": [_to_vis_node(n) for n in nodes],
+        "edges": [_to_vis_edge(e) for e in all_edges
+                  if e["src_id"] in node_ids and e["dst_id"] in node_ids],
+    }
