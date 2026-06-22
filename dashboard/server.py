@@ -53,6 +53,7 @@ _query_modules     = None
 _query_modules_lck = threading.Lock()
 
 def _get_query_modules() -> dict:
+    """Return the module registry used to answer assistant queries (lazy-built)."""
     global _query_modules
     if _query_modules is None:
         with _query_modules_lck:
@@ -89,6 +90,7 @@ _whisper_model = None
 _whisper_lock  = threading.Lock()
 
 def _load_whisper():
+    """Pre-load the Whisper model in the background so first voice query is fast."""
     global _whisper_model
     if _whisper_model is not None:
         return _whisper_model
@@ -181,6 +183,7 @@ def _bg_farming_sync():
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    """FastAPI lifespan: start background services on boot, clean up on shutdown."""
     # Initialise persistent stores
     _ensure_todos()
     _ensure_graph()
@@ -212,6 +215,7 @@ app = FastAPI(title="GK Dashboard", docs_url=None, redoc_url=None, lifespan=_lif
 
 @app.middleware("http")
 async def _request_logger(request: Request, call_next):
+    """Middleware: log each HTTP request path and latency."""
     t0 = time.monotonic()
     response = await call_next(request)
     # Skip WebSocket upgrade (101) — duration would be entire connection lifetime
@@ -375,6 +379,7 @@ _payload_lock  = threading.Lock()
 
 
 def _build_payload() -> dict[str, Any]:
+    """Build the dashboard data payload (system, weather, guardian, etc.)."""
     net = _net.status
     sys = get_system_stats()
     wx  = _wx.get()
@@ -407,26 +412,31 @@ def _build_payload() -> dict[str, Any]:
 
 @app.get("/")
 async def index():
+    """Serve the dashboard index page."""
     return HTMLResponse((_STATIC / "index.html").read_text(encoding="utf-8"))
 
 
 @app.get("/mindmap")
 async def mindmap():
+    """Serve the mind-map page."""
     return HTMLResponse((_STATIC / "mindmap.html").read_text(encoding="utf-8"))
 
 
 @app.get("/todo")
 async def todo_page():
+    """Serve the todo/quadrant page."""
     return HTMLResponse((_STATIC / "todo.html").read_text(encoding="utf-8"))
 
 
 @app.get("/guide")
 async def guide_page():
+    """Serve the user-guide page."""
     return HTMLResponse((_STATIC / "guide.html").read_text(encoding="utf-8"))
 
 
 @app.get("/api/data")
 async def api_data():
+    """API: return the full dashboard data payload as JSON."""
     with _payload_lock:
         cached = dict(_payload_cache)
     if cached:
@@ -441,6 +451,7 @@ async def api_data():
 
 @app.get("/api/mindmap")
 async def api_mindmap():
+    """API: return the mind-map graph data."""
     return JSONResponse({"branches": _MINDMAP_BRANCHES})
 
 
@@ -448,6 +459,7 @@ async def api_mindmap():
 async def guardian_scan():
     """Trigger an on-demand anomaly scan in background."""
     def _run():
+        """Background worker thread for this request."""
         try:
             import sys
             sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -464,6 +476,7 @@ async def guardian_scan():
 async def guardian_patch():
     """Trigger on-demand CVE scan with auto-patching (HIGH+ severity, same major version)."""
     def _run():
+        """Background worker thread for this request."""
         try:
             import sys
             sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -484,6 +497,7 @@ async def api_code_scan(path: str | None = None):
     import asyncio
     loop = asyncio.get_event_loop()
     def _run():
+        """Background worker thread for this request."""
         from modules.code.analyzer import scan_directory
         target = path or str(Path(__file__).parent.parent)
         return scan_directory(target, llm_context=False)
@@ -611,6 +625,7 @@ async def diary_photo_serve(filename: str):
 async def diary_write_photos():
     """Trigger diary write from ~/Pictures in background; return immediately."""
     def _run():
+        """Background worker thread for this request."""
         try:
             mods = _get_query_modules()
             diary = mods.get("diary")
@@ -654,77 +669,61 @@ async def diary_draft_get(week: str):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+def _failed_diary_dates(raw: str) -> list[str]:
+    """Extract the YYYY-MM-DD dates that failed generation from a draft's error text."""
+    import re as _re
+    from datetime import datetime
+    out = []
+    for d in _re.findall(r'Could not generate diary entry for \w+, (\d{2} \w+ \d{4})', raw):
+        try:
+            out.append(datetime.strptime(d, "%d %B %Y").strftime("%Y-%m-%d"))
+        except Exception:
+            pass
+    return out
+
+
+def _retry_diary_week(week: str) -> dict:
+    """Strip failed entries from a week's draft, un-mark their photos, and regenerate.
+
+    Runs in a worker thread. Returns {ok, cleaned, retried_dates}.
+    """
+    import re as _re, sqlite3
+    from core.memory import get_diary_draft, save_diary_draft
+    draft = get_diary_draft(week)
+    if not draft:
+        return {"ok": False, "error": "week not found"}
+
+    raw = draft.get("draft", "")
+    cleaned = _re.sub(r'──[^\n]*\n+\[Could not generate[^\]]*\]\n*', '',
+                      raw, flags=_re.MULTILINE).strip()
+    failed_date_strs = _failed_diary_dates(raw)
+
+    # Un-mark failed-date photos so they retry; save cleaned draft (or delete if empty).
+    conn = sqlite3.connect("personal_assistant.db")
+    for ds in failed_date_strs:
+        conn.execute("DELETE FROM processed_photos WHERE path LIKE ? OR path LIKE ?",
+                     (f"%{ds}%", f"%{ds.replace('-', '')}%"))
+        log.info("diary retry: un-marked photos for %s", ds)
+    if cleaned:
+        save_diary_draft(week, cleaned)
+    else:
+        conn.execute("DELETE FROM diary_drafts WHERE week=?", (week,))
+    conn.commit()
+    conn.close()
+
+    try:
+        diary = _get_query_modules().get("diary")
+        if diary:
+            diary.handle("write diary from my photos", {})
+    except Exception as e:
+        log.error("diary retry write error: %s", e)
+    return {"ok": True, "cleaned": bool(cleaned), "retried_dates": failed_date_strs}
+
+
 @app.post("/api/diary/retry/{week}")
 async def diary_retry_week(week: str):
-    """
-    Clear failed/error diary draft for a week, un-mark its photos, and re-run generation.
-    Handles entries that have '[Could not generate…]' error text.
-    """
-    import re as _re
-
-    def _run():
-        import sqlite3
-        from core.memory import get_diary_draft, save_diary_draft
-        draft = get_diary_draft(week)
-        if not draft:
-            return {"ok": False, "error": "week not found"}
-
-        raw = draft.get("draft", "")
-
-        # Strip error sections, keep successfully generated content
-        cleaned = _re.sub(
-            r'──[^\n]*\n+\[Could not generate[^\]]*\]\n*',
-            '', raw, flags=_re.MULTILINE
-        ).strip()
-
-        # Collect the date strings that failed (from error text)
-        failed_dates = _re.findall(
-            r'Could not generate diary entry for \w+, (\d{2} \w+ \d{4})',
-            raw
-        )
-        # Convert to YYYY-MM-DD
-        from datetime import datetime
-        failed_date_strs = []
-        for d in failed_dates:
-            try:
-                failed_date_strs.append(datetime.strptime(d, "%d %B %Y").strftime("%Y-%m-%d"))
-            except Exception:
-                pass
-
-        # Un-mark those photos from processed_photos so they'll be retried
-        if failed_date_strs:
-            conn = sqlite3.connect("personal_assistant.db")
-            for ds in failed_date_strs:
-                conn.execute(
-                    "DELETE FROM processed_photos WHERE path LIKE ? OR path LIKE ?",
-                    (f"%{ds}%", f"%{ds.replace('-', '')}%")
-                )
-                log.info("diary retry: un-marked photos for %s", ds)
-            conn.commit()
-            conn.close()
-
-        # Save cleaned draft (or delete entirely if nothing survived)
-        if cleaned:
-            save_diary_draft(week, cleaned)
-        else:
-            conn = sqlite3.connect("personal_assistant.db")
-            conn.execute("DELETE FROM diary_drafts WHERE week=?", (week,))
-            conn.commit()
-            conn.close()
-
-        # Retrigger generation
-        try:
-            mods = _get_query_modules()
-            diary = mods.get("diary")
-            if diary:
-                diary.handle("write diary from my photos", {})
-        except Exception as e:
-            log.error("diary retry write error: %s", e)
-
-        return {"ok": True, "cleaned": bool(cleaned), "retried_dates": failed_date_strs}
-
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, _run)
+    """Clear a week's failed diary draft, un-mark its photos, and re-run generation."""
+    result = await asyncio.get_event_loop().run_in_executor(None, _retry_diary_week, week)
     return JSONResponse(result)
 
 
@@ -826,44 +825,48 @@ async def api_graph_import_graphify(payload: dict = Body(default={})):
     except Exception as e:
         return JSONResponse({"error": f"parse error: {e}"}, status_code=400)
 
-    nodes_in  = data.get("nodes") or []
-    edges_in  = data.get("edges") or []
+    imported_nodes = _import_graphify_nodes(data.get("nodes") or [])
+    edge_count     = _import_graphify_edges(data.get("edges") or [], imported_nodes)
+    log.info("graphify import: %d nodes, %d edges", len(imported_nodes), edge_count)
+    return JSONResponse({"ok": True, "nodes": len(imported_nodes), "edges": edge_count})
 
-    # Graphify node types → our kg node types
-    _type_map = {
-        "function": "topic", "class": "topic", "module": "topic",
-        "file": "media", "concept": "topic", "person": "person",
-        "place": "place", "event": "event",
-    }
 
-    imported_nodes: dict[str, int] = {}   # graphify id → our kg id
-    node_count = 0
+# Graphify node types → our knowledge-graph node types.
+_GRAPHIFY_TYPE_MAP = {
+    "function": "topic", "class": "topic", "module": "topic",
+    "file": "media", "concept": "topic", "person": "person",
+    "place": "place", "event": "event",
+}
+
+
+def _import_graphify_nodes(nodes_in: list[dict]) -> dict[str, int]:
+    """Upsert Graphify nodes into the knowledge graph. Returns {graphify_id: kg_id}."""
+    from core.knowledge_graph import upsert_node
+    imported: dict[str, int] = {}
     for n in nodes_in:
         gid   = str(n.get("id") or n.get("name") or "")
         label = (n.get("label") or n.get("name") or gid)[:160]
-        gtype = (n.get("type") or "topic").lower()
-        ktype = _type_map.get(gtype, "topic")
-        props = {k: v for k, v in n.items()
-                 if k not in ("id", "label", "name", "type") and isinstance(v, (str, int, float))}
         if not label:
             continue
-        kid = upsert_node(ktype, label, properties=props)
-        imported_nodes[gid] = kid
-        node_count += 1
+        ktype = _GRAPHIFY_TYPE_MAP.get((n.get("type") or "topic").lower(), "topic")
+        props = {k: v for k, v in n.items()
+                 if k not in ("id", "label", "name", "type") and isinstance(v, (str, int, float))}
+        imported[gid] = upsert_node(ktype, label, properties=props)
+    return imported
 
-    edge_count = 0
+
+def _import_graphify_edges(edges_in: list[dict], imported_nodes: dict[str, int]) -> int:
+    """Add Graphify edges between already-imported nodes. Returns the edge count."""
+    from core.knowledge_graph import add_edge
+    count = 0
     for e in edges_in:
-        src_gid = str(e.get("source") or e.get("from") or "")
-        dst_gid = str(e.get("target") or e.get("to")   or "")
-        rel     = (e.get("label") or e.get("rel") or e.get("type") or "related_to")[:80]
-        src_kid = imported_nodes.get(src_gid)
-        dst_kid = imported_nodes.get(dst_gid)
-        if src_kid and dst_kid:
-            add_edge(src_kid, dst_kid, rel, weight=float(e.get("weight", 1.0)))
-            edge_count += 1
-
-    log.info("graphify import: %d nodes, %d edges", node_count, edge_count)
-    return JSONResponse({"ok": True, "nodes": node_count, "edges": edge_count})
+        src = imported_nodes.get(str(e.get("source") or e.get("from") or ""))
+        dst = imported_nodes.get(str(e.get("target") or e.get("to") or ""))
+        rel = (e.get("label") or e.get("rel") or e.get("type") or "related_to")[:80]
+        if src and dst:
+            add_edge(src, dst, rel, weight=float(e.get("weight", 1.0)))
+            count += 1
+    return count
 
 
 @app.get("/api/farming/ndvi")
@@ -871,6 +874,7 @@ async def api_ndvi(lat: float = 18.1617, lon: float = 75.4218, weeks: int = 6):
     """NDVI crop health from NASA MODIS for given coordinates (defaults to Barloni)."""
     loop = asyncio.get_event_loop()
     def _fetch():
+        """Fetch helper for this handler."""
         from modules.farming.ndvi import get_ndvi
         return get_ndvi(lat=lat, lon=lon, weeks_back=weeks)
     data = await loop.run_in_executor(None, _fetch)
@@ -882,6 +886,7 @@ async def api_soil_trend(lat: float = 18.1617, lon: float = 75.4218, days: int =
     """Soil moisture + temperature trend from Open-Meteo ERA5 for given coordinates."""
     loop = asyncio.get_event_loop()
     def _fetch():
+        """Fetch helper for this handler."""
         try:
             import httpx
             from datetime import datetime, timedelta
@@ -1006,6 +1011,7 @@ async def api_news_video(q: str = ""):
     import re as _re
 
     def _find(query: str) -> str | None:
+        """Lookup helper for this handler."""
         try:
             from ddgs import DDGS
             for r in DDGS().videos(query, max_results=5):
@@ -1029,11 +1035,13 @@ async def api_news_video(q: str = ""):
 
 @app.get("/api/todos")
 async def api_todos_list(include_done: bool = False):
+    """API: list todos."""
     return JSONResponse(list_todos(include_done=include_done))
 
 
 @app.post("/api/todos")
 async def api_todos_add(payload: dict = Body(...)):
+    """API: add a todo."""
     text = (payload.get("text") or "").strip()
     if not text:
         return JSONResponse({"error": "text required"}, status_code=400)
@@ -1044,6 +1052,7 @@ async def api_todos_add(payload: dict = Body(...)):
 
 @app.put("/api/todos/{tid}")
 async def api_todos_update(tid: str, payload: dict = Body(...)):
+    """API: update a todo."""
     from dashboard.todo_store import get_todo
     from dashboard.todo_verifier import run_verifier
 
@@ -1082,6 +1091,7 @@ async def api_todos_verify_all():
 
 @app.delete("/api/todos/{tid}")
 async def api_todos_delete(tid: str):
+    """API: delete a todo."""
     delete_todo(tid)
     return JSONResponse({"ok": True})
 
@@ -1125,29 +1135,36 @@ async def fix_threat(request: Request):
     log.info("threat fix: added %d pattern(s) %s, %d active", len(added), added, active)
 
     # Patch threat_intel_latest.json so the dashboard reflects the fix on reload.
-    # Match by pattern's "source" field == threat's "id" field.
     fixed_sources = {p.get("source") for p in patterns_to_add if p.get("source")}
-    threat_file = Path("logs/security/threat_intel_latest.json")
-    if fixed_sources and threat_file.exists():
-        try:
-            ti = _json.loads(threat_file.read_text())
-            remaining = [
-                v for v in ti.get("vulnerabilities", [])
-                if v.get("threat", {}).get("id") not in fixed_sources
-            ]
-            ti["vulnerabilities"]      = remaining
-            ti["vulnerabilities_found"] = len(remaining)
-            # Remove matching alerts (they contain the threat ID in their text)
-            ti["alerts"] = [
-                a for a in ti.get("alerts", [])
-                if not any(src in a for src in fixed_sources)
-            ]
-            threat_file.write_text(_json.dumps(ti, indent=2, ensure_ascii=False))
-            log.info("threat fix: patched threat_intel_latest.json → %d remaining", len(remaining))
-        except Exception as e:
-            log.warning("threat fix: could not patch threat_intel_latest.json: %s", e)
+    _clear_fixed_threats(fixed_sources)
 
     return JSONResponse({"ok": True, "added": added, "active": active})
+
+
+def _clear_fixed_threats(fixed_sources: set) -> None:
+    """Drop now-fixed threats (and their alerts) from threat_intel_latest.json.
+
+    Matches a pattern's ``source`` against each vulnerability's threat id so the
+    dashboard stops showing threats the user just patched.
+    """
+    import json as _json
+    if not fixed_sources:
+        return
+    threat_file = Path("logs/security/threat_intel_latest.json")
+    if not threat_file.exists():
+        return
+    try:
+        ti = _json.loads(threat_file.read_text())
+        remaining = [v for v in ti.get("vulnerabilities", [])
+                     if v.get("threat", {}).get("id") not in fixed_sources]
+        ti["vulnerabilities"]       = remaining
+        ti["vulnerabilities_found"] = len(remaining)
+        ti["alerts"] = [a for a in ti.get("alerts", [])
+                        if not any(src in a for src in fixed_sources)]
+        threat_file.write_text(_json.dumps(ti, indent=2, ensure_ascii=False))
+        log.info("threat fix: patched threat_intel_latest.json → %d remaining", len(remaining))
+    except Exception as e:
+        log.warning("threat fix: could not patch threat_intel_latest.json: %s", e)
 
 
 # ── System upgrade (pip packages) ──────────────────────────────────────────────
@@ -1158,6 +1175,7 @@ async def guardian_upgrade():
     import subprocess, shutil
 
     def _run():
+        """Background worker thread for this request."""
         results = {}
         # Python packages
         pip = shutil.which("pip") or shutil.which("pip3")
@@ -1277,53 +1295,51 @@ async def api_faces_photo(path: str = ""):
     return JSONResponse({"faces": fdb.faces_for_photo(path)})
 
 
+def _transcribe_and_route(tmp_path: str) -> dict:
+    """Transcribe an audio file with Whisper and route the text through the modules.
+
+    Runs in a worker thread. Returns {transcript, module, response} or {error}.
+    """
+    model = _load_whisper()
+    if model is None:
+        return {"error": "Whisper model not available — check server logs"}
+    try:
+        segs, info = model.transcribe(tmp_path, beam_size=3, language=None)
+        transcript = " ".join(s.text.strip() for s in segs).strip()
+        log.info("voice transcribed: lang=%s  %r", info.language, transcript[:80])
+    except Exception as e:
+        log.error("transcribe failed: %s", e, exc_info=True)
+        return {"error": f"transcription failed: {e}"}
+    if not transcript:
+        return {"error": "no speech detected — speak closer to the mic"}
+
+    try:
+        from core.router import route
+        mods = _get_query_modules()
+        chosen = route(transcript, mods)
+        responses = []
+        for name in chosen:
+            if name in mods:
+                r = mods[name].handle(transcript, {})
+                responses.append(r.text if hasattr(r, "text") else str(r))
+        return {
+            "transcript": transcript,
+            "module":     chosen[0] if chosen else "unknown",
+            "response":   "\n\n".join(responses) if responses else "No response",
+        }
+    except Exception as e:
+        log.error("voice dispatch failed: %s", e)
+        return {"transcript": transcript, "error": f"dispatch failed: {e}"}
+
+
 @app.post("/api/voice/query")
 async def api_voice_query(audio: UploadFile = File(...)):
-    """
-    Accept WAV (or webm) audio from the browser.
-    Browser sends 16kHz mono WAV (PCM) — no ffmpeg required.
-    Transcribes with faster-whisper, routes through module pipeline.
-    """
-    # Detect file format from filename or content-type
-    fname    = (audio.filename or "voice.wav").lower()
-    ctype    = (audio.content_type or "").lower()
-    suffix   = ".wav" if (fname.endswith(".wav") or "wav" in ctype) else ".webm"
-
-    def _process(tmp_path: str) -> dict:
-        model = _load_whisper()
-        if model is None:
-            return {"error": "Whisper model not available — check server logs"}
-        try:
-            segs, info = model.transcribe(tmp_path, beam_size=3, language=None)
-            transcript = " ".join(s.text.strip() for s in segs).strip()
-            log.info("voice transcribed: lang=%s  %r", info.language, transcript[:80])
-        except Exception as e:
-            log.error("transcribe failed: %s", e, exc_info=True)
-            return {"error": f"transcription failed: {e}"}
-
-        if not transcript:
-            return {"error": "no speech detected — speak closer to the mic"}
-
-        try:
-            from core.router import route
-            mods = _get_query_modules()
-            chosen = route(transcript, mods)
-            responses = []
-            for name in chosen:
-                if name in mods:
-                    r = mods[name].handle(transcript, {})
-                    responses.append(r.text if hasattr(r, "text") else str(r))
-            return {
-                "transcript": transcript,
-                "module":     chosen[0] if chosen else "unknown",
-                "response":   "\n\n".join(responses) if responses else "No response",
-            }
-        except Exception as e:
-            log.error("voice dispatch failed: %s", e)
-            return {"transcript": transcript, "error": f"dispatch failed: {e}"}
+    """Transcribe uploaded WAV/webm audio (faster-whisper) and route it through the modules."""
+    fname  = (audio.filename or "voice.wav").lower()
+    ctype  = (audio.content_type or "").lower()
+    suffix = ".wav" if (fname.endswith(".wav") or "wav" in ctype) else ".webm"
 
     tmp_path = ""
-    loop = asyncio.get_event_loop()
     try:
         content = await audio.read()
         if not content:
@@ -1331,7 +1347,7 @@ async def api_voice_query(audio: UploadFile = File(...)):
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
             f.write(content)
             tmp_path = f.name
-        result = await loop.run_in_executor(None, _process, tmp_path)
+        result = await asyncio.get_event_loop().run_in_executor(None, _transcribe_and_route, tmp_path)
     except Exception as e:
         log.error("voice query error: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -1343,6 +1359,7 @@ async def api_voice_query(audio: UploadFile = File(...)):
 
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
+    """WebSocket: stream live dashboard updates to the browser."""
     await websocket.accept()
     client = websocket.client
     log.info("dashboard connected: %s", client)
