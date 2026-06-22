@@ -13,16 +13,19 @@ PROFILE_PATH = Path("user_profile.json")
 # ── User Profile (fast cache) ─────────────────────────────────────────────────
 
 def load_profile() -> dict[str, Any]:
+    """Load the user profile dict from user_profile.json (empty dict if absent)."""
     if PROFILE_PATH.exists():
         return json.loads(PROFILE_PATH.read_text())
     return {}
 
 
 def save_profile(profile: dict[str, Any]) -> None:
+    """Write the user profile dict to user_profile.json."""
     PROFILE_PATH.write_text(json.dumps(profile, indent=2, ensure_ascii=False))
 
 
 def update_profile(key: str, value: Any) -> None:
+    """Set one key in the user profile and persist it."""
     profile = load_profile()
     profile[key] = value
     save_profile(profile)
@@ -31,12 +34,14 @@ def update_profile(key: str, value: Any) -> None:
 # ── Events DB (ground truth) ──────────────────────────────────────────────────
 
 def _conn() -> sqlite3.Connection:
+    """Open the GK events SQLite DB with a Row factory."""
     conn = sqlite3.connect(GK_DB)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def init_db() -> None:
+    """Create all tables and run lightweight column migrations (safe to call repeatedly)."""
     with _conn() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS events (
@@ -78,15 +83,19 @@ def init_db() -> None:
                 answered_at  TEXT
             );
         """)
-        # Schema migrations: add columns that may be missing in older DBs
-        existing = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
-        if "latency_ms" not in existing:
-            conn.execute("ALTER TABLE events ADD COLUMN latency_ms INTEGER")
-        if "status" not in existing:
-            conn.execute(
-                "ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'ok' "
-                "CHECK(status IN ('ok','error','dropped'))"
-            )
+        _migrate_events(conn)
+
+
+def _migrate_events(conn: sqlite3.Connection) -> None:
+    """Add columns to the events table that may be missing in older DBs."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
+    if "latency_ms" not in existing:
+        conn.execute("ALTER TABLE events ADD COLUMN latency_ms INTEGER")
+    if "status" not in existing:
+        conn.execute(
+            "ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'ok' "
+            "CHECK(status IN ('ok','error','dropped'))"
+        )
 
 
 def log_query_start(query: str, module: str = "router") -> int:
@@ -122,6 +131,7 @@ def log_event(module: str, query: str, response: str,
 
 
 def recent_events(module: str | None = None, limit: int = 10) -> list[dict]:
+    """Return the most recent events (optionally filtered by module), newest first."""
     with _conn() as conn:
         if module:
             rows = conn.execute(
@@ -149,6 +159,7 @@ def events_for_week(week: str) -> list[dict]:
 # ── Diary drafts ──────────────────────────────────────────────────────────────
 
 def save_diary_draft(week: str, draft: str) -> None:
+    """Insert or replace the diary draft for a week."""
     now = datetime.now().isoformat()
     with _conn() as conn:
         conn.execute(
@@ -159,12 +170,14 @@ def save_diary_draft(week: str, draft: str) -> None:
 
 
 def get_diary_draft(week: str) -> dict | None:
+    """Return the diary draft row for a week, or None."""
     with _conn() as conn:
         row = conn.execute("SELECT * FROM diary_drafts WHERE week=?", (week,)).fetchone()
     return dict(row) if row else None
 
 
 def approve_diary_draft(week: str) -> None:
+    """Mark the diary draft for a week as approved."""
     now = datetime.now().isoformat()
     with _conn() as conn:
         conn.execute(
@@ -173,6 +186,7 @@ def approve_diary_draft(week: str) -> None:
 
 
 def list_diary_drafts(approved: bool | None = None) -> list[dict]:
+    """List diary drafts, optionally filtered by approval status, newest week first."""
     with _conn() as conn:
         if approved is None:
             rows = conn.execute("SELECT * FROM diary_drafts ORDER BY week DESC").fetchall()
