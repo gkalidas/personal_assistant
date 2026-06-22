@@ -13,10 +13,33 @@ the security guardian). Falls back to the built-in base set if not present.
 import json
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
 log = logging.getLogger(__name__)
+
+# Unicode lookalikes used to evade ASCII regexes (e.g. Cyrillic 'а' for Latin 'a',
+# Greek 'ο' for 'o'). NFKC handles fullwidth/compatibility forms; this map covers
+# the common cross-script homoglyphs NFKC leaves alone. Only Latin-confusables are
+# mapped, so legitimate Devanagari/Marathi text is untouched.
+_CONFUSABLES = str.maketrans({
+    "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "у": "y", "х": "x",
+    "ѕ": "s", "і": "i", "ј": "j", "ԁ": "d", "ց": "g",
+    "А": "A", "Е": "E", "О": "O", "Р": "P", "С": "C", "У": "Y", "Х": "X",
+    "К": "K", "М": "M", "Т": "T", "В": "B", "Н": "H",
+    "ο": "o", "α": "a", "ν": "v", "ρ": "p", "τ": "t", "ι": "i", "κ": "k", "ε": "e",
+})
+
+
+def _normalize_confusables(text: str) -> str:
+    """Fold unicode homoglyphs/compatibility forms to ASCII for detection only.
+
+    Applies NFKC (fullwidth, ligatures) then maps common Cyrillic/Greek
+    Latin-lookalikes. Used to defeat homoglyph evasion of the injection regex;
+    callers keep the user's original text and only *check* against this form.
+    """
+    return unicodedata.normalize("NFKC", text).translate(_CONFUSABLES)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -183,8 +206,10 @@ def sanitize_input(query: str) -> SanitizeResult:
         query = query[:MAX_QUERY_LEN]
         warnings.append(f"query truncated to {MAX_QUERY_LEN} characters")
 
-    # 3. Prompt injection check — warn but don't block (user is trusted locally)
-    injections = _INJECTION_RE.findall(query)
+    # 3. Prompt injection check — warn but don't block (user is trusted locally).
+    #    Match against the homoglyph-normalized form so unicode lookalikes and
+    #    fullwidth characters can't slip an injection past the ASCII patterns.
+    injections = _INJECTION_RE.findall(_normalize_confusables(query))
     if injections:
         warnings.append(f"possible prompt injection pattern detected in query: '{injections[0][:60]}'")
 
