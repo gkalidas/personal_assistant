@@ -119,6 +119,7 @@ class ArchivingRotatingHandler(RotatingFileHandler):
     """
 
     def __init__(self, filename: str, archive_dir: str | Path | None = None, **kwargs):
+        """Init the handler. archive_dir defaults to logs/archive/ next to the log file."""
         # backupCount=0 because we don't use the rename chain
         kwargs["backupCount"] = 0
         super().__init__(filename, **kwargs)
