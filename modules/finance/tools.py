@@ -13,6 +13,7 @@ def add_transaction(
     description: str = "",
     ts: str | None = None,
 ) -> dict:
+    """Insert a transaction (description encrypted) and return its id + key fields."""
     ts = ts or datetime.now().isoformat()
     with conn() as c:
         cur = c.execute(
@@ -103,6 +104,7 @@ def monthly_summary(month: str | None = None) -> dict[str, Any]:
 # ── Budgets ───────────────────────────────────────────────────────────────────
 
 def set_budget(category: str, monthly_cap: float) -> dict:
+    """Insert or update the monthly cap for a spending category."""
     now = datetime.now().isoformat()
     with conn() as c:
         c.execute(
@@ -146,6 +148,7 @@ def budget_status(month: str | None = None) -> list[dict]:
 # ── Goals ─────────────────────────────────────────────────────────────────────
 
 def add_goal(name: str, target: float, deadline: str | None = None) -> dict:
+    """Create a savings goal and return its id, name, and target."""
     now = datetime.now().isoformat()
     with conn() as c:
         cur = c.execute(
@@ -156,6 +159,7 @@ def add_goal(name: str, target: float, deadline: str | None = None) -> dict:
 
 
 def update_goal_savings(goal_id: int, amount: float) -> dict:
+    """Add an amount to a goal's saved total and return the updated row."""
     with conn() as c:
         c.execute(
             "UPDATE goals SET saved = saved + ? WHERE id = ?", (amount, goal_id)
@@ -165,6 +169,7 @@ def update_goal_savings(goal_id: int, amount: float) -> dict:
 
 
 def list_goals() -> list[dict]:
+    """Return all savings goals, newest first."""
     with conn() as c:
         rows = c.execute("SELECT * FROM goals ORDER BY created_at DESC").fetchall()
     return [dict(r) for r in rows]
