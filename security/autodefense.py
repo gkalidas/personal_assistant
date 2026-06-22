@@ -75,16 +75,19 @@ class DefenseProposal:
 
 
 def _load_patterns() -> dict:
+    """Load security/patterns.json, or an empty skeleton if it is missing."""
     if PATTERNS_FILE.exists():
         return json.loads(PATTERNS_FILE.read_text())
     return {"injection_patterns": [], "_meta": {}}
 
 
 def _save_patterns(data: dict) -> None:
+    """Write the patterns dict back to security/patterns.json."""
     PATTERNS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
 
 
 def _existing_ids(data: dict) -> set[str]:
+    """Return the set of pattern IDs already present in the patterns data."""
     return {p["id"] for p in data.get("injection_patterns", [])}
 
 
@@ -219,21 +222,105 @@ def _confirm_fix(bypass_payload: str) -> bool:
 
 # ── Main runner ────────────────────────────────────────────────────────────────
 
+def _resolve_red_team_report(red_team_report: dict | None) -> dict | None:
+    """Return the report to process: the passed dict, or red_team_latest.json.
+
+    Returns None (and logs) if no report was passed and no latest file exists.
+    """
+    if red_team_report is not None:
+        return red_team_report
+    latest = LOG_DIR / "red_team_latest.json"
+    if not latest.exists():
+        log.error("No red_team_latest.json found. Run red_team.py first.")
+        return None
+    return json.loads(latest.read_text())
+
+
+def _process_bypass(
+    bypass: dict, data: dict, dry_run: bool, verbose: bool
+) -> DefenseProposal | None:
+    """Generate, validate, and (optionally) promote a defense for one bypass.
+
+    Returns the resulting DefenseProposal, or None for action_injection bypasses
+    (those are handled by the validator layer, not by sanitizer patterns).
+    Mutates nothing except, on promotion, security/patterns.json via
+    :func:`_promote_pattern`.
+    """
+    payload  = bypass.get("payload", "")
+    category = bypass.get("category", "unknown")
+    desc     = bypass.get("description", "")
+    bid      = bypass.get("id", "?")
+
+    if verbose:
+        print(f"\n  [{bid}] {desc[:60]}")
+        print(f"  Category: {category}  |  Severity: {bypass.get('severity','?')}")
+        print(f"  Payload: {payload[:70]!r}")
+
+    if category == "action_injection":
+        if verbose: print("  → Skipped (action_injection handled by validator layer)")
+        return None
+
+    if verbose: print("  → Asking LLM to draft defense pattern...")
+    pat_str = _ask_llm_for_pattern(payload, category, desc)
+    if not pat_str:
+        if verbose: print("  ✗ LLM could not generate pattern")
+        return DefenseProposal(
+            bypass_id=bid, bypass_payload=payload, bypass_category=category,
+            pattern="", catches_bypass=False, false_positives=[],
+            is_valid=False, reason="LLM unavailable or no pattern generated",
+        )
+
+    if verbose: print(f"  → Proposed: {pat_str[:70]!r}")
+    is_valid, fp_inputs, reason = _validate_pattern(pat_str, payload)
+    proposal = DefenseProposal(
+        bypass_id=bid, bypass_payload=payload, bypass_category=category,
+        pattern=pat_str, catches_bypass=is_valid or not fp_inputs,
+        false_positives=fp_inputs, is_valid=is_valid, reason=reason,
+    )
+    _apply_proposal_outcome(proposal, bypass, data, dry_run, verbose)
+    return proposal
+
+
+def _apply_proposal_outcome(
+    proposal: DefenseProposal, bypass: dict, data: dict, dry_run: bool, verbose: bool
+) -> None:
+    """Promote a valid pattern (unless dry-run) and update the proposal in place.
+
+    On promotion, writes the pattern to patterns.json and confirms the bypass is
+    now blocked. Invalid patterns are left as-is (the proposal already carries
+    the validation reason). Prints progress when ``verbose``.
+    """
+    if proposal.is_valid and not dry_run:
+        pat_id = _next_auto_id(data)
+        _promote_pattern(proposal.pattern, bypass, pat_id)
+        confirmed = _confirm_fix(proposal.bypass_payload)
+        proposal.promoted = True
+        proposal.reason   = f"Promoted as {pat_id}. Fix confirmed: {confirmed}"
+        if verbose:
+            print(f"  {'✓' if confirmed else '?'} Promoted as {pat_id}. Confirmed blocked: {confirmed}")
+    elif proposal.is_valid and dry_run:
+        proposal.reason = "DRY RUN — pattern is valid but not promoted"
+        if verbose: print("  ✓ Pattern valid (dry run — not promoted)")
+    elif verbose:
+        print(f"  ✗ Invalid: {proposal.reason}")
+        if proposal.false_positives:
+            print(f"    False positives: {proposal.false_positives[:2]}")
+
+
 def run_autodefense(
     red_team_report: dict | None = None,
     dry_run: bool = False,
     verbose: bool = True,
 ) -> list[DefenseProposal]:
+    """Process red-team bypasses and generate/promote defense patterns.
+
+    Reads from red_team_latest.json when ``red_team_report`` is None. Delegates
+    each bypass to :func:`_process_bypass`, saves an autodefense report (unless
+    ``dry_run``), and returns the list of proposals.
     """
-    Process red team bypasses and generate / promote defense patterns.
-    If red_team_report is None, reads from red_team_latest.json.
-    """
+    red_team_report = _resolve_red_team_report(red_team_report)
     if red_team_report is None:
-        latest = LOG_DIR / "red_team_latest.json"
-        if not latest.exists():
-            log.error("No red_team_latest.json found. Run red_team.py first.")
-            return []
-        red_team_report = json.loads(latest.read_text())
+        return []
 
     bypasses = red_team_report.get("bypasses", [])
     if not bypasses:
@@ -246,90 +333,37 @@ def run_autodefense(
         print(f"  AUTO-DEFENSE — processing {len(bypasses)} bypass(es)")
         print(f"{'='*65}")
 
-    proposals: list[DefenseProposal] = []
     data = _load_patterns()
-
+    proposals: list[DefenseProposal] = []
     for bypass in bypasses:
-        payload  = bypass.get("payload", "")
-        category = bypass.get("category", "unknown")
-        desc     = bypass.get("description", "")
-        bid      = bypass.get("id", "?")
-
-        if verbose:
-            print(f"\n  [{bid}] {desc[:60]}")
-            print(f"  Category: {category}  |  Severity: {bypass.get('severity','?')}")
-            print(f"  Payload: {payload[:70]!r}")
-
-        # Skip action_injection — handled by validator, not sanitizer patterns
-        if category == "action_injection":
-            if verbose: print("  → Skipped (action_injection handled by validator layer)")
+        proposal = _process_bypass(bypass, data, dry_run, verbose)
+        if proposal is None:
             continue
-
-        # Generate pattern via LLM
-        if verbose: print("  → Asking LLM to draft defense pattern...")
-        pat_str = _ask_llm_for_pattern(payload, category, desc)
-
-        if not pat_str:
-            proposal = DefenseProposal(
-                bypass_id=bid, bypass_payload=payload, bypass_category=category,
-                pattern="", catches_bypass=False, false_positives=[],
-                is_valid=False, reason="LLM unavailable or no pattern generated"
-            )
-            proposals.append(proposal)
-            if verbose: print(f"  ✗ LLM could not generate pattern")
-            continue
-
-        if verbose: print(f"  → Proposed: {pat_str[:70]!r}")
-
-        # Validate
-        is_valid, fp_inputs, reason = _validate_pattern(pat_str, payload)
-
-        proposal = DefenseProposal(
-            bypass_id=bid, bypass_payload=payload, bypass_category=category,
-            pattern=pat_str, catches_bypass=is_valid or not fp_inputs,
-            false_positives=fp_inputs, is_valid=is_valid, reason=reason
-        )
-
-        if is_valid and not dry_run:
-            pat_id = _next_auto_id(data)
-            _promote_pattern(pat_str, bypass, pat_id)
-            data = _load_patterns()  # reload after write
-
-            # Confirm
-            confirmed = _confirm_fix(payload)
-            proposal.promoted = True
-            proposal.reason   = f"Promoted as {pat_id}. Fix confirmed: {confirmed}"
-
-            if verbose:
-                icon = "✓" if confirmed else "?"
-                print(f"  {icon} Promoted as {pat_id}. Confirmed blocked: {confirmed}")
-        elif is_valid and dry_run:
-            proposal.reason = "DRY RUN — pattern is valid but not promoted"
-            if verbose: print(f"  ✓ Pattern valid (dry run — not promoted)")
-        else:
-            if verbose:
-                print(f"  ✗ Invalid: {reason}")
-                if fp_inputs:
-                    print(f"    False positives: {fp_inputs[:2]}")
-
         proposals.append(proposal)
+        if proposal.promoted:
+            data = _load_patterns()  # reload after a write so IDs stay unique
 
-    # Save autodefense report
     if not dry_run:
         _save_autodefense_report(proposals, red_team_report)
 
     if verbose:
-        promoted = sum(1 for p in proposals if p.promoted)
-        failed   = sum(1 for p in proposals if not p.is_valid)
-        print(f"\n{'─'*65}")
-        print(f"  Defense summary:  {promoted} pattern(s) promoted, {failed} failed validation")
-        if dry_run: print("  (DRY RUN — no changes written)")
-        print(f"{'─'*65}")
-
+        _print_autodefense_summary(proposals, dry_run)
     return proposals
 
 
+def _print_autodefense_summary(proposals: list[DefenseProposal], dry_run: bool) -> None:
+    """Print the promoted/failed tally for an autodefense run."""
+    promoted = sum(1 for p in proposals if p.promoted)
+    failed   = sum(1 for p in proposals if not p.is_valid)
+    print(f"\n{'─'*65}")
+    print(f"  Defense summary:  {promoted} pattern(s) promoted, {failed} failed validation")
+    if dry_run:
+        print("  (DRY RUN — no changes written)")
+    print(f"{'─'*65}")
+
+
 def _save_autodefense_report(proposals: list[DefenseProposal], rt_report: dict) -> None:
+    """Write a timestamped autodefense report plus autodefense_latest.json."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
     out  = LOG_DIR / f"autodefense_{ts}.json"
