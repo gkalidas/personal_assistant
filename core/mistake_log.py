@@ -37,6 +37,7 @@ _JSONL        = _MISTAKES_DIR / "mistakes.jsonl"
 # ── Schema bootstrap ──────────────────────────────────────────────────────────
 
 def _conn() -> sqlite3.Connection:
+    """Open the GK SQLite DB with a Row factory."""
     c = sqlite3.connect(_GK_DB)
     c.row_factory = sqlite3.Row
     return c
@@ -85,35 +86,40 @@ def log_mistake(
     severity : str
         "low" | "medium" | "high" — used for dashboard colour-coding.
     """
-    ts   = datetime.now().isoformat()
-    det  = json.dumps(details) if isinstance(details, dict) else (details or "")
-    row  = {
-        "ts": ts, "error_type": error_type,
+    det = json.dumps(details) if isinstance(details, dict) else (details or "")
+    row = {
+        "ts": datetime.now().isoformat(), "error_type": error_type,
         "query": query[:500], "module": module,
         "details": det, "severity": severity,
     }
+    _write_sqlite(row)
+    _write_jsonl(row)
+    log.info("mistake logged: type=%s severity=%s module=%s q=%r",
+             error_type, severity, module, query[:60])
 
-    # ── SQLite ────────────────────────────────────────────────────────────────
+
+def _write_sqlite(row: dict) -> None:
+    """Insert one mistake row into the mistake_log table (best-effort)."""
     try:
         with _conn() as c:
             c.execute(
                 "INSERT INTO mistake_log (ts, error_type, query, module, details, severity) "
                 "VALUES (?,?,?,?,?,?)",
-                (ts, error_type, row["query"], module, det, severity),
+                (row["ts"], row["error_type"], row["query"],
+                 row["module"], row["details"], row["severity"]),
             )
     except Exception as e:
         log.warning("mistake_log sqlite write failed: %s", e)
 
-    # ── JSONL ─────────────────────────────────────────────────────────────────
+
+def _write_jsonl(row: dict) -> None:
+    """Append one mistake row to logs/mistakes.jsonl (best-effort)."""
     try:
         _MISTAKES_DIR.mkdir(exist_ok=True)
         with _JSONL.open("a", encoding="utf-8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
     except Exception as e:
         log.warning("mistake_log jsonl write failed: %s", e)
-
-    log.info("mistake logged: type=%s severity=%s module=%s q=%r",
-             error_type, severity, module, query[:60])
 
 
 def get_mistakes(limit: int = 100, error_type: str | None = None) -> list[dict]:
@@ -136,6 +142,7 @@ def get_mistakes(limit: int = 100, error_type: str | None = None) -> list[dict]:
 
 
 def count_by_type() -> dict[str, int]:
+    """Return {error_type: count} across all logged mistakes, busiest first."""
     try:
         with _conn() as c:
             rows = c.execute(
@@ -148,58 +155,51 @@ def count_by_type() -> dict[str, int]:
 
 # ── Pattern analyser (CLI runnable) ───────────────────────────────────────────
 
+# (error_type, threshold, suggestion) — emitted when count exceeds threshold.
+_FIX_RULES = [
+    ("routing_mismatch", 5,
+     "routing_mismatch is high → add more example phrases to "
+     "core/embedding_router.py _MODULE_EXAMPLES for the misrouted modules"),
+    ("uncertain_response", 3,
+     "uncertain_response is frequent → check if the queries can be\n"
+     "    covered by adding them to the relevant module's knowledge base\n"
+     "    or improving the system prompt"),
+    ("llm_timeout", 2,
+     "llm_timeout happening → consider switching TEXT_MODEL to a\n"
+     "    smaller model (qwen2.5:0.5b) or increasing server resources"),
+    ("module_error", 2,
+     "module_error is high → review logs/mistakes.jsonl for the\n"
+     "    exception details and fix the module's error handling"),
+    ("unknown_action", 2,
+     "unknown_action suggests the LLM is generating action types\n"
+     "    not in the module's handler → expand the system prompt examples"),
+]
+
+
+def _mistake_histogram(counts: dict[str, int], total: int) -> list[str]:
+    """Render the per-type count/percentage bar chart lines."""
+    lines = [f"Total mistakes logged: {total}", ""]
+    for etype, n in counts.items():
+        pct = round(100 * n / total)
+        lines.append(f"  {etype:<25} {n:>4}  {pct:>3}%  {'█' * min(pct // 5, 20)}")
+    return lines
+
+
 def suggest_fixes() -> str:
-    """
-    Analyse the mistake log and print actionable suggestions.
+    """Analyse the mistake log and return a summary with actionable suggestions.
+
     Run from project root:  python -m core.mistake_log
     """
     counts = count_by_type()
     if not counts:
         return "No mistakes logged yet."
 
-    lines = [
-        "── JARVIS MISTAKE ANALYSIS ──────────────────────────────────",
-        "",
-    ]
     total = sum(counts.values())
-    lines.append(f"Total mistakes logged: {total}")
-    lines.append("")
-
-    for etype, n in counts.items():
-        pct = round(100 * n / total)
-        bar = "█" * min(pct // 5, 20)
-        lines.append(f"  {etype:<25} {n:>4}  {pct:>3}%  {bar}")
-
-    lines.append("")
-    lines.append("── SUGGESTED FIXES ──────────────────────────────────────────")
-
-    if counts.get("routing_mismatch", 0) > 5:
-        lines.append(
-            "  • routing_mismatch is high → add more example phrases to "
-            "core/embedding_router.py _MODULE_EXAMPLES for the misrouted modules"
-        )
-    if counts.get("uncertain_response", 0) > 3:
-        lines.append(
-            "  • uncertain_response is frequent → check if the queries can be\n"
-            "    covered by adding them to the relevant module's knowledge base\n"
-            "    or improving the system prompt"
-        )
-    if counts.get("llm_timeout", 0) > 2:
-        lines.append(
-            "  • llm_timeout happening → consider switching TEXT_MODEL to a\n"
-            "    smaller model (qwen2.5:0.5b) or increasing server resources"
-        )
-    if counts.get("module_error", 0) > 2:
-        lines.append(
-            "  • module_error is high → review logs/mistakes.jsonl for the\n"
-            "    exception details and fix the module's error handling"
-        )
-    if counts.get("unknown_action", 0) > 2:
-        lines.append(
-            "  • unknown_action suggests the LLM is generating action types\n"
-            "    not in the module's handler → expand the system prompt examples"
-        )
-
+    lines = ["── JARVIS MISTAKE ANALYSIS ──────────────────────────────────", ""]
+    lines += _mistake_histogram(counts, total)
+    lines += ["", "── SUGGESTED FIXES ──────────────────────────────────────────"]
+    lines += [f"  • {msg}" for etype, threshold, msg in _FIX_RULES
+              if counts.get(etype, 0) > threshold]
     lines.append("")
     return "\n".join(lines)
 
