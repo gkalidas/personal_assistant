@@ -238,8 +238,18 @@ Counts = files still needing work / missing docstrings / functions >40 lines.
 | `security/` | — | — | — | ✅ **DONE** (12 files committed) |
 | `core/` | — | — | — | ✅ **DONE** (14 files; crypto bug fixed) |
 | `modules/` | — | — | — | ✅ **DONE** (27 files; 2 bugs fixed) |
-| `dashboard/` | 9 | 72 | 11 | **4 (NEXT)** |
-| `scripts/` | 7 | 37 | 8 | 5 |
+| `dashboard/` | — | — | — | ✅ **DONE** (9 files) |
+| `scripts/` | 7 | 37 | 8 | **5 (NEXT — last bucket)** |
+
+### dashboard/ bucket — COMPLETE (9 files, all green)
+todo_store, graphql_schema, sysmon, guardian (split get_guardian_status),
+weather_widget, todo_verifier, network (split connectivity check), news_widget
+(split _fetch_rss/_fetch_farming), server (26 docstrings + extracted route-
+handler workers — _retry_diary_week, _transcribe_and_route, graphify import,
+_clear_fixed_threats). Dashboard server restarted on the Tailscale IP with the
+refactored code. Note: server.py route handlers with a nested worker are
+allowed up to ~50 lines (the worker is the cohesive unit, extracted to module
+level where it exceeded that).
 
 ### modules/ bucket — COMPLETE (27 files, all green)
 Every function documented, all long functions split, full suite 234/234.
