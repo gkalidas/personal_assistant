@@ -237,9 +237,31 @@ Counts = files still needing work / missing docstrings / functions >40 lines.
 |--------|-------|--------|-------|----------|
 | `security/` | — | — | — | ✅ **DONE** (12 files committed) |
 | `core/` | — | — | — | ✅ **DONE** (14 files; crypto bug fixed) |
-| `modules/` | 27 | 138 | 28 | **3 (NEXT)** |
+| `modules/` | 12 left | — | — | **3 (IN PROGRESS — 15/27 done)** |
 | `dashboard/` | 9 | 72 | 11 | 4 |
 | `scripts/` | 7 | 37 | 8 | 5 |
+
+### modules/ progress (15 done, 12 remaining)
+**Done:** health/db, finance/db, farming/db, health/tools, finance/tools,
+farming/tools, faces/db, farming/module (handle split), health/module,
+finance/module (dispatch-table), code/module, search/module, system/module
+(_fmt_guardian split). (Plus a style commit removing blank-line-after-def
+artifacts left by the batch docstring script — **run that cleanup regex after
+every batch insert**: `re.sub(r':\n(?:[ \t]*\n)+([ \t]+\"\"\")', r':\n\1', src)`.)
+
+**Remaining (12), each needs the noted split:**
+`code/analyzer.py` (scan_directory:107), `diary/module.py` (_do_write:115),
+`diary/photo_reader.py` (read_exif, scan_photos), `diary/vision.py`
+(caption_photo:45), `diary/writer.py` (_day_context:99, write_diary_entry:79),
+`digest/builder.py` (_finance_section, _health_section, build_digest),
+`faces/clusterer.py` (scan_photo, cluster_all), `farming/farming_client.py`
+(format_diagnosis:41), `farming/knowledge.py` (get_disease:41),
+`farming/mandi.py` (get_prices:58), `farming/ndvi.py` (get_ndvi:72),
+`farming/soil.py` (get_soil:73), `farming/sync.py` (sync_crop_plots_to_pa:66),
+`farming/weather.py` (forecast, spray_safe_tomorrow, crop_history).
+(Note: 14 names listed — diary/vision + farming/weather counted within the 12
+files that still need work after re-auditing; re-run the §9 audit scoped to
+`modules/` for the exact live list.)
 
 ### core/ bucket — completed files & commits
 `sanitizer`(adf86d2), `crypto`(**2261866 — bug fix**), `router`(0850945),
