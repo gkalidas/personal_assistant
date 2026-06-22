@@ -82,6 +82,7 @@ _current_section = {"id": "", "name": ""}
 
 
 def section(sid: str, name: str) -> None:
+    """Start a new test section (header + reset the section timer)."""
     _current_section["id"]   = sid
     _current_section["name"] = name
     print(f"\n{'='*60}")
@@ -91,6 +92,7 @@ def section(sid: str, name: str) -> None:
 
 def rec(test_id: str, desc: str, passed: bool, detail: str = "",
         ms: int = 0, difficulty: str = "easy") -> None:
+    """Record one test result with difficulty/timing and print a pass/fail line."""
     status = "PASS" if passed else "FAIL"
     icon   = "✓" if passed else "✗"
     print(f"  {icon} [{difficulty[0].upper()}] {test_id} {desc[:55]:<55} {ms:>4}ms")
@@ -275,6 +277,7 @@ from modules.health.module import (
 )
 
 def h(fn, action, difficulty, test_id, desc, check=None):
+    """Run a health dispatch handler as a test case and record the result."""
     t0 = time.monotonic()
     try:
         text, data = fn(action)
@@ -377,6 +380,7 @@ section("S05", "Finance Dispatch Handlers")
 from modules.finance.module import _execute_action as fin_exec
 
 def fh(action, difficulty, test_id, desc, check=None):
+    """Run a finance dispatch handler as a test case and record the result."""
     t0 = time.monotonic()
     try:
         text, data = fin_exec(action)
@@ -473,6 +477,7 @@ from modules.farming.module import (
 _LAT, _LON, _NAME = 18.1617, 75.4218, "Barloni"
 
 def fmh(fn, action, difficulty, test_id, desc, check=None):
+    """Run a farming dispatch handler as a test case and record the result."""
     t0 = time.monotonic()
     try:
         text, data = fn(action, _LAT, _LON, _NAME)
@@ -749,7 +754,9 @@ chk("S11-H02", "get_pending_questions", get_pending_questions, "2026-W01",
 
 # Complex: mark_photos_processed with dict and object paths
 class PhotoObj:
-    def __init__(self, path): self.path = path
+    def __init__(self, path):
+        """Store the output path for the test report."""
+        self.path = path
 
 DICT_PHOTOS  = [{"path": "/test/ph_a.jpg", "filename": "ph_a.jpg", "date": "2026-06-01"},
                 {"path": "/test/ph_b.jpg", "filename": "ph_b.jpg"}]
@@ -1023,6 +1030,7 @@ else:
     BASE = "http://localhost:8000"
 
     def api(test_id, method, path, body=None, difficulty="easy", check=None):
+        """Call a dashboard API endpoint as a test case and record the result."""
         t0 = time.monotonic()
         try:
             if method == "GET":
@@ -1086,6 +1094,7 @@ else:
                                              "primary_crop": "pomegranate"}}
 
     def llm_mod(mod, query, test_id, difficulty, check=None):
+        """Run a full module LLM query as a test case (slow) and record the result."""
         t0 = time.monotonic()
         try:
             r = mod.handle(query, _ctx)
@@ -1266,6 +1275,7 @@ try:
     ]
     # Map section result to pass pct
     def section_pct(sid):
+        """Return the pass percentage for a section."""
         if sid in ("-", "self"): return -1
         d = by_section.get(sid)
         if not d: return 0
@@ -1312,6 +1322,7 @@ try:
     # ── PDF ───────────────────────────────────────────────────────────────────
     class Report(FPDF):
         def header(self):
+            """Render the PDF page header."""
             self.set_font("Helvetica", "B", 10)
             self.set_text_color(80, 80, 80)
             self.cell(0, 8, "GK Personal Assistant - Comprehensive Test Report", align="C")
@@ -1319,6 +1330,7 @@ try:
             self.ln(2)
 
         def footer(self):
+            """Render the PDF page footer with the page number."""
             self.set_y(-12)
             self.set_font("Helvetica", "", 8)
             self.set_text_color(150, 150, 150)
@@ -1341,6 +1353,7 @@ try:
 
     # Summary box
     def stat_box(label, value, color):
+        """Draw a labelled stat box on the PDF report."""
         pdf.set_fill_color(*color)
         pdf.set_text_color(255, 255, 255)
         pdf.set_font("Helvetica", "B", 28)
