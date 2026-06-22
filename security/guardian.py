@@ -61,6 +61,7 @@ MIN_INTERVAL = {
     "threat_intel":    12 * 3600,   # every 12h — network + sanitizer tests
     "red_team":        24 * 3600,   # daily — input-side attack simulation
     "jailbreak":       24 * 3600,   # daily — output-side jail containment test
+    "source_intel":    24 * 3600,   # daily — LLM-security feeds → safe auto-harden
     "vuln_scan":       24 * 3600,   # daily — OSV batch query
     "code_audit":       7 * 86400,  # weekly — bandit + regex scan
 }
@@ -272,6 +273,22 @@ def task_red_team() -> dict:
     }
 
 
+def task_source_intel() -> dict:
+    """Read LLM-security feeds, reproduce bypasses, and safely self-harden.
+
+    Tier-1/2 reproduced bypasses flow through autodefense (validated,
+    rate-limited, rollback-guarded); the rest go to the review queue.
+    """
+    from security.source_intel import run_source_intel
+    log.info("=== Source Intel — LLM-security feeds → self-hardening ===")
+    summary = run_source_intel(dry_run=False, verbose=False)
+    log.info("  fetched=%d reproduced=%d auto_promoted=%d review_queued=%d",
+             summary.get("items_fetched", 0), summary.get("reproduced_bypasses", 0),
+             summary.get("auto_promoted", 0), summary.get("review_queued", 0))
+    _save_report("source_intel", summary)
+    return summary
+
+
 def task_jailbreak(quiet: bool = False) -> dict:
     """Run the output-side jailbreak simulation and return contained/escaped counts."""
     from security.jailbreak_sim import run_jailbreak_sim
@@ -343,6 +360,7 @@ _FULL_SCAN_TASKS = [
     ("pattern_update",  task_pattern_update),
     ("red_team",        task_red_team),
     ("jailbreak",       task_jailbreak),
+    ("source_intel",    task_source_intel),
     ("vuln_scan",       lambda: task_vuln_scan(auto_patch=True)),
     ("code_audit",      task_code_audit),
     ("threat_intel",    task_threat_intel),
@@ -456,6 +474,7 @@ def _run_one(name: str) -> None:
         "threat_intel":    task_threat_intel,
         "red_team":        task_red_team,
         "jailbreak":       task_jailbreak,
+        "source_intel":    task_source_intel,
         "vuln_scan":       lambda: task_vuln_scan(auto_patch=True),
         "code_audit":      task_code_audit,
     }
@@ -615,6 +634,7 @@ def _build_dispatch() -> dict:
         "intel":       task_threat_intel,
         "redteam":     _cmd_redteam,       # input-side attack simulation
         "jailbreak":   _cmd_jailbreak,     # output-side jail simulation
+        "sourceintel": lambda: __import__("security.source_intel", fromlist=["run_source_intel"]).run_source_intel(dry_run="--dry-run" in sys.argv, verbose=True),
         "autodefense": _cmd_autodefense,   # auto-fix bypasses from red team
         "posture":     _cmd_posture,       # show security score
         "load":        _cmd_load,

@@ -51,12 +51,13 @@ class PostureReport:
 
 # ── Component weights ──────────────────────────────────────────────────────────
 WEIGHTS = {
-    "cve":         0.20,   # dependency vulnerabilities
-    "code_audit":  0.15,   # bandit + custom code issues
-    "red_team":    0.25,   # input-side attack simulation bypass rate
-    "jailbreak":   0.20,   # output-side jail containment (new)
-    "patterns":    0.10,   # injection pattern freshness and count
-    "anomaly":     0.10,   # recent log anomaly alerts
+    "cve":          0.20,  # dependency vulnerabilities
+    "code_audit":   0.15,  # bandit + custom code issues
+    "red_team":     0.25,  # input-side attack simulation bypass rate
+    "jailbreak":    0.20,  # output-side jail containment
+    "patterns":     0.05,  # injection pattern freshness and count
+    "anomaly":      0.10,  # recent log anomaly alerts
+    "source_intel": 0.05,  # LLM-security feed coverage / self-hardening
 }
 
 
@@ -199,6 +200,19 @@ def _score_jailbreak(data: dict | None) -> tuple[float, str]:
     return round(score, 1), detail
 
 
+def _score_source_intel(data: dict | None) -> tuple[float, str]:
+    """Score LLM-security feed coverage (0–100): penalise unfixed reproduced bypasses."""
+    if data is None:
+        return 70.0, "No source-intel run yet"
+    fetched  = data.get("items_fetched", 0)
+    repro    = data.get("reproduced_bypasses", 0)
+    promoted = data.get("auto_promoted", 0)
+    review   = data.get("review_queued", 0)
+    unfixed  = max(0, repro - promoted)
+    score    = max(30.0, 100.0 - unfixed * 15 - min(review, 20) * 0.5)
+    return round(score, 1), f"{fetched} feed items, {promoted} auto-fixed, {review} in review"
+
+
 def _score_patterns(data: dict | None) -> tuple[float, str]:
     """Score injection-pattern health (0–100) from pattern count and recency."""
     if data is None:
@@ -294,6 +308,9 @@ _COMPONENT_SPECS = [
     _ComponentSpec("Jailbreak Sim", "jailbreak", "jailbreak", _score_jailbreak, 72,
                    "Run `python security/jailbreak_sim.py` — jail test overdue",
                    70, "Jailbreak: escape(s) detected in output jail"),
+    _ComponentSpec("Source Intel", "source_intel", "source_intel", _score_source_intel, 48,
+                   "Run `python security/source_intel.py` — LLM-security feed scan overdue",
+                   60, "Source intel: reproduced bypasses awaiting a fix"),
     _ComponentSpec("Patterns", "patterns", "pattern_update", _score_patterns, 12,
                    "Run `python security/guardian.py patterns` — pattern update overdue"),
     _ComponentSpec("Anomaly", "anomaly", "anomaly_detect", _score_anomaly, 2,
