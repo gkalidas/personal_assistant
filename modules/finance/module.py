@@ -94,6 +94,7 @@ def _recent_history(limit: int = 4) -> list[dict]:
 
 
 def _call_llm(query: str, context: dict) -> dict:
+    """Call the finance LLM with profile + recent history and return the parsed action dict."""
     profile_note = _lean_profile(context)
     today = date.today().isoformat()
     profile_note += f"\nToday: {today} (use this as current date)"
@@ -122,80 +123,95 @@ def _call_llm(query: str, context: dict) -> dict:
     return result
 
 
+def _fmt_log(action: dict) -> tuple[str, dict | None]:
+    """Handler: log a transaction and return a confirmation line."""
+    result = tools.add_transaction(
+        amount=action["amount"], type_=action["type"],
+        category=action["category"], description=action.get("description", ""),
+    )
+    sign = "+" if action["type"] == "income" else "-"
+    desc = f" — {action['description']}" if action.get("description") else ""
+    return f"Logged: {sign}₹{action['amount']:,.0f} [{action['category']}]{desc}", result
+
+
+def _fmt_summary(action: dict) -> tuple[str, dict | None]:
+    """Handler: render the monthly income/expense/net summary with category breakdown."""
+    s = tools.monthly_summary(action.get("month"))
+    lines = [
+        f"Summary for {s['month']}",
+        f"  Income:   ₹{s['income']:>10,.0f}",
+        f"  Expenses: ₹{s['expenses']:>10,.0f}",
+        f"  Net:      ₹{s['net']:>10,.0f}",
+    ]
+    if s["breakdown"]:
+        lines.append("\nBy category:")
+        for cat, types in s["breakdown"].items():
+            for t, amt in types.items():
+                if amt:
+                    lines.append(f"  {cat} ({t}): ₹{amt:,.0f}")
+    return "\n".join(lines), s
+
+
+def _fmt_budget_status(action: dict) -> tuple[str, dict | None]:
+    """Handler: compare each budget category to actual spending this month."""
+    items = tools.budget_status(action.get("month"))
+    if not items:
+        return "No budgets set yet. Try: 'set budget ₹5000 for groceries'", None
+    lines = [f"Budget status — {action.get('month') or date.today().strftime('%Y-%m')}:"]
+    for item in items:
+        flag = " ⚠ OVER" if item["over_budget"] else ""
+        lines.append(f"  {item['category']}: ₹{item['spent']:,.0f} / ₹{item['cap']:,.0f}{flag}")
+    return "\n".join(lines), items
+
+
+def _fmt_set_budget(action: dict) -> tuple[str, dict | None]:
+    """Handler: set a category's monthly budget cap."""
+    result = tools.set_budget(action["category"], action["monthly_cap"])
+    return f"Budget set: ₹{action['monthly_cap']:,.0f}/month for {action['category']}", result
+
+
+def _fmt_add_goal(action: dict) -> tuple[str, dict | None]:
+    """Handler: add a savings goal."""
+    result = tools.add_goal(action["name"], action["target"], action.get("deadline"))
+    deadline_str = f" by {action['deadline']}" if action.get("deadline") else ""
+    return f"Goal added: {action['name']} — ₹{action['target']:,.0f}{deadline_str}", result
+
+
+def _fmt_list_goals(action: dict) -> tuple[str, dict | None]:
+    """Handler: list savings goals with progress percentages."""
+    goals = tools.list_goals()
+    if not goals:
+        return "No savings goals yet. Try: 'add goal: buy tractor, ₹2,00,000'", None
+    lines = ["Savings goals:"]
+    for g in goals:
+        pct = (g["saved"] / g["target"] * 100) if g["target"] else 0
+        deadline = f" — deadline {g['deadline']}" if g.get("deadline") else ""
+        lines.append(f"  {g['name']}: ₹{g['saved']:,.0f} / ₹{g['target']:,.0f} ({pct:.0f}%){deadline}")
+    return "\n".join(lines), goals
+
+
+def _fmt_chat(action: dict) -> tuple[str, dict | None]:
+    """Handler: return the LLM chat reply verbatim."""
+    return action.get("reply", ""), None
+
+
+_ACTION_HANDLERS = {
+    "log":           _fmt_log,
+    "summary":       _fmt_summary,
+    "budget_status": _fmt_budget_status,
+    "set_budget":    _fmt_set_budget,
+    "add_goal":      _fmt_add_goal,
+    "list_goals":    _fmt_list_goals,
+    "chat":          _fmt_chat,
+}
+
+
 def _execute_action(action: dict) -> tuple[str, dict | None]:
-    """Run the parsed action against tools. Returns (human text, raw data)."""
-    a = action.get("action")
-
-    if a == "log":
-        result = tools.add_transaction(
-            amount=action["amount"],
-            type_=action["type"],
-            category=action["category"],
-            description=action.get("description", ""),
-        )
-        sign = "+" if action["type"] == "income" else "-"
-        return (
-            f"Logged: {sign}₹{action['amount']:,.0f} [{action['category']}]"
-            + (f" — {action['description']}" if action.get("description") else ""),
-            result,
-        )
-
-    if a == "summary":
-        s = tools.monthly_summary(action.get("month"))
-        lines = [
-            f"Summary for {s['month']}",
-            f"  Income:   ₹{s['income']:>10,.0f}",
-            f"  Expenses: ₹{s['expenses']:>10,.0f}",
-            f"  Net:      ₹{s['net']:>10,.0f}",
-        ]
-        if s["breakdown"]:
-            lines.append("\nBy category:")
-            for cat, types in s["breakdown"].items():
-                for t, amt in types.items():
-                    if amt:
-                        lines.append(f"  {cat} ({t}): ₹{amt:,.0f}")
-        return "\n".join(lines), s
-
-    if a == "budget_status":
-        items = tools.budget_status(action.get("month"))
-        if not items:
-            return "No budgets set yet. Try: 'set budget ₹5000 for groceries'", None
-        lines = [f"Budget status — {action.get('month') or date.today().strftime('%Y-%m')}:"]
-        for item in items:
-            flag = " ⚠ OVER" if item["over_budget"] else ""
-            lines.append(
-                f"  {item['category']}: ₹{item['spent']:,.0f} / ₹{item['cap']:,.0f}{flag}"
-            )
-        return "\n".join(lines), items
-
-    if a == "set_budget":
-        result = tools.set_budget(action["category"], action["monthly_cap"])
-        return f"Budget set: ₹{action['monthly_cap']:,.0f}/month for {action['category']}", result
-
-    if a == "add_goal":
-        result = tools.add_goal(
-            action["name"], action["target"], action.get("deadline")
-        )
-        deadline_str = f" by {action['deadline']}" if action.get("deadline") else ""
-        return f"Goal added: {action['name']} — ₹{action['target']:,.0f}{deadline_str}", result
-
-    if a == "list_goals":
-        goals = tools.list_goals()
-        if not goals:
-            return "No savings goals yet. Try: 'add goal: buy tractor, ₹2,00,000'", None
-        lines = ["Savings goals:"]
-        for g in goals:
-            pct = (g["saved"] / g["target"] * 100) if g["target"] else 0
-            lines.append(
-                f"  {g['name']}: ₹{g['saved']:,.0f} / ₹{g['target']:,.0f} ({pct:.0f}%)"
-                + (f" — deadline {g['deadline']}" if g.get("deadline") else "")
-            )
-        return "\n".join(lines), goals
-
-    if a == "chat":
-        return action.get("reply", ""), None
-
-    return f"Unknown action: {a}", None
+    """Dispatch a parsed finance action to its handler. Returns (human text, raw data)."""
+    handler = _ACTION_HANDLERS.get(action.get("action"))
+    if handler is None:
+        return f"Unknown action: {action.get('action')}", None
+    return handler(action)
 
 
 _FOLLOW_UPS = {
@@ -214,9 +230,11 @@ class FinanceModule(BaseModule):
     )
 
     def __init__(self):
+        """Initialize the finance module (ensures the DB schema exists)."""
         db.init()
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
+        """Route a finance query: LLM → validate_action → dispatch."""
         t0 = time.monotonic()
         try:
             action = _call_llm(query, context)
