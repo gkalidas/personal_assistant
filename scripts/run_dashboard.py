@@ -27,6 +27,7 @@ _ACCESS_FILE = _ROOT / "docs" / "remote_access.md"
 
 
 def _tailscale_ip() -> str:
+    """Return this host's Tailscale IPv4 address, or empty string if Tailscale is down."""
     try:
         out = subprocess.check_output(["tailscale", "ip", "-4"],
                                       stderr=subprocess.DEVNULL, timeout=3)

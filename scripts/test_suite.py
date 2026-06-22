@@ -53,6 +53,7 @@ _t_section_start = time.monotonic()
 
 
 def rec(section: str, name: str, passed: bool, detail: str = "", ms: int = 0):
+    """Record one test result (and print a pass/fail line)."""
     status = "PASS" if passed else "FAIL"
     _results.append({"section": section, "name": name, "status": status,
                       "detail": detail, "ms": ms})
@@ -61,6 +62,7 @@ def rec(section: str, name: str, passed: bool, detail: str = "", ms: int = 0):
 
 
 def hdr(title: str):
+    """Print a section header and reset the section timer."""
     elapsed = int(time.monotonic() - _t_section_start)
     print(f"\n{'='*68}")
     print(f"  {title}  ({elapsed}s elapsed)")
@@ -68,6 +70,7 @@ def hdr(title: str):
 
 
 def save_results() -> dict:
+    """Write the collected results to a JSON report and print a summary."""
     by_sec: dict[str, dict] = {}
     for r in _results:
         s = r["section"]
