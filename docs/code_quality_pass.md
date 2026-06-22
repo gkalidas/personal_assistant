@@ -77,15 +77,41 @@ responsibility and readability win.
 
 ## 3. Progress so far
 
+**Buckets 1–2 (`core/sanitizer.py` + all of `security/`) are COMPLETE.**
+
 | # | File | Status | Commit | Notes |
 |---|------|--------|--------|-------|
 | 1 | `core/sanitizer.py` | ✅ done | `adf86d2` | Split `validate_action` → `_coerce_numeric`, `_scan_string_field`, `_validate_field`; docstring `_is_required`. |
-| 2 | `security/jailbreak_sim.py` | ✅ done | `23b3278` | Docstrings all; split `_run_track_b` → `_probe_llm`, `_assess_track_b`; hoisted prompts/action-sets to constants; `_print_track_a/b/c` helpers. |
-| 3 | `security/posture.py` | ✅ done | `9c0a49d` | Table-driven `_COMPONENT_SPECS` + `_evaluate_component` (was 120-line `calculate_posture`); `_grade_for`, `_save_posture`; docstrings all. |
+| 2 | `security/jailbreak_sim.py` | ✅ done | `23b3278` | Split `_run_track_b` → `_probe_llm`, `_assess_track_b`; constants; `_print_track_a/b/c`. |
+| 3 | `security/posture.py` | ✅ done | `9c0a49d` | Table-driven `_COMPONENT_SPECS` + `_evaluate_component`; `_grade_for`, `_save_posture`. |
+| 4 | `security/red_team.py` | ✅ done | `6f97d29` | **Fixed `_test_validator` bug (§4b)**; split `run_red_team` → `_run_single_attack`/`_tally`/`_print_attack_line`. |
+| 5 | `security/autodefense.py` | ✅ done | `93e2b69` | Split `run_autodefense` → `_resolve_red_team_report`/`_process_bypass`/`_apply_proposal_outcome`. |
+| 6 | `security/scanner.py` | ✅ done | `76dfa67` | Dedup `_cvss_to_severity`; split `scan_packages` → `_query_osv`/`_parse_osv_results`. |
+| 7 | `security/auditor.py` | ✅ done | `dd7843a` | Split ollama check → `_ollama_exposed_via_proc`/`_via_probe`; removed dead code. |
+| 8 | `security/patcher.py` | ✅ done | `2956e55` | Extract `_run_pip_upgrade`, `_dedup_by_package`, `_classify_unpatchable`; hoist severity order. |
+| 9 | `security/load_monitor.py` | ✅ done | `11e6dc2` | Dedup sampling → `_sample_now`; extract `_store_observation`, `_observation_stats`. |
+| 10 | `security/watcher.py` | ✅ done | `4ad7767` | `_STATIC_PATTERNS` const; `_merge_patterns`; split `detect_anomalies` into 4 `_check_*`. |
+| 11 | `security/guardian.py` | ✅ done | `2366771` | Docstrings; hoist `_cmd_*` + `_build_dispatch`; split `run_daemon`/`_full_scan`. **Daemon restarted.** |
+| 12 | `security/threat_intel.py` | ✅ done | `23beb7c` | All 14 docstrings; split 106-line `run_threat_intel` into 5; per-item builders `_nvd_item`/`_github_item`/`_kev_item`. |
 
 **Reference commits** — study these to match the established style before
 continuing. `9c0a49d` (table-driven) and `23b3278` (extract + constants) are
 the two key patterns.
+
+**Bucket 3 = `core/` (13 files) is NEXT (in progress).** Run the §9 audit
+scoped to `core/` for the exact list.
+
+### Conventions confirmed in practice
+- Functions of **41–45 lines that are a single cohesive loop/orchestrator with
+  a docstring are acceptable** — do not over-split (e.g. `run_red_team` 44,
+  `run_threat_intel` 41, `run_daemon` 60, `auto_patch_all` 49 were all left).
+- Hoist big inline literals (prompt strings, rule tables, static lists) to
+  module constants.
+- For repeated `if/elif` print or scoring blocks, prefer a **rule/spec table +
+  loop** (see posture `_COMPONENT_SPECS`, threat_intel `_CODE_PATTERN_RULES`).
+- Batch one-line docstrings with a small regex script (see git history of
+  `guardian.py`/`threat_intel.py` commits) — but verify no blank-line-after-def
+  artifact is introduced (it was, once; clean it if so).
 
 ---
 
@@ -102,8 +128,10 @@ These came from a "does the system work as built" check and are **committed**:
 | Stale dashboard server | (ops, no code) | Server predated module edits; restarted. |
 | Dashboard bound to `0.0.0.0` | `703102d` | No-auth dashboard exposed to LAN. Now binds to Tailscale IP (see §7). |
 
-### 4b. ⚠️ FOUND, NOT YET FIXED — `security/red_team.py` `_test_validator`
-**This is a real latent bug. Fix it as part of the `red_team.py` file pass.**
+### 4b. ✅ FIXED (commit `6f97d29`) — `security/red_team.py` `_test_validator`
+**This was a real latent bug, now fixed during the `red_team.py` pass.**
+Kept below for the record / as a worked example of the kind of "function doesn't
+do what its name says" bug to watch for in remaining buckets.
 
 At `red_team.py:258`:
 ```python
@@ -201,29 +229,18 @@ Counts = files still needing work / missing docstrings / functions >40 lines.
 
 | Bucket | Files | No-doc | >40ln | Priority |
 |--------|-------|--------|-------|----------|
-| `security/` | 10 | 44 | 22 | **1 (in progress)** |
-| `core/` | 13 | 43 | 10 | 2 |
+| `security/` | — | — | — | ✅ **DONE** (12 files committed) |
+| `core/` | 13 | 43 | 10 | **2 (NEXT)** |
 | `modules/` | 27 | 138 | 28 | 3 |
 | `dashboard/` | 9 | 72 | 11 | 4 |
 | `scripts/` | 7 | 37 | 8 | 5 |
 
-### `security/` bucket — remaining files (current priority)
+> `core/sanitizer.py` is already done (bucket 1). Re-run the §9 audit scoped to
+> `core/` for the current exact list before starting — counts above were the
+> original snapshot.
 
-| File | No-doc | Long functions (>40ln) | Notes |
-|------|--------|------------------------|-------|
-| `red_team.py` | 4 | `run_red_team:103` | **Fix `_test_validator` bug (§4b)**; split `run_red_team` into per-attack eval + aggregation + the existing `_print_summary`. |
-| `autodefense.py` | 4 | `run_autodefense:108` | Split: per-bypass proposal generation, validation, promotion already partly factored — extract the loop body. |
-| `guardian.py` | 14 | `_full_scan:65`, `run_daemon:71`, `main:54` | Biggest. `main` is a dispatch dict — extract command handlers. `run_daemon` is the scheduler loop — extract idle-check + pick-next. **Restart service after editing.** |
-| `threat_intel.py` | 14 | 7 long (`fetch_nvd`, `fetch_github_advisories`, `fetch_cisa_kev`, `_replicate_*`, `run_threat_intel:106`) | Most work. The `fetch_*` functions share shape → consider a common `_fetch_json` helper. |
-| `watcher.py` | 4 | `update_patterns:93`, `detect_anomalies:98` | Both long; split fetch vs. parse vs. write. |
-| `load_monitor.py` | 3 | `observe:54`, `report:48` | |
-| `patcher.py` | 1 | `patch_vulnerability:51`, `auto_patch_all:73` | |
-| `auditor.py` | 0 | `_check_ollama_exposure:42` | Only needs the one split. |
-| `scanner.py` | 0 | `scan_packages:49` | Only needs the one split. |
-| `jailbreak_sim.py` | 0 | `_run_track_b:43`, `_run_track_c:41` | **Already passed** — these two are cohesive loops w/ docstrings; acceptable, leave as-is. |
-
-After `security/`, move to `core/` (13 files), then `modules/`, `dashboard/`,
-`scripts/`. Re-run the §9 audit at the start of each bucket for an exact list.
+After `core/`, move to `modules/`, `dashboard/`, `scripts/`. Re-run the §9 audit
+at the start of each bucket for an exact list.
 
 ---
 
