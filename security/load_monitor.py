@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS pattern (
 
 
 def _conn() -> sqlite3.Connection:
+    """Open the load-monitor SQLite DB (creating schema), with Row factory."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(DB_PATH))
     con.row_factory = sqlite3.Row
@@ -84,10 +85,12 @@ def _conn() -> sqlite3.Connection:
 # ── Metric samplers ────────────────────────────────────────────────────────────
 
 def _cpu() -> float:
+    """Current CPU utilisation percent (1-second average)."""
     return psutil.cpu_percent(interval=1)
 
 
 def _ram() -> float:
+    """Current RAM utilisation percent."""
     return psutil.virtual_memory().percent
 
 
@@ -182,19 +185,51 @@ def _load_score(cpu: float, ram: float, io: float,
 
 # ── Core API ───────────────────────────────────────────────────────────────────
 
-def observe() -> dict:
-    """
-    Sample current system load, store the observation, and update the pattern table.
-    Call this every ~60 seconds from the guardian daemon.
-    """
-    now   = datetime.now()
-    cpu   = _cpu()
-    ram   = _ram()
-    io    = _io_busy()
-    qrys  = _recent_queries()
-    busy  = _ollama_busy()
-    score = _load_score(cpu, ram, io, qrys, busy)
+def _sample_now() -> tuple[float, float, float, int, bool, float]:
+    """Sample all load metrics once. Returns (cpu, ram, io, queries, ollama, score)."""
+    cpu  = _cpu()
+    ram  = _ram()
+    io   = _io_busy()
+    qrys = _recent_queries()
+    busy = _ollama_busy()
+    return cpu, ram, io, qrys, busy, _load_score(cpu, ram, io, qrys, busy)
 
+
+def _store_observation(row: dict, now: datetime) -> None:
+    """Persist one observation, update the hourly pattern average, and trim >14d data."""
+    try:
+        con = _conn()
+        con.execute(
+            """INSERT INTO observations
+               (ts, dow, hour, minute, cpu_pct, ram_pct, io_busy_pct,
+                recent_queries, ollama_busy, load_score)
+               VALUES (:ts,:dow,:hour,:minute,:cpu_pct,:ram_pct,:io_busy_pct,
+                       :recent_queries,:ollama_busy,:load_score)""",
+            row,
+        )
+        con.execute(
+            """INSERT INTO pattern (dow, hour, avg_load, sample_count)
+               VALUES (:dow, :hour, :load_score, 1)
+               ON CONFLICT(dow, hour) DO UPDATE SET
+                 avg_load = (avg_load * sample_count + excluded.avg_load) / (sample_count + 1),
+                 sample_count = sample_count + 1""",
+            row,
+        )
+        cutoff = (now - timedelta(days=14)).isoformat()
+        con.execute("DELETE FROM observations WHERE ts < ?", (cutoff,))
+        con.commit()
+        con.close()
+    except Exception as e:
+        log.debug(f"load_monitor: observe() DB write failed: {e}")
+
+
+def observe() -> dict:
+    """Sample current system load, store it, and update the pattern table.
+
+    Call every ~60 seconds from the guardian daemon. Returns the stored row.
+    """
+    now = datetime.now()
+    cpu, ram, io, qrys, busy, score = _sample_now()
     row = {
         "ts":             now.isoformat(),
         "dow":            now.weekday(),
@@ -207,34 +242,7 @@ def observe() -> dict:
         "ollama_busy":    int(busy),
         "load_score":     round(score, 1),
     }
-
-    try:
-        con = _conn()
-        con.execute(
-            """INSERT INTO observations
-               (ts, dow, hour, minute, cpu_pct, ram_pct, io_busy_pct,
-                recent_queries, ollama_busy, load_score)
-               VALUES (:ts,:dow,:hour,:minute,:cpu_pct,:ram_pct,:io_busy_pct,
-                       :recent_queries,:ollama_busy,:load_score)""",
-            row,
-        )
-        # Update running average in pattern table
-        con.execute(
-            """INSERT INTO pattern (dow, hour, avg_load, sample_count)
-               VALUES (:dow, :hour, :load_score, 1)
-               ON CONFLICT(dow, hour) DO UPDATE SET
-                 avg_load = (avg_load * sample_count + excluded.avg_load) / (sample_count + 1),
-                 sample_count = sample_count + 1""",
-            row,
-        )
-        # Trim old observations (keep last 14 days)
-        cutoff = (now - timedelta(days=14)).isoformat()
-        con.execute("DELETE FROM observations WHERE ts < ?", (cutoff,))
-        con.commit()
-        con.close()
-    except Exception as e:
-        log.debug(f"load_monitor: observe() DB write failed: {e}")
-
+    _store_observation(row, now)
     return row
 
 
@@ -311,29 +319,28 @@ def predicted_idle_hours(n: int = 6, days: int = 7) -> list[int]:
     return [h for _, h in candidates[:n]]
 
 
-def report() -> dict:
-    """Current load snapshot + pattern summary."""
+def _observation_stats() -> tuple[int, str]:
+    """Return (total observations, date of earliest observation or 'none')."""
     try:
-        cpu   = psutil.cpu_percent(interval=1)
-        ram   = psutil.virtual_memory().percent
-        io    = _io_busy()
-        qrys  = _recent_queries()
-        busy  = _ollama_busy()
-        score = _load_score(cpu, ram, io, qrys, busy)
+        con    = _conn()
+        total  = con.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
+        oldest = con.execute("SELECT MIN(ts) FROM observations").fetchone()[0]
+        con.close()
+        return total, (oldest[:10] if oldest else "none")
+    except Exception:
+        return 0, "none"
+
+
+def report() -> dict:
+    """Current load snapshot + learned-pattern summary."""
+    try:
+        cpu, ram, io, qrys, busy, score = _sample_now()
     except Exception:
         cpu = ram = io = score = 0.0
         qrys = 0
         busy = False
 
-    try:
-        con     = _conn()
-        total   = con.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
-        oldest  = con.execute("SELECT MIN(ts) FROM observations").fetchone()[0]
-        con.close()
-        obs_since = oldest[:10] if oldest else "none"
-    except Exception:
-        total, obs_since = 0, "none"
-
+    total, obs_since = _observation_stats()
     pat    = pattern_by_hour()
     idle_h = predicted_idle_hours()
 
