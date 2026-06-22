@@ -32,16 +32,19 @@ NVD_SEARCH_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
 
 def _load_patterns() -> dict:
+    """Load security/patterns.json, or an empty skeleton if it is missing."""
     if PATTERNS_FILE.exists():
         return json.loads(PATTERNS_FILE.read_text())
     return {"injection_patterns": [], "_meta": {}}
 
 
 def _save_patterns(data: dict) -> None:
+    """Write the patterns dict back to security/patterns.json."""
     PATTERNS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
 
 
 def _existing_pattern_ids(data: dict) -> set[str]:
+    """Return the set of pattern IDs already present in the patterns data."""
     return {p["id"] for p in data.get("injection_patterns", [])}
 
 
@@ -107,97 +110,104 @@ def _generate_pattern_from_cve(cve_info: dict, next_id: int) -> dict | None:
     return None
 
 
-def update_patterns(force: bool = False) -> dict:
-    """
-    Refresh injection patterns from security intelligence sources.
-    Only adds new patterns — never removes existing ones.
-    Returns summary of what changed.
-    """
-    data    = _load_patterns()
-    meta    = data.get("_meta", {})
-    last_up = meta.get("last_updated", "2000-01-01")
-    added   = 0
-    sources = []
+# Known high-value patterns we maintain (kept here, not bundled in patterns.json,
+# for separation of concerns — update_patterns merges any not already present).
+_STATIC_PATTERNS = [
+    {
+        "id": "INJ-A01",
+        "pattern": r"(grandma|grandmother).{0,50}(tell me|used to tell|bedtime story).{0,100}(how to|steps to|recipe for)",
+        "severity": "medium", "category": "social_engineering",
+        "note": "Grandmother jailbreak — wraps harmful requests in emotional story framing"
+    },
+    {
+        "id": "INJ-A02",
+        "pattern": r"hypothetically\s+(speaking|if|say)\s+.{0,50}(how\s+(would|could|might)|what\s+steps)",
+        "severity": "low", "category": "context_manipulation",
+        "note": "Hypothetical framing to lower guard"
+    },
+    {
+        "id": "INJ-A03",
+        "pattern": r"(token|character|word)\s+(budget|limit|window).{0,30}(ignore|bypass|skip)",
+        "severity": "medium", "category": "context_manipulation",
+        "note": "Token budget manipulation"
+    },
+    {
+        "id": "INJ-A04",
+        "pattern": r"<\s*(JAILBREAK|SYSTEM|INJECT|OVERRIDE|ADMIN)\s*>",
+        "severity": "critical", "category": "tag_injection",
+        "note": "Custom tag injection attempts"
+    },
+    {
+        "id": "INJ-A05",
+        "pattern": r"(write|create|generate)\s+(a\s+)?story\s+(where|in\s+which|about).{0,50}(hacking|exploit|malware|ransomware)",
+        "severity": "high", "category": "fictional_framing",
+        "note": "Fictional story framing for harmful content"
+    },
+]
 
-    # Check if update is needed (run at most once per 6 hours unless forced)
-    if not force:
-        try:
-            last_dt = datetime.fromisoformat(last_up)
-            if datetime.now() - last_dt < timedelta(hours=6):
-                log.info("Patterns up-to-date — skipping fetch.")
-                return {"status": "skipped", "reason": "Updated less than 6 hours ago"}
-        except Exception:
-            pass
+
+def _recently_updated(data: dict, max_hours: int = 6) -> bool:
+    """True if patterns.json was updated within ``max_hours`` (skip refetch)."""
+    last_up = data.get("_meta", {}).get("last_updated", "2000-01-01")
+    try:
+        return datetime.now() - datetime.fromisoformat(last_up) < timedelta(hours=max_hours)
+    except Exception:
+        return False
+
+
+def _merge_patterns(data: dict, candidates: list[dict], existing_ids: set[str],
+                    source_label) -> list[str]:
+    """Append candidate patterns not already present (by id). Returns source tags.
+
+    ``source_label`` may be a string prefix or a callable(candidate)->tag, so
+    both static additions and per-CVE patterns can record their provenance.
+    """
+    sources = []
+    for pat in candidates:
+        if not pat or pat["id"] in existing_ids:
+            continue
+        data["injection_patterns"].append(pat)
+        existing_ids.add(pat["id"])
+        sources.append(source_label(pat) if callable(source_label) else f"{source_label}:{pat['id']}")
+    return sources
+
+
+def update_patterns(force: bool = False) -> dict:
+    """Refresh injection patterns from intelligence sources (additive only).
+
+    Skips if updated within the last 6 hours (unless ``force``). Merges NVD-CVE
+    derived patterns and the maintained static set, then rewrites patterns.json.
+    Returns a summary of what changed.
+    """
+    data = _load_patterns()
+    if not force and _recently_updated(data):
+        log.info("Patterns up-to-date — skipping fetch.")
+        return {"status": "skipped", "reason": "Updated less than 6 hours ago"}
 
     existing_ids = _existing_pattern_ids(data)
     next_id      = len(data.get("injection_patterns", [])) + 1
 
-    # Source 1: NVD LLM CVEs
     log.info("Fetching NVD CVEs for AI/LLM vulnerabilities...")
-    cve_list = fetch_nvd_llm_cves()
-    for cve_info in cve_list:
+    cve_patterns = []
+    for cve_info in fetch_nvd_llm_cves():
         pat = _generate_pattern_from_cve(cve_info, next_id)
-        if pat and pat["id"] not in existing_ids:
-            data["injection_patterns"].append(pat)
-            existing_ids.add(pat["id"])
+        if pat:
+            cve_patterns.append(pat)
             next_id += 1
-            added   += 1
-            sources.append(f"NVD:{cve_info.get('cve_id','?')}")
+    sources  = _merge_patterns(data, cve_patterns, existing_ids, "NVD")
+    sources += _merge_patterns(data, _STATIC_PATTERNS, existing_ids, "static")
 
-    # Source 2: Known high-value static patterns we maintain
-    # (Added here rather than bundled in patterns.json for separation of concerns)
-    static_additions = [
-        {
-            "id": "INJ-A01",
-            "pattern": r"(grandma|grandmother).{0,50}(tell me|used to tell|bedtime story).{0,100}(how to|steps to|recipe for)",
-            "severity": "medium", "category": "social_engineering",
-            "note": "Grandmother jailbreak — wraps harmful requests in emotional story framing"
-        },
-        {
-            "id": "INJ-A02",
-            "pattern": r"hypothetically\s+(speaking|if|say)\s+.{0,50}(how\s+(would|could|might)|what\s+steps)",
-            "severity": "low", "category": "context_manipulation",
-            "note": "Hypothetical framing to lower guard"
-        },
-        {
-            "id": "INJ-A03",
-            "pattern": r"(token|character|word)\s+(budget|limit|window).{0,30}(ignore|bypass|skip)",
-            "severity": "medium", "category": "context_manipulation",
-            "note": "Token budget manipulation"
-        },
-        {
-            "id": "INJ-A04",
-            "pattern": r"<\s*(JAILBREAK|SYSTEM|INJECT|OVERRIDE|ADMIN)\s*>",
-            "severity": "critical", "category": "tag_injection",
-            "note": "Custom tag injection attempts"
-        },
-        {
-            "id": "INJ-A05",
-            "pattern": r"(write|create|generate)\s+(a\s+)?story\s+(where|in\s+which|about).{0,50}(hacking|exploit|malware|ransomware)",
-            "severity": "high", "category": "fictional_framing",
-            "note": "Fictional story framing for harmful content"
-        },
-    ]
-    for sp in static_additions:
-        if sp["id"] not in existing_ids:
-            data["injection_patterns"].append(sp)
-            existing_ids.add(sp["id"])
-            added += 1
-            sources.append(f"static:{sp['id']}")
-
-    # Update metadata
     data["_meta"]["last_updated"]   = datetime.now().strftime("%Y-%m-%d")
     data["_meta"]["total_patterns"] = len(data["injection_patterns"])
     data["_meta"]["last_sources"]   = sources
-
     _save_patterns(data)
-    log.info(f"Patterns updated: {added} new patterns added. Total: {len(data['injection_patterns'])}")
+    log.info(f"Patterns updated: {len(sources)} new patterns added. Total: {len(data['injection_patterns'])}")
 
     return {
-        "status":    "updated",
-        "added":     added,
-        "total":     len(data["injection_patterns"]),
-        "sources":   sources,
+        "status":     "updated",
+        "added":      len(sources),
+        "total":      len(data["injection_patterns"]),
+        "sources":    sources,
         "updated_at": datetime.now().isoformat(),
     }
 
@@ -205,9 +215,9 @@ def update_patterns(force: bool = False) -> dict:
 # ── Log anomaly detection ──────────────────────────────────────────────────────
 
 def _load_pattern_regexes() -> list[re.Pattern]:
-    data = _load_patterns()
+    """Compile every injection pattern from patterns.json (skipping bad regexes)."""
     patterns = []
-    for p in data.get("injection_patterns", []):
+    for p in _load_patterns().get("injection_patterns", []):
         try:
             patterns.append(re.compile(p["pattern"], re.IGNORECASE))
         except re.error:
@@ -215,95 +225,93 @@ def _load_pattern_regexes() -> list[re.Pattern]:
     return patterns
 
 
-def detect_anomalies(hours: int = 24) -> dict:
-    """
-    Scan the last N hours of assistant events for security anomalies.
-    Returns structured alert list.
-    """
-    if not GK_DB.exists():
-        return {"status": "no_db", "alerts": []}
-
-    injection_patterns = _load_pattern_regexes()
-    alerts = []
+def _read_recent_events(hours: int):
+    """Fetch event rows from the last N hours. Returns (rows, error_or_None)."""
     since = (datetime.now() - timedelta(hours=hours)).isoformat()
-
     try:
         con = sqlite3.connect(str(GK_DB))
         con.row_factory = sqlite3.Row
-        cur = con.cursor()
-
-        # Get recent events
-        rows = cur.execute(
-            "SELECT * FROM events WHERE ts >= ? ORDER BY ts DESC",
-            (since,)
+        rows = con.execute(
+            "SELECT * FROM events WHERE ts >= ? ORDER BY ts DESC", (since,)
         ).fetchall()
         con.close()
+        return rows, None
     except Exception as e:
         log.error(f"Could not read event log: {e}")
-        return {"status": "error", "error": str(e), "alerts": []}
+        return [], str(e)
 
-    if not rows:
-        return {"status": "ok", "events_checked": 0, "alerts": []}
 
-    # Check 1: Injection patterns in queries
-    injection_hits = []
+def _check_injections(rows, patterns) -> dict | None:
+    """Alert if any event query matches a known injection pattern."""
+    hits = []
     for row in rows:
         query = row["query"] if "query" in row.keys() else ""
         if not query:
             continue
-        for pat in injection_patterns:
+        for pat in patterns:
             m = pat.search(query)
             if m:
-                injection_hits.append({
-                    "event_id": row["id"],
-                    "query":    query[:100],
-                    "matched":  m.group(0)[:60],
-                    "at":       row["ts"],
-                })
+                hits.append({"event_id": row["id"], "query": query[:100],
+                             "matched": m.group(0)[:60], "at": row["ts"]})
                 break
+    if not hits:
+        return None
+    return {"type": "INJECTION_ATTEMPT", "severity": "HIGH", "count": len(hits),
+            "details": hits[:5],
+            "message": f"{len(hits)} injection attempt(s) detected in queries"}
 
-    if injection_hits:
-        alerts.append({
-            "type":     "INJECTION_ATTEMPT",
-            "severity": "HIGH",
-            "count":    len(injection_hits),
-            "details":  injection_hits[:5],
-            "message":  f"{len(injection_hits)} injection attempt(s) detected in queries",
-        })
 
-    # Check 2: Error spike
-    error_rows = [r for r in rows if (r["status"] if "status" in r.keys() else "") == "error"]
-    if len(error_rows) > 5:
-        alerts.append({
-            "type":     "ERROR_SPIKE",
-            "severity": "MEDIUM",
-            "count":    len(error_rows),
-            "message":  f"{len(error_rows)} errors in last {hours}h — possible attack or system failure",
-        })
+def _check_error_spike(error_rows, hours) -> dict | None:
+    """Alert if more than 5 errors occurred in the window."""
+    if len(error_rows) <= 5:
+        return None
+    return {"type": "ERROR_SPIKE", "severity": "MEDIUM", "count": len(error_rows),
+            "message": f"{len(error_rows)} errors in last {hours}h — possible attack or system failure"}
 
-    # Check 3: Module failure pattern (same module failing repeatedly)
-    module_errors: dict[str, int] = {}
+
+def _check_module_failures(error_rows, hours) -> list[dict]:
+    """Alert for each module that failed 3+ times in the window."""
+    counts: dict[str, int] = {}
     for r in error_rows:
         mod = r["module"] if "module" in r.keys() else "unknown"
-        module_errors[mod] = module_errors.get(mod, 0) + 1
-    for mod, count in module_errors.items():
-        if count >= 3:
-            alerts.append({
-                "type":     "MODULE_FAILURE",
-                "severity": "MEDIUM",
-                "module":   mod,
-                "count":    count,
-                "message":  f"Module '{mod}' failed {count} times in last {hours}h",
-            })
+        counts[mod] = counts.get(mod, 0) + 1
+    return [
+        {"type": "MODULE_FAILURE", "severity": "MEDIUM", "module": mod, "count": c,
+         "message": f"Module '{mod}' failed {c} times in last {hours}h"}
+        for mod, c in counts.items() if c >= 3
+    ]
 
-    # Check 4: Unusual query volume (possible flooding)
-    if len(rows) > 200:
-        alerts.append({
-            "type":     "HIGH_QUERY_VOLUME",
-            "severity": "LOW",
-            "count":    len(rows),
-            "message":  f"{len(rows)} queries in last {hours}h — unusually high volume",
-        })
+
+def _check_query_volume(rows, hours) -> dict | None:
+    """Alert if query volume in the window is unusually high (>200)."""
+    if len(rows) <= 200:
+        return None
+    return {"type": "HIGH_QUERY_VOLUME", "severity": "LOW", "count": len(rows),
+            "message": f"{len(rows)} queries in last {hours}h — unusually high volume"}
+
+
+def detect_anomalies(hours: int = 24) -> dict:
+    """Scan the last N hours of assistant events for security anomalies.
+
+    Runs four checks — injection attempts, error spikes, repeated per-module
+    failures, and query flooding — and returns a structured alert list.
+    """
+    if not GK_DB.exists():
+        return {"status": "no_db", "alerts": []}
+
+    rows, error = _read_recent_events(hours)
+    if error:
+        return {"status": "error", "error": error, "alerts": []}
+    if not rows:
+        return {"status": "ok", "events_checked": 0, "alerts": []}
+
+    error_rows = [r for r in rows if (r["status"] if "status" in r.keys() else "") == "error"]
+
+    alerts: list[dict] = []
+    if (a := _check_injections(rows, _load_pattern_regexes())): alerts.append(a)
+    if (a := _check_error_spike(error_rows, hours)):            alerts.append(a)
+    alerts.extend(_check_module_failures(error_rows, hours))
+    if (a := _check_query_volume(rows, hours)):                 alerts.append(a)
 
     return {
         "status":         "ok",
