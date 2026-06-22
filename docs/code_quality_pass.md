@@ -237,9 +237,23 @@ Counts = files still needing work / missing docstrings / functions >40 lines.
 |--------|-------|--------|-------|----------|
 | `security/` | — | — | — | ✅ **DONE** (12 files committed) |
 | `core/` | — | — | — | ✅ **DONE** (14 files; crypto bug fixed) |
-| `modules/` | 12 left | — | — | **3 (IN PROGRESS — 15/27 done)** |
-| `dashboard/` | 9 | 72 | 11 | 4 |
+| `modules/` | — | — | — | ✅ **DONE** (27 files; 2 bugs fixed) |
+| `dashboard/` | 9 | 72 | 11 | **4 (NEXT)** |
 | `scripts/` | 7 | 37 | 8 | 5 |
+
+### modules/ bucket — COMPLETE (27 files, all green)
+Every function documented, all long functions split, full suite 234/234.
+**Two real bugs fixed during the pass:**
+- `farming/farming_client.py` `format_diagnosis` — the hint branch was
+  unreachable dead code (after an unconditional `return`), so error hints
+  never showed. Reordered.
+- `diary/module.py` `_do_write` — the already-processed photo filter used
+  `getattr(p, "path", p)` on **dict** photos, so it returned the whole dict and
+  `str(dict)` never matched a path → the filter was a silent no-op (photos could
+  be re-captioned/re-written). Fixed to `p.get("path")`.
+
+Accepted cohesive 41–51-line functions (documented, single-responsibility):
+`farming/db.init`, `system/module._guardian_schedule_lines`.
 
 ### modules/ progress (15 done, 12 remaining)
 **Done:** health/db, finance/db, farming/db, health/tools, finance/tools,
