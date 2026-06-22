@@ -63,7 +63,8 @@ SOURCES = [
     Source("atlas", "https://raw.githubusercontent.com/mitre-atlas/atlas-data/main/dist/ATLAS.yaml", "yaml", 1),
     Source("owasp", "https://raw.githubusercontent.com/OWASP/www-project-top-10-for-large-language-model-applications/main/README.md", "markdown", 1),
     # Tier 2 — vendor security/red-team blogs
-    Source("googlepzero", "https://googleprojectzero.blogspot.com/feeds/posts/default", "rss", 2),
+    # (Project Zero's full Atom archive is ~13 MB; MSRC covers vendor security
+    #  at a fraction of the size, so we prefer it here.)
     Source("msrc", "https://msrc.microsoft.com/blog/feed/", "rss", 2),
     # Tier 3 — independent researchers
     Source("willison", "https://simonwillison.net/atom/everything/", "rss", 3),
@@ -102,14 +103,28 @@ def _make_item(source: str, ext_id: str, title: str, desc: str,
     )
 
 
-def _get(url: str, timeout: float = 20.0):
-    """HTTP GET with the guardian UA. Returns the Response, or None on failure."""
+# Bounded timeout so one slow feed can't stall the daily task, and a response-size
+# cap so an oversized feed can't blow up memory/time.
+_TIMEOUT      = httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=10.0)
+_MAX_BYTES    = 8 * 1024 * 1024   # 8 MB hard cap per source
+
+
+def _get(url: str):
+    """HTTP GET with bounded timeout + size cap. Returns the Response, or None."""
     try:
-        resp = httpx.get(url, timeout=timeout, headers=_UA, follow_redirects=True)
-        if resp.status_code != 200:
-            log.debug("source %s -> HTTP %s", url, resp.status_code)
-            return None
-        return resp
+        with httpx.stream("GET", url, timeout=_TIMEOUT, headers=_UA,
+                          follow_redirects=True) as resp:
+            if resp.status_code != 200:
+                log.debug("source %s -> HTTP %s", url, resp.status_code)
+                return None
+            body = b""
+            for chunk in resp.iter_bytes():
+                body += chunk
+                if len(body) > _MAX_BYTES:
+                    log.warning("source %s exceeded %d bytes — truncated", url, _MAX_BYTES)
+                    break
+            resp._gk_text = body.decode(resp.encoding or "utf-8", errors="replace")
+            return resp
     except Exception as e:
         log.warning("source fetch failed %s: %s", url, e)
         return None
@@ -123,7 +138,7 @@ def _fetch_rss(source: Source, max_items: int = 15) -> list[ThreatItem]:
     if resp is None:
         return []
     import feedparser
-    feed = feedparser.parse(resp.text)
+    feed = feedparser.parse(resp._gk_text)
     items = []
     for entry in feed.entries[:50]:
         title = entry.get("title", "")
@@ -144,7 +159,7 @@ def _fetch_yaml(source: Source, max_items: int = 30) -> list[ThreatItem]:
         return []
     import yaml
     try:
-        data = yaml.safe_load(resp.text)
+        data = yaml.safe_load(resp._gk_text)
     except Exception as e:
         log.warning("yaml parse failed for %s: %s", source.name, e)
         return []
@@ -175,7 +190,7 @@ def _fetch_markdown(source: Source, max_items: int = 15) -> list[ThreatItem]:
     import re
     items = []
     # Match headings like "## LLM01:2025 Prompt Injection" or "LLM01: Prompt Injection"
-    for m in re.finditer(r"(LLM0?\d{1,2})[:\s][^\n]{3,80}", resp.text):
+    for m in re.finditer(r"(LLM0?\d{1,2})[:\s][^\n]{3,80}", resp._gk_text):
         heading = m.group(0).strip(" #")
         if not _is_relevant(heading):
             continue
