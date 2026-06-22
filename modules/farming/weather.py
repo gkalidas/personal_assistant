@@ -37,6 +37,7 @@ _WMO = {
 # ── Cache helpers ─────────────────────────────────────────────────────────────
 
 def _ensure_cache_table() -> None:
+    """Create the weather_cache table if absent."""
     with sqlite3.connect(FARMING_DB) as c:
         c.execute("""
             CREATE TABLE IF NOT EXISTS weather_cache (
@@ -48,6 +49,7 @@ def _ensure_cache_table() -> None:
 
 
 def _get_cached(key: str) -> dict | None:
+    """Return cached weather data for a key if within the 6h TTL, else None."""
     try:
         with sqlite3.connect(FARMING_DB) as c:
             row = c.execute(
@@ -62,6 +64,7 @@ def _get_cached(key: str) -> dict | None:
 
 
 def _save_cache(key: str, data: dict) -> None:
+    """Write weather data to the cache (best-effort)."""
     try:
         with sqlite3.connect(FARMING_DB) as c:
             c.execute(
@@ -73,6 +76,7 @@ def _save_cache(key: str, data: dict) -> None:
 
 
 def _get(url: str, params: dict) -> dict:
+    """HTTP GET a JSON weather endpoint and return the parsed body."""
     resp = httpx.get(url, params=params, timeout=15.0)
     resp.raise_for_status()
     return resp.json()
@@ -163,31 +167,36 @@ def forecast(
         "timezone": "Asia/Kolkata",
         "forecast_days": days,
     })
+    result = _parse_daily_forecast(data, name)
+    _save_cache(cache_key, result)
+    return result
 
+
+def _parse_daily_forecast(data: dict, name: str) -> dict[str, Any]:
+    """Turn an Open-Meteo forecast response into {location, days[], soil_*_now}."""
     daily = data.get("daily", {})
     dates = daily.get("time", [])
-    result_days = []
-    for i, d in enumerate(dates):
-        result_days.append({
-            "date": d,
-            "rain_mm": (daily.get("rain_sum") or [None]*len(dates))[i],
-            "precipitation_mm": (daily.get("precipitation_sum") or [None]*len(dates))[i],
-            "rain_probability_pct": (daily.get("precipitation_probability_max") or [None]*len(dates))[i],
-            "temp_max_c": (daily.get("temperature_2m_max") or [None]*len(dates))[i],
-            "temp_min_c": (daily.get("temperature_2m_min") or [None]*len(dates))[i],
-            "evapotranspiration_mm": (daily.get("et0_fao_evapotranspiration") or [None]*len(dates))[i],
-            "wind_max_kmh": (daily.get("windspeed_10m_max") or [None]*len(dates))[i],
-        })
+
+    def col(key: str) -> list:
+        """Return the daily column for `key`, padded to the date count."""
+        return daily.get(key) or [None] * len(dates)
+
+    keys = {
+        "rain_mm": "rain_sum", "precipitation_mm": "precipitation_sum",
+        "rain_probability_pct": "precipitation_probability_max",
+        "temp_max_c": "temperature_2m_max", "temp_min_c": "temperature_2m_min",
+        "evapotranspiration_mm": "et0_fao_evapotranspiration", "wind_max_kmh": "windspeed_10m_max",
+    }
+    cols = {out: col(src) for out, src in keys.items()}
+    result_days = [{"date": d, **{out: cols[out][i] for out in keys}} for i, d in enumerate(dates)]
 
     hourly = data.get("hourly", {})
-    result = {
+    return {
         "location": name,
         "days": result_days,
         "soil_moisture_now": (hourly.get("soil_moisture_0_to_1cm") or [None])[0],
         "soil_temp_now_c": (hourly.get("soil_temperature_0cm") or [None])[0],
     }
-    _save_cache(cache_key, result)
-    return result
 
 
 def _hourly_rain(rlat: float, rlon: float, target_date: str) -> list[dict]:
@@ -247,6 +256,24 @@ def spray_safe_tomorrow(
     rainy_hours = [h for h in hourly if (h["rain_mm"] or 0) >= 0.1 or (h["prob_pct"] or 0) >= 40]
     dry_windows = [h["hour"] for h in hourly if (h["rain_mm"] or 0) < 0.1 and (h["prob_pct"] or 0) < 40]
 
+    reasons = _spray_unsafe_reasons(rain_mm, rain_prob, wind, humidity, temp_max)
+    return {
+        "date": tomorrow["date"],
+        "safe_to_spray": not reasons,
+        "reasons": reasons if reasons else ["conditions look good"],
+        "rain_mm": rain_mm,
+        "rain_probability_pct": rain_prob,
+        "wind_kmh": wind,
+        "humidity_pct": humidity,
+        "temp_max_c": temp_max,
+        "hourly_rain": hourly,
+        "rainy_hours": [h["hour"] for h in rainy_hours],
+        "dry_windows": dry_windows,
+    }
+
+
+def _spray_unsafe_reasons(rain_mm, rain_prob, wind, humidity, temp_max) -> list[str]:
+    """Return the reasons tomorrow is unsafe to spray (empty list = safe)."""
     reasons = []
     if rain_mm >= 2.0:
         reasons.append(f"rain expected {rain_mm}mm total (washes off contact sprays)")
@@ -258,21 +285,7 @@ def spray_safe_tomorrow(
         reasons.append(f"humidity {humidity}% today (delay contact sprays)")
     if temp_max > 35:
         reasons.append(f"max temp {temp_max}°C tomorrow (phytotoxicity risk 11am–3pm)")
-
-    safe = not reasons
-    return {
-        "date": tomorrow["date"],
-        "safe_to_spray": safe,
-        "reasons": reasons if reasons else ["conditions look good"],
-        "rain_mm": rain_mm,
-        "rain_probability_pct": rain_prob,
-        "wind_kmh": wind,
-        "humidity_pct": humidity,
-        "temp_max_c": temp_max,
-        "hourly_rain": hourly,
-        "rainy_hours": [h["hour"] for h in rainy_hours],
-        "dry_windows": dry_windows,
-    }
+    return reasons
 
 
 def crop_history(
@@ -303,33 +316,31 @@ def crop_history(
         "timezone": "Asia/Kolkata",
     })
 
-    daily = data.get("daily", {})
-    rain     = daily.get("precipitation_sum", [])
-    t_max    = daily.get("temperature_2m_max", [])
-    hum_max  = daily.get("relative_humidity_2m_max", [])
-
-    total_rain = round(sum(r for r in rain if r is not None), 1)
-    avg_t_max  = round(sum(t for t in t_max if t is not None) / max(len(t_max), 1), 1)
-    humid_days = sum(1 for h in hum_max if h is not None and h > 80)
-    heavy_rain = sum(1 for r in rain if r is not None and r > 20)
-    last7_rain = round(sum(r for r in rain[-7:] if r is not None), 1)
-    last7_humid = sum(1 for h in hum_max[-7:] if h is not None and h > 80)
-    days_since = (today - planted_at).days
-
     result = {
         "location": location_name,
         "planted_at": planted_date,
-        "days_since_plant": days_since,
-        "total_rain_mm": total_rain,
-        "avg_max_temp_c": avg_t_max,
-        "humid_days_over80": humid_days,
-        "heavy_rain_days_over20mm": heavy_rain,
-        "last_7d_rain_mm": last7_rain,
-        "last_7d_humid_days": last7_humid,
+        "days_since_plant": (today - planted_at).days,
+        **_crop_weather_stats(data),
         "_fetched_date": today.isoformat(),
     }
     _save_cache(cache_key, result)
     return result
+
+
+def _crop_weather_stats(data: dict) -> dict[str, Any]:
+    """Compute rain/temp/humidity risk stats from an ERA5 daily archive response."""
+    daily   = data.get("daily", {})
+    rain    = daily.get("precipitation_sum", [])
+    t_max   = daily.get("temperature_2m_max", [])
+    hum_max = daily.get("relative_humidity_2m_max", [])
+    return {
+        "total_rain_mm": round(sum(r for r in rain if r is not None), 1),
+        "avg_max_temp_c": round(sum(t for t in t_max if t is not None) / max(len(t_max), 1), 1),
+        "humid_days_over80": sum(1 for h in hum_max if h is not None and h > 80),
+        "heavy_rain_days_over20mm": sum(1 for r in rain if r is not None and r > 20),
+        "last_7d_rain_mm": round(sum(r for r in rain[-7:] if r is not None), 1),
+        "last_7d_humid_days": sum(1 for h in hum_max[-7:] if h is not None and h > 80),
+    }
 
 
 def historical_rainfall(
@@ -363,15 +374,7 @@ def historical_rainfall(
         "timezone": "Asia/Kolkata",
     })
 
-    daily = data.get("daily", {})
-    dates = daily.get("time", [])
-    rain  = daily.get("rain_sum", [0.0] * len(dates))
-
-    monthly: dict[str, float] = {}
-    for d, r in zip(dates, rain):
-        month = d[:7]
-        monthly[month] = round(monthly.get(month, 0.0) + (r or 0.0), 1)
-
+    monthly = _monthly_rainfall(data)
     return {
         "location": name,
         "start": start,
@@ -379,3 +382,15 @@ def historical_rainfall(
         "monthly_mm": monthly,
         "total_mm": round(sum(monthly.values()), 1),
     }
+
+
+def _monthly_rainfall(data: dict) -> dict[str, float]:
+    """Aggregate an ERA5 daily rain_sum response into {YYYY-MM: mm}."""
+    daily = data.get("daily", {})
+    dates = daily.get("time", [])
+    rain  = daily.get("rain_sum", [0.0] * len(dates))
+    monthly: dict[str, float] = {}
+    for d, r in zip(dates, rain):
+        month = d[:7]
+        monthly[month] = round(monthly.get(month, 0.0) + (r or 0.0), 1)
+    return monthly
