@@ -250,20 +250,26 @@ def _test_sanitizer(payload: str) -> tuple[bool, list[str]]:
 
 
 def _test_validator(payload_json: str) -> tuple[bool, str]:
-    """Try to parse payload as action dict and validate it."""
+    """Parse the payload as an action dict and run it through validate_action.
+
+    Returns ``(caught, detail)`` where ``caught`` is True if the validator
+    rejected the action. Non-JSON payloads return ``(False, ...)``.
+    """
     try:
         action = json.loads(payload_json)
-        from core.sanitizer import validate_action
-        module = _guess_module(action.get("action", ""))
-        ok, msg = validate_action(module, action)
-        return not ok, msg   # (caught=True if validator rejected it)
     except json.JSONDecodeError:
         return False, "not a JSON action dict"
+    try:
+        from core.sanitizer import validate_action
+        module = _guess_module(action.get("action", ""))
+        result = validate_action(module, action)
+        return (not result.valid), "; ".join(result.errors)
     except Exception as e:
         return False, str(e)
 
 
 def _guess_module(action: str) -> str:
+    """Infer which module an action belongs to, for validator routing. Defaults to health."""
     if action in {"log_bp","log_steps","log_weight","log_sleep","log_sugar","history","summary","trend","set_goal","nutrition"}:
         return "health"
     if action in {"log","budget_status","set_budget","add_goal","list_goals"}:
@@ -343,11 +349,69 @@ def _test_indirect_injection_gap() -> tuple[bool, str]:
 
 # ── Main runner ────────────────────────────────────────────────────────────────
 
+_SEV_TAGS = {"critical": "CRIT", "high": "HIGH", "medium": " MED", "low": " LOW"}
+
+
+def _run_single_attack(atk: dict) -> AttackResult:
+    """Run one attack through all defense layers and decide if it was bypassed.
+
+    Tests the sanitizer (all attacks), the validator (action_injection only),
+    and handler content-safety. An attack is bypassed if it reached neither the
+    sanitizer nor the validator (for non-action attacks) or if a handler leaked
+    sensitive content. Returns a populated AttackResult.
+    """
+    t0 = time.monotonic()
+    r = AttackResult(
+        attack_id=atk["id"], category=atk["category"],
+        description=atk["desc"], severity=atk["severity"], payload=atk["payload"],
+    )
+
+    r.sanitizer_caught, r.sanitizer_warnings = _test_sanitizer(atk["payload"])
+    if atk["category"] == "action_injection":
+        r.validator_caught, _ = _test_validator(atk["payload"])
+    r.content_leaked, r.leak_patterns = _test_handler_output(atk)
+
+    if not r.sanitizer_caught and not r.validator_caught and atk["category"] != "action_injection":
+        r.bypassed = True
+        r.bypass_layers.append("sanitizer")
+    if r.content_leaked:
+        r.bypassed = True
+        r.bypass_layers.append("content_safety")
+
+    r.duration_ms = int((time.monotonic() - t0) * 1000)
+    return r
+
+
+def _tally(results: list[AttackResult], key: str) -> dict[str, dict]:
+    """Group results by an attribute (``category`` or ``severity``) into
+    {value: {total, blocked, bypassed}} counts."""
+    out: dict[str, dict] = {}
+    for r in results:
+        bucket = out.setdefault(getattr(r, key), {"total": 0, "blocked": 0, "bypassed": 0})
+        bucket["total"] += 1
+        bucket["bypassed" if r.bypassed else "blocked"] += 1
+    return out
+
+
+def _print_attack_line(r: AttackResult) -> None:
+    """Print the one-line per-attack verbose result."""
+    icon = "✗ BYPASS" if r.bypassed else "✓ blocked"
+    caught_by = []
+    if r.sanitizer_caught: caught_by.append("sanitizer")
+    if r.validator_caught: caught_by.append("validator")
+    if not caught_by and not r.bypassed: caught_by.append("(not tested)")
+    caught_str = f"[{'+'.join(caught_by)}]" if caught_by else ""
+    print(f"  {icon}  [{_SEV_TAGS[r.severity]}] {r.attack_id}  {r.description[:45]:<45}  {caught_str}")
+
+
 def run_red_team(llm: bool = False, verbose: bool = True) -> RedTeamReport:
+    """Run the full attack suite against every defense layer.
+
+    Executes each attack via :func:`_run_single_attack`, aggregates per-category
+    and per-severity stats, runs the indirect-injection gap probe, prints a
+    summary when ``verbose``, and returns a :class:`RedTeamReport`.
+    """
     run_at = datetime.now().isoformat()
-    results: list[AttackResult] = []
-    by_cat: dict[str, dict] = {}
-    by_sev: dict[str, dict] = {}
 
     if verbose:
         print(f"\n{'='*65}")
@@ -355,101 +419,40 @@ def run_red_team(llm: bool = False, verbose: bool = True) -> RedTeamReport:
         print(f"  {len(ATTACK_SUITE)} attacks across {len({a['category'] for a in ATTACK_SUITE})} categories")
         print(f"{'='*65}")
 
+    results: list[AttackResult] = []
     for atk in ATTACK_SUITE:
-        t0 = time.monotonic()
-        r  = AttackResult(
-            attack_id=atk["id"],
-            category=atk["category"],
-            description=atk["desc"],
-            severity=atk["severity"],
-            payload=atk["payload"],
-        )
-
-        # Layer 1: Sanitizer
-        r.sanitizer_caught, r.sanitizer_warnings = _test_sanitizer(atk["payload"])
-
-        # Layer 2: Validator (for action_injection category)
-        if atk["category"] == "action_injection":
-            r.validator_caught, _ = _test_validator(atk["payload"])
-
-        # Layer 3: Handler content safety
-        r.content_leaked, r.leak_patterns = _test_handler_output(atk)
-
-        # Determine bypass
-        blocked_at_sanitizer  = r.sanitizer_caught
-        blocked_at_validator  = r.validator_caught
-        leaked_content        = r.content_leaked
-
-        if not blocked_at_sanitizer and not blocked_at_validator:
-            if atk["category"] != "action_injection":
-                # For non-action attacks: bypass = not caught by sanitizer
-                r.bypassed = True
-                r.bypass_layers.append("sanitizer")
-        if leaked_content:
-            r.bypassed = True
-            r.bypass_layers.append("content_safety")
-
-        r.duration_ms = int((time.monotonic() - t0) * 1000)
-
-        # Aggregate stats
-        cat = atk["category"]
-        sev = atk["severity"]
-        if cat not in by_cat: by_cat[cat] = {"total": 0, "blocked": 0, "bypassed": 0}
-        if sev not in by_sev: by_sev[sev] = {"total": 0, "blocked": 0, "bypassed": 0}
-        by_cat[cat]["total"] += 1
-        by_sev[sev]["total"] += 1
-        if r.bypassed:
-            by_cat[cat]["bypassed"] += 1
-            by_sev[sev]["bypassed"] += 1
-        else:
-            by_cat[cat]["blocked"] += 1
-            by_sev[sev]["blocked"] += 1
-
+        r = _run_single_attack(atk)
         results.append(r)
-
         if verbose:
-            icon = "✗ BYPASS" if r.bypassed else "✓ blocked"
-            caught_by = []
-            if r.sanitizer_caught:  caught_by.append("sanitizer")
-            if r.validator_caught:  caught_by.append("validator")
-            if not caught_by and not r.bypassed: caught_by.append("(not tested)")
-            caught_str = f"[{'+'.join(caught_by)}]" if caught_by else ""
-            sev_tag = {"critical": "CRIT", "high": "HIGH", "medium": " MED", "low": " LOW"}[atk["severity"]]
-            print(f"  {icon}  [{sev_tag}] {atk['id']}  {atk['desc'][:45]:<45}  {caught_str}")
+            _print_attack_line(r)
 
-    # Indirect injection gap test
+    by_cat = _tally(results, "category")
+    by_sev = _tally(results, "severity")
+
     indirect_gap, indirect_note = _test_indirect_injection_gap()
-    notes = []
-    if indirect_gap:
-        notes.append(f"INDIRECT INJECTION GAP: {indirect_note}")
+    notes = [f"INDIRECT INJECTION GAP: {indirect_note}"] if indirect_gap else []
 
-    bypasses    = [r for r in results if r.bypassed]
-    total       = len(results)
-    n_bypassed  = len(bypasses)
-    n_blocked   = total - n_bypassed
-    bypass_pct  = n_bypassed / total * 100 if total else 0
+    bypasses   = [r for r in results if r.bypassed]
+    total      = len(results)
+    n_bypassed = len(bypasses)
+    n_blocked  = total - n_bypassed
+    bypass_pct = n_bypassed / total * 100 if total else 0
 
     if verbose:
         _print_summary(total, n_blocked, n_bypassed, bypass_pct, by_cat, by_sev,
                        bypasses, indirect_gap, indirect_note)
 
     return RedTeamReport(
-        run_at=run_at,
-        total_attacks=total,
-        blocked=n_blocked,
-        bypassed=n_bypassed,
-        bypass_rate_pct=round(bypass_pct, 1),
-        by_category=by_cat,
-        by_severity=by_sev,
-        bypasses=bypasses,
-        all_results=results,
-        indirect_gap_found=indirect_gap,
-        notes=notes,
+        run_at=run_at, total_attacks=total, blocked=n_blocked, bypassed=n_bypassed,
+        bypass_rate_pct=round(bypass_pct, 1), by_category=by_cat, by_severity=by_sev,
+        bypasses=bypasses, all_results=results,
+        indirect_gap_found=indirect_gap, notes=notes,
     )
 
 
 def _print_summary(total, blocked, bypassed, bypass_pct, by_cat, by_sev,
                    bypasses, indirect_gap, indirect_note):
+    """Render the run summary: totals, per-category/severity bars, and bypass details."""
     print(f"\n{'─'*65}")
     print(f"  RESULTS:  {blocked}/{total} blocked  |  {bypassed} bypassed  |  bypass rate: {bypass_pct:.0f}%")
     print(f"{'─'*65}")
@@ -486,6 +489,7 @@ def _print_summary(total, blocked, bypassed, bypass_pct, by_cat, by_sev,
 
 
 def save_report(report: RedTeamReport) -> Path:
+    """Write a timestamped JSON report plus red_team_latest.json. Returns the path."""
     LOG_DIR = PROJECT / "logs" / "security"
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
