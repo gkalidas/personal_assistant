@@ -198,18 +198,38 @@ best-effort.
 
 ---
 
-## 6. Build checklist (todo)
+## 6. Build checklist
 
-- [ ] `security/sources.py` — feed registry + normalized fetchers (Tier 1/2/3).
-- [ ] Wire OWASP LLM Top 10 + MITRE ATLAS + vendor RSS into `_fetch_all_sources()`.
-- [ ] Bridge `threat_intel` reproduced bypasses → `autodefense` (Tier 1/2 only).
-- [ ] Tier-3 / non-reproduced → `logs/security/review_queue.json`.
-- [ ] Rollback guard in `autodefense._promote_pattern` (snapshot → posture check → revert).
-- [ ] Per-run auto-promotion rate limit (≤5/day).
-- [ ] `task_source_intel` in `guardian.py` (daily) + `sources` weight in `posture.py`.
-- [ ] Homoglyph/confusables normalization pass in `sanitize_input`.
-- [ ] Expand `autodefense._NORMAL_INPUTS` false-positive corpus.
-- [ ] Tests: feed-parse fixtures, poisoned-advisory rejection, rollback-on-regression.
+**BUILT (2026-06-22):**
+- [x] `security/sources.py` — tiered feed registry + RSS/YAML/markdown fetchers,
+      scrub-on-ingest, relevance filter, graceful per-source failure.
+- [x] OWASP LLM Top 10 (markdown), MITRE ATLAS (yaml), vendor + researcher RSS
+      (Project Zero, MSRC, Simon Willison, Embrace The Red) registered.
+- [x] `security/source_intel.py` — bridge: reproduce each item as a real bypass;
+      Tier-1/2 reproduced → `autodefense`; Tier-3 / non-reproduced → review queue.
+- [x] `logs/security/review_queue.json` (deduped) for human review.
+- [x] Rollback guard in `autodefense` (`_snapshot_patterns` / `_restore_patterns`
+      / `_enforce_rollback_guard`): reverts the batch if red-team bypasses rise or
+      any jailbreak escape appears.
+- [x] Per-run rate limit `MAX_PROMOTIONS_PER_RUN = 5`.
+- [x] `task_source_intel` in `guardian.py` (daily) + `Source Intel` component
+      (5% weight) in `posture.py`; weights still sum to 1.0.
+- [x] Homoglyph/confusables normalization in `sanitize_input`
+      (`_normalize_confusables`: NFKC + Cyrillic/Greek→Latin), detection-only so
+      Marathi/Devanagari text is preserved.
+
+**REMAINING (nice-to-have):**
+- [ ] Expand `autodefense._NORMAL_INPUTS` false-positive corpus over time.
+- [ ] Feed-parse fixture tests + a poisoned-advisory rejection regression test.
+- [ ] Add NIST AI 100-2 and vendor (OpenAI/Anthropic) feeds once stable URLs confirmed.
+
+### How to run / inspect
+```bash
+python security/source_intel.py --dry-run   # fetch + reproduce, no changes
+python security/guardian.py sourceintel      # live (validated auto-apply)
+cat logs/security/review_queue.json          # items awaiting human review
+cat logs/security/source_intel_latest.json   # last run summary
+```
 
 ---
 
