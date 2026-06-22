@@ -34,6 +34,7 @@ _SCHEDULE_WORDS= {"next", "queue", "due", "overdue", "task", "run", "running",
 
 
 def _intent(query: str) -> str:
+    """Classify a system query into an intent (load/guardian/schedule/pattern/all)."""
     q = query.lower()
     # guardian + schedule words together → user is asking about guardian timing
     if any(w in q for w in _GUARDIAN_WORDS) and any(w in q for w in _SCHEDULE_WORDS):
@@ -55,6 +56,7 @@ def _intent(query: str) -> str:
 # ── Data readers ───────────────────────────────────────────────────────────────
 
 def _latest_report(name: str) -> dict | None:
+    """Load logs/security/<name>_latest.json for the system view, or None."""
     path = LOG_DIR / f"{name}_latest.json"
     if not path.exists():
         return None
@@ -65,6 +67,7 @@ def _latest_report(name: str) -> dict | None:
 
 
 def _load_now() -> dict:
+    """Return the current load snapshot from the load monitor."""
     try:
         from security.load_monitor import report
         return report()
@@ -161,6 +164,7 @@ def _guardian_schedule_lines() -> list[str]:
 # ── Response builders ──────────────────────────────────────────────────────────
 
 def _fmt_load() -> tuple[str, dict]:
+    """Format the current load + usage pattern into a display block."""
     r = _load_now()
     if "error" in r:
         return f"Could not read load monitor: {r['error']}", {}
@@ -193,80 +197,84 @@ def _fmt_load() -> tuple[str, dict]:
 
 
 def _fmt_pattern() -> tuple[str, dict]:
+    """Format the usage-pattern heatmap into a display block."""
     plines = _pattern_lines()
     text   = "Your 7-day system load pattern:\n" + "\n".join(plines)
     return text, {}
 
 
+def _anomaly_lines(anomaly: dict) -> list[str]:
+    """Format the latest anomaly-detection report into display lines."""
+    n  = anomaly.get("alert_count", 0)
+    at = (anomaly.get("checked_at") or "")[:16]
+    if n == 0:
+        return [f"Anomaly check ({at}): clean — {anomaly.get('events_checked', 0)} events checked, no alerts."]
+    lines = [f"Anomaly check ({at}): {n} ALERT(S):"]
+    lines += [f"  [{a['severity']}] {a['message']}" for a in anomaly.get("alerts", [])[:3]]
+    return lines
+
+
+def _cve_lines(vuln: dict) -> list[str]:
+    """Format the latest CVE-scan report into display lines."""
+    n  = vuln.get("total_vulns", 0)
+    at = (vuln.get("scanned_at") or "")[:16]
+    if n == 0:
+        return [f"CVE scan ({at}): all {vuln.get('scanned_packages', '?')} packages clean."]
+    sc = vuln.get("severity_counts", {})
+    return [f"CVE scan ({at}): {n} vulnerability(-ies) found — "
+            f"CRITICAL={sc.get('CRITICAL',0)} HIGH={sc.get('HIGH',0)} MEDIUM={sc.get('MEDIUM',0)}"]
+
+
+def _threat_intel_lines(ti: dict) -> list[str]:
+    """Format the latest threat-intel report into display lines."""
+    n  = ti.get("vulnerabilities_found", 0)
+    at = (ti.get("checked_at") or "")[:16]
+    if n == 0:
+        return [f"Threat intel ({at}): {ti.get('new_threats_tested', 0)} new threats tested — not vulnerable."]
+    lines = [f"Threat intel ({at}): {n} VULNERABILITY(-IES) — MANUAL FIX REQUIRED:"]
+    for v in ti.get("vulnerabilities", [])[:2]:
+        th, res = v.get("threat", {}), v.get("result", {})
+        lines.append(f"  [{th.get('severity')}] {th.get('id')}: {th.get('title','')[:60]}")
+        lines.append(f"    Fix: {res.get('fix','')[:120]}")
+    return lines
+
+
+def _code_audit_lines(audit: dict) -> list[str]:
+    """Format the latest code-audit report into a display line."""
+    sc = audit.get("severity_counts", {})
+    at = (audit.get("audited_at") or "")[:16]
+    return [f"Code audit ({at}): {audit.get('total_issues', 0)} issue(s) — "
+            f"CRITICAL={sc.get('CRITICAL',0)} HIGH={sc.get('HIGH',0)} "
+            f"MEDIUM={sc.get('MEDIUM',0)} LOW={sc.get('LOW',0)}"]
+
+
 def _fmt_guardian() -> tuple[str, dict]:
-    lines = []
-
-    # Anomaly report
-    anomaly = _latest_report("anomaly_detect")
-    if anomaly:
-        n = anomaly.get("alert_count", 0)
-        checked = anomaly.get("events_checked", 0)
-        at = (anomaly.get("checked_at") or "")[:16]
-        if n == 0:
-            lines.append(f"Anomaly check ({at}): clean — {checked} events checked, no alerts.")
-        else:
-            lines.append(f"Anomaly check ({at}): {n} ALERT(S):")
-            for a in anomaly.get("alerts", [])[:3]:
-                lines.append(f"  [{a['severity']}] {a['message']}")
-
-    # CVE scan
-    vuln = _latest_report("vuln_scan")
-    if vuln:
-        n   = vuln.get("total_vulns", 0)
-        src = vuln.get("source", "OSV.dev")
-        at  = (vuln.get("scanned_at") or "")[:16]
-        if n == 0:
-            lines.append(f"CVE scan ({at}): all {vuln.get('scanned_packages', '?')} packages clean.")
-        else:
-            sc = vuln.get("severity_counts", {})
-            lines.append(f"CVE scan ({at}): {n} vulnerability(-ies) found — "
-                         f"CRITICAL={sc.get('CRITICAL',0)} HIGH={sc.get('HIGH',0)} "
-                         f"MEDIUM={sc.get('MEDIUM',0)}")
-
-    # Threat intel
-    ti = _latest_report("threat_intel")
-    if ti:
-        n   = ti.get("vulnerabilities_found", 0)
-        t   = ti.get("new_threats_tested", 0)
-        at  = (ti.get("checked_at") or "")[:16]
-        if n == 0:
-            lines.append(f"Threat intel ({at}): {t} new threats tested — not vulnerable.")
-        else:
-            lines.append(f"Threat intel ({at}): {n} VULNERABILITY(-IES) — MANUAL FIX REQUIRED:")
-            for v in ti.get("vulnerabilities", [])[:2]:
-                th = v.get("threat", {})
-                res = v.get("result", {})
-                lines.append(f"  [{th.get('severity')}] {th.get('id')}: {th.get('title','')[:60]}")
-                lines.append(f"    Fix: {res.get('fix','')[:120]}")
-
-    # Code audit
-    audit = _latest_report("code_audit")
-    if audit:
-        n  = audit.get("total_issues", 0)
-        sc = audit.get("severity_counts", {})
-        at = (audit.get("audited_at") or "")[:16]
-        lines.append(f"Code audit ({at}): {n} issue(s) — "
-                     f"CRITICAL={sc.get('CRITICAL',0)} HIGH={sc.get('HIGH',0)} "
-                     f"MEDIUM={sc.get('MEDIUM',0)} LOW={sc.get('LOW',0)}")
-
+    """Format the latest guardian reports (anomaly, CVE, threat intel, code audit)."""
+    builders = [
+        ("anomaly_detect", _anomaly_lines),
+        ("vuln_scan",      _cve_lines),
+        ("threat_intel",   _threat_intel_lines),
+        ("code_audit",     _code_audit_lines),
+    ]
+    lines: list[str] = []
+    for name, builder in builders:
+        report = _latest_report(name)
+        if report:
+            lines += builder(report)
     if not lines:
         lines = ["No guardian reports found yet. The guardian runs in the background — check back soon."]
-
     return "\n".join(lines), {}
 
 
 def _fmt_schedule() -> tuple[str, dict]:
+    """Format the guardian task schedule into a display block."""
     slines = _guardian_schedule_lines()
     text = "Guardian task schedule:\n" + "\n".join(slines)
     return text, {}
 
 
 def _fmt_all() -> tuple[str, dict]:
+    """Format the combined system + guardian + schedule view."""
     load_text,   ldata = _fmt_load()
     guard_text,  _     = _fmt_guardian()
     sched_text,  _     = _fmt_schedule()
@@ -285,6 +293,7 @@ class SystemModule(BaseModule):
     )
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
+        """Route a system query to the matching formatter by intent."""
         intent = _intent(query)
 
         if intent == "load":
@@ -306,6 +315,7 @@ class SystemModule(BaseModule):
         )
 
     def _follow_up(self, intent: str) -> str | None:
+        """Return a context-appropriate follow-up suggestion for a system intent."""
         if intent == "load":
             return "Want to see the full 24-hour usage pattern?"
         if intent == "guardian":
