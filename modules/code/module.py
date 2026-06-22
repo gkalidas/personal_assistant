@@ -31,6 +31,7 @@ _SECURITY_WORDS = {"security", "vulnerabilities", "bandit", "insecure", "issues"
 
 
 def _intent(query: str) -> str:
+    """Classify a code query into an analysis intent (analyze/explain/complexity/security/loc)."""
     q = query.lower()
     if any(w in q for w in _EXPLAIN_WORDS):
         return "explain"
@@ -68,6 +69,7 @@ def _resolve_path(query: str) -> Path:
 
 
 def _do_analyze(query: str) -> tuple[str, dict | None]:
+    """Handler: run a full codebase analysis and format the summary."""
     target = _resolve_path(query)
     log.info("code analyze: %s", target)
     scan = scan_directory(target)
@@ -78,6 +80,7 @@ def _do_analyze(query: str) -> tuple[str, dict | None]:
 
 
 def _do_explain(query: str) -> tuple[str, dict | None]:
+    """Handler: explain what a module/directory does."""
     target = _resolve_path(query)
     scan = scan_directory(target)
     if "error" in scan:
@@ -99,6 +102,7 @@ def _do_explain(query: str) -> tuple[str, dict | None]:
 
 
 def _do_complexity(query: str) -> tuple[str, dict | None]:
+    """Handler: report the most complex functions."""
     target = _resolve_path(query)
     scan = scan_directory(target)
     if "error" in scan:
@@ -114,6 +118,7 @@ def _do_complexity(query: str) -> tuple[str, dict | None]:
 
 
 def _do_security(query: str) -> tuple[str, dict | None]:
+    """Handler: run a security scan over the codebase."""
     target = _resolve_path(query)
     scan = scan_directory(target)
     if "error" in scan:
@@ -128,6 +133,7 @@ def _do_security(query: str) -> tuple[str, dict | None]:
 
 
 def _do_loc(query: str) -> tuple[str, dict | None]:
+    """Handler: report lines-of-code and file breakdown."""
     target = _resolve_path(query)
     scan = scan_directory(target)
     if "error" in scan:
@@ -147,6 +153,7 @@ class CodeModule(BaseModule):
     )
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
+        """Route a code query to the matching analysis handler by intent."""
         intent = _intent(query)
         log.info("code intent=%s q=%r", intent, query[:80])
 
