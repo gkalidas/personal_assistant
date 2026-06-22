@@ -77,8 +77,6 @@ Examples (follow this format exactly):
 
 
 def _profile_note(context: dict) -> str:
-
-
     """Render a short health-profile context block for the LLM system prompt."""
     health = context.get("profile", {}).get("health", {})
     lines = [f"Today: {date.today().isoformat()}"]
@@ -101,8 +99,6 @@ def _profile_note(context: dict) -> str:
 
 
 def _recent_history(limit: int = 4) -> list[dict]:
-
-
     """Return the last few health query/response pairs for conversation context (sanitized)."""
     try:
         evts = recent_events(module="health", limit=limit * 2)
@@ -119,8 +115,6 @@ def _recent_history(limit: int = 4) -> list[dict]:
 
 
 def _call_llm(query: str, context: dict) -> dict:
-
-
     """Call the health LLM with profile + history and return the parsed action dict."""
     extras = _profile_note(context)
     history = _recent_history(limit=4)
@@ -149,7 +143,6 @@ def _call_llm(query: str, context: dict) -> dict:
 # ── Format helpers ────────────────────────────────────────────────────────────
 
 def _fmt_bp_row(r: dict) -> str:
-
     """Format a BP reading row as a display line."""
     systolic = int(r["value1"])
     diastolic = int(r["value2"]) if r.get("value2") else "?"
@@ -158,16 +151,12 @@ def _fmt_bp_row(r: dict) -> str:
 
 
 def _fmt_steps_row(r: dict) -> str:
-
-
     """Format a steps reading row as a display line."""
     cat, note = tools.interpret_steps(int(r["value1"]))
     return f"  {r['date']} — {int(r['value1']):,} steps [{cat}]"
 
 
 def _fmt_generic_row(r: dict, unit: str = "") -> str:
-
-
     """Format a generic reading row as a display line."""
     v = r["value1"]
     u = r.get("unit") or unit
@@ -177,7 +166,6 @@ def _fmt_generic_row(r: dict, unit: str = "") -> str:
 # ── Per-action handlers ───────────────────────────────────────────────────────
 
 def _handle_log_bp(action: dict) -> tuple[str, dict | None]:
-
     """Handler: log a blood-pressure reading with interpretation."""
     s = int(action.get("systolic", 0))
     d = int(action.get("diastolic", 0))
@@ -189,8 +177,6 @@ def _handle_log_bp(action: dict) -> tuple[str, dict | None]:
 
 
 def _handle_log_steps(action: dict) -> tuple[str, dict | None]:
-
-
     """Handler: log a step count with goal progress."""
     count = int(action.get("count", 0))
     if count <= 0:
@@ -206,8 +192,6 @@ def _handle_log_steps(action: dict) -> tuple[str, dict | None]:
 
 
 def _handle_log_weight(action: dict) -> tuple[str, dict | None]:
-
-
     """Handler: log a weight reading and compare to the last."""
     kg = float(action.get("kg", 0))
     if kg <= 0:
@@ -222,8 +206,6 @@ def _handle_log_weight(action: dict) -> tuple[str, dict | None]:
 
 
 def _handle_log_sleep(action: dict) -> tuple[str, dict | None]:
-
-
     """Handler: log sleep hours with interpretation."""
     hours = float(action.get("hours", 0))
     if hours <= 0:
@@ -234,8 +216,6 @@ def _handle_log_sleep(action: dict) -> tuple[str, dict | None]:
 
 
 def _handle_log_sugar(action: dict) -> tuple[str, dict | None]:
-
-
     """Handler: log a blood-sugar reading with interpretation."""
     mg_dl = float(action.get("mg_dl", 0))
     if mg_dl <= 0:
@@ -248,8 +228,6 @@ def _handle_log_sugar(action: dict) -> tuple[str, dict | None]:
 
 
 def _handle_history(action: dict) -> tuple[str, dict | None]:
-
-
     """Handler: show recent history for a reading type."""
     type_ = action.get("type", "bp")
     days  = int(action.get("days", 7))
@@ -270,8 +248,6 @@ def _handle_history(action: dict) -> tuple[str, dict | None]:
 
 
 def _handle_summary(action: dict) -> tuple[str, dict | None]:
-
-
     """Handler: summarise today's readings."""
     s = tools.today_summary()
     if not s["readings"]:
@@ -301,8 +277,6 @@ def _handle_summary(action: dict) -> tuple[str, dict | None]:
 
 
 def _handle_trend(action: dict) -> tuple[str, dict | None]:
-
-
     """Handler: show a multi-day trend for a reading type."""
     type_ = action.get("type", "steps")
     days  = int(action.get("days", 14))
@@ -325,8 +299,6 @@ def _handle_trend(action: dict) -> tuple[str, dict | None]:
 
 
 def _handle_set_goal(action: dict) -> tuple[str, dict | None]:
-
-
     """Handler: set a goal target for a reading type."""
     type_  = action.get("type")
     target = float(action.get("target", 0))
@@ -413,8 +385,6 @@ _NUTRITION_FOOTER = [
 
 
 def _handle_nutrition(action: dict) -> tuple[str, dict | None]:
-
-
     """Handler: return nutrition guidance for a topic."""
     topic    = action.get("topic", "general nutrition")
     topic_lc = topic.lower()
@@ -434,8 +404,6 @@ def _handle_nutrition(action: dict) -> tuple[str, dict | None]:
 
 
 def _handle_chat(action: dict) -> tuple[str, dict | None]:
-
-
     """Handler: return the LLM chat reply verbatim."""
     return action.get("reply", ""), None
 
@@ -458,8 +426,6 @@ _HANDLERS: dict[str, Any] = {
 
 
 def _execute(action: dict) -> tuple[str, dict | None]:
-
-
     """Dispatch a validated health action to its handler and return (text, data)."""
     handler = _HANDLERS.get(action.get("action", ""))
     if handler:
@@ -487,12 +453,10 @@ class HealthModule(BaseModule):
     )
 
     def __init__(self):
-
         """Initialize the health module (ensures the DB schema exists)."""
         db.init()
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
-
         """Route a health query: LLM → validate_action → dispatch."""
         t0 = time.monotonic()
         try:

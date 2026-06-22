@@ -94,8 +94,6 @@ Examples (follow this format exactly):
 
 
 def _profile_summary(context: dict) -> str:
-
-
     """Render a short farm/profile context block for the LLM system prompt."""
     farm = context.get("default_farm", {})
     profile = context.get("profile", {})
@@ -138,8 +136,6 @@ def _recent_history(limit: int = 4) -> list[dict]:
 
 
 def _call_llm(query: str, context: dict) -> dict:
-
-
     """Call the farming LLM with profile + recent history and return the parsed action dict."""
     from datetime import date as _date
     extras = "\n" + _profile_summary(context)
@@ -178,8 +174,6 @@ def _call_llm(query: str, context: dict) -> dict:
 
 
 def _fmt_forecast(days: list[dict]) -> str:
-
-
     """Format a forecast dict into a short human-readable line."""
     lines = []
     for d in days:
@@ -248,7 +242,6 @@ def _loc(
 # ── Action handlers (one per farming action) ──────────────────────────────────
 
 def _h_add_plot(action, _lat, _lon, _name):
-
     """Handler: create a plot from the action fields."""
     loc = action.get("location", "")
     lat = lon = None
@@ -262,7 +255,6 @@ def _h_add_plot(action, _lat, _lon, _name):
     return f"Plot added: {action['name']}{area}{loc_str}", r
 
 def _h_list_plots(action, _lat, _lon, _name):
-
     """Handler: list all plots."""
     plots = tools.list_plots()
     if not plots:
@@ -275,7 +267,6 @@ def _h_list_plots(action, _lat, _lon, _name):
     return "\n".join(lines), plots
 
 def _h_plant_crop(action, _lat, _lon, _name):
-
     """Handler: plant a crop on the named plot."""
     r = tools.plant_crop(action["plot"], action["crop"], action.get("variety"),
                          action.get("planted_date"), action.get("expected_harvest"))
@@ -285,7 +276,6 @@ def _h_plant_crop(action, _lat, _lon, _name):
     return f"Planted {action['crop']} in {action['plot']} on {r['planted']}{harvest}", r
 
 def _h_list_crops(action, _lat, _lon, _name):
-
     """Handler: list crops, optionally for one plot."""
     crops = tools.list_crops(action.get("plot"))
     if not crops:
@@ -298,14 +288,12 @@ def _h_list_crops(action, _lat, _lon, _name):
     return "\n".join(lines), crops
 
 def _h_harvest_crop(action, _lat, _lon, _name):
-
     """Handler: mark a crop harvested."""
     r = tools.update_crop_status(action["crop_id"], "harvested", action.get("yield_kg"))
     yield_str = f" — {action['yield_kg']}kg yield" if action.get("yield_kg") else ""
     return f"Crop #{action['crop_id']} marked as harvested{yield_str}", r
 
 def _h_log_spray(action, _lat, _lon, _name):
-
     """Handler: log a spray (auto-logs cost to finance when given)."""
     r = tools.log_spray(action["plot"], action["chemical"], action.get("quantity"), action.get("reason"))
     if "error" in r:
@@ -326,7 +314,6 @@ def _h_log_spray(action, _lat, _lon, _name):
     return note, r
 
 def _h_spray_history(action, _lat, _lon, _name):
-
     """Handler: show recent spray history for a plot."""
     logs = tools.spray_history(action.get("plot", ""))
     if not logs:
@@ -338,7 +325,6 @@ def _h_spray_history(action, _lat, _lon, _name):
     return "\n".join(lines), logs
 
 def _h_log_observation(action, _lat, _lon, _name):
-
     """Handler: record a field observation on a plot."""
     r = tools.log_observation(action["plot"], action["type"], action["description"],
                               action.get("severity"))
@@ -348,7 +334,6 @@ def _h_log_observation(action, _lat, _lon, _name):
     return f"Observation logged on {action['plot']}: {action['type']}{sev}", r
 
 def _h_open_observations(action, _lat, _lon, _name):
-
     """Handler: list unresolved observations."""
     obs = tools.open_observations(action.get("plot"))
     if not obs:
@@ -361,7 +346,6 @@ def _h_open_observations(action, _lat, _lon, _name):
     return "\n".join(lines), obs
 
 def _h_mandi_price(action, _lat, _lon, _name):
-
     """Handler: fetch live APMC/mandi prices for a commodity."""
     crop = action.get("commodity") or action.get("crop")
     if not crop:
@@ -374,7 +358,6 @@ def _h_mandi_price(action, _lat, _lon, _name):
     return format_prices(data), data
 
 def _h_ndvi_health(action, _lat, _lon, _name):
-
     """Handler: fetch NDVI crop-health for a location/plot."""
     loc_raw = action.get("location") or "barloni"
     name, lat, lon = _loc(loc_raw, _lat, _lon, _name)
@@ -385,7 +368,6 @@ def _h_ndvi_health(action, _lat, _lon, _name):
     return format_ndvi_report(data, plot_name=name or "Barloni farm"), data
 
 def _h_disease_info(action, _lat, _lon, _name):
-
     """Handler: return knowledge-base disease info for a crop."""
     crop = action.get("crop") or None
     if not crop:
@@ -401,7 +383,6 @@ def _h_disease_info(action, _lat, _lon, _name):
     return (kb if kb else f"No knowledge base found for {crop}."), None
 
 def _h_diagnose_photo(action, _lat, _lon, _name):
-
     """Handler: diagnose a crop disease from a photo."""
     if not farming_server_running():
         kb = kb_context_for_llm(action.get("crop", "pomegranate"))
@@ -418,7 +399,6 @@ def _h_diagnose_photo(action, _lat, _lon, _name):
     return format_diagnosis(result), result
 
 def _h_weather_now(action, _lat, _lon, _name):
-
     """Handler: current weather for the farm."""
     loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
     data = wx.current_conditions(lat=lat, lon=lon, name=loc)
@@ -429,7 +409,6 @@ def _h_weather_now(action, _lat, _lon, _name):
     ), data
 
 def _h_weather_forecast(action, _lat, _lon, _name):
-
     """Handler: multi-day weather forecast for the farm."""
     loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
     days = action.get("days", 7)
@@ -440,7 +419,6 @@ def _h_weather_forecast(action, _lat, _lon, _name):
     return "\n".join(lines), fc
 
 def _h_spray_safe_tomorrow(action, _lat, _lon, _name):
-
     """Handler: assess whether tomorrow is safe to spray."""
     loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
     result = wx.spray_safe_tomorrow(lat=lat, lon=lon, name=loc)
@@ -468,7 +446,6 @@ def _h_spray_safe_tomorrow(action, _lat, _lon, _name):
     return "\n".join(lines), result
 
 def _h_rainfall_history(action, _lat, _lon, _name):
-
     """Handler: historical monthly rainfall for the farm."""
     loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
     r = wx.historical_rainfall(lat=lat, lon=lon, name=loc,
@@ -479,7 +456,6 @@ def _h_rainfall_history(action, _lat, _lon, _name):
     return "\n".join(lines), r
 
 def _h_crop_history(action, _lat, _lon, _name):
-
     """Handler: weather/risk history since a crop was planted."""
     plot = tools.get_plot(action.get("plot", ""))
     if not plot:
@@ -503,7 +479,6 @@ def _h_crop_history(action, _lat, _lon, _name):
     ), h
 
 def _h_soil_data(action, _lat, _lon, _name):
-
     """Handler: soil properties for the farm location."""
     plot_name = action.get("plot")
     if plot_name:
@@ -516,7 +491,6 @@ def _h_soil_data(action, _lat, _lon, _name):
     return format_soil(data), data
 
 def _h_season_summary(action, _lat, _lon, _name):
-
     """Handler: season-wide farm summary."""
     s = tools.season_summary()
     return (
@@ -529,7 +503,6 @@ def _h_season_summary(action, _lat, _lon, _name):
     ), s
 
 def _h_analysis_history(action, _lat, _lon, _name):
-
     """Handler: list recent disease analyses from the farming server."""
     limit = int(action.get("limit", 10))
     rows = farming_history(limit=limit)
@@ -546,7 +519,6 @@ def _h_analysis_history(action, _lat, _lon, _name):
     return "\n".join(lines), rows
 
 def _h_chat(action, _lat, _lon, _name):
-
     """Handler: return the LLM chat reply verbatim."""
     return action.get("reply", ""), None
 
@@ -580,8 +552,6 @@ _DISPATCH: dict[str, Any] = {
 
 
 def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | None]:
-
-
     """Dispatch a validated action to its handler and return (text, data)."""
     a    = action.get("action")
     farm = (context or {}).get("default_farm", {})
