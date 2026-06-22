@@ -61,6 +61,7 @@ def read_document(path: str | Path) -> dict[str, Any]:
 
 
 def _read_pdf(p: Path) -> dict:
+    """Extract text + title from a PDF via pypdf. Returns a result dict."""
     try:
         import pypdf
     except ImportError:
@@ -83,6 +84,7 @@ def _read_pdf(p: Path) -> dict:
 
 
 def _read_docx(p: Path) -> dict:
+    """Extract paragraph and table text + title from a DOCX. Returns a result dict."""
     try:
         from docx import Document
     except ImportError:
@@ -111,6 +113,7 @@ def _read_docx(p: Path) -> dict:
 
 
 def _read_xlsx(p: Path) -> dict:
+    """Extract cell text (up to 500 rows/sheet) from an XLSX. Returns a result dict."""
     try:
         import openpyxl
     except ImportError:
@@ -142,6 +145,7 @@ def _read_xlsx(p: Path) -> dict:
 
 
 def _read_text(p: Path, ext: str) -> dict:
+    """Read a plain-text/markdown/csv/log/json file. Returns a result dict."""
     try:
         text = p.read_text(encoding="utf-8", errors="replace").strip()
     except Exception as e:
@@ -153,6 +157,7 @@ def _read_text(p: Path, ext: str) -> dict:
 
 def _result(typ: str, text: str, pages: int | None = None,
             title: str | None = None) -> dict:
+    """Build a success result dict, truncating text to _MAX_CHARS."""
     truncated = len(text) > _MAX_CHARS
     return {
         "text":      text[:_MAX_CHARS],
@@ -166,6 +171,7 @@ def _result(typ: str, text: str, pages: int | None = None,
 
 
 def _err(typ: str, msg: str) -> dict:
+    """Build an error result dict with the given type and message."""
     return {
         "text": "", "type": typ, "pages": None,
         "title": None, "chars": 0, "truncated": False,
