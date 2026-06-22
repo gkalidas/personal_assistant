@@ -12,6 +12,7 @@ _kb_cache: dict[str, dict] = {}
 
 
 def _load(crop: str) -> dict:
+    """Load and cache a crop\'s disease KB from crops/<crop>.json ({} if missing)."""
     key = crop.lower()
     if key in _kb_cache:
         return _kb_cache[key]
@@ -27,6 +28,7 @@ def _load(crop: str) -> dict:
 
 
 def list_crops_with_kb() -> list[str]:
+    """Return the crop names that have a disease KB file."""
     return [p.stem for p in _KB_DIR.glob("*.json")]
 
 
