@@ -13,6 +13,7 @@ def log_reading(
     meal_state: str | None = None,
     notes: str | None = None,
 ) -> dict:
+    """Insert a health reading (notes encrypted) and return its id + key fields."""
     now = datetime.now()
     with conn() as c:
         cur = c.execute(
@@ -35,12 +36,14 @@ def log_reading(
 # ── Queries ───────────────────────────────────────────────────────────────────
 
 def _decrypt_row(row) -> dict:
+    """Turn a reading row into a dict with the notes field decrypted."""
     d = dict(row)
     d["notes"] = decrypt(d.get("notes"))
     return d
 
 
 def get_latest(type_: str) -> dict | None:
+    """Return the most recent reading of a type (notes decrypted), or None."""
     with conn() as c:
         row = c.execute(
             "SELECT * FROM health_readings WHERE type=? ORDER BY date DESC, time DESC LIMIT 1",
@@ -50,6 +53,7 @@ def get_latest(type_: str) -> dict | None:
 
 
 def get_history(type_: str, days: int = 7) -> list[dict]:
+    """Return readings of a type from the last `days` days, newest first."""
     with conn() as c:
         rows = c.execute(
             """SELECT * FROM health_readings
@@ -61,6 +65,7 @@ def get_history(type_: str, days: int = 7) -> list[dict]:
 
 
 def today_summary() -> dict:
+    """Return today's readings grouped under a date key."""
     today = date.today().isoformat()
     with conn() as c:
         rows = c.execute(
@@ -72,6 +77,7 @@ def today_summary() -> dict:
 
 
 def daily_trend(type_: str, days: int = 14) -> list[dict]:
+    """Return per-day average value1/value2 for a type over `days` days."""
     with conn() as c:
         rows = c.execute(
             """SELECT date,
@@ -89,6 +95,7 @@ def daily_trend(type_: str, days: int = 14) -> list[dict]:
 # ── Goals ─────────────────────────────────────────────────────────────────────
 
 def set_goal(type_: str, target: float, unit: str | None = None, notes: str | None = None) -> dict:
+    """Insert or update the goal target for a reading type."""
     with conn() as c:
         c.execute(
             """INSERT INTO health_goals (type, target, unit, notes, updated_at)
@@ -104,6 +111,7 @@ def set_goal(type_: str, target: float, unit: str | None = None, notes: str | No
 
 
 def get_goals() -> dict[str, dict]:
+    """Return all health goals keyed by reading type."""
     with conn() as c:
         rows = c.execute("SELECT * FROM health_goals").fetchall()
         return {r["type"]: dict(r) for r in rows}
@@ -151,6 +159,7 @@ def interpret_sugar(mg_dl: float, meal_state: str | None) -> tuple[str, str]:
 
 
 def interpret_steps(count: int, goal: int = 10000) -> tuple[str, str]:
+    """Return (category, advice) for a step count vs the daily goal."""
     pct = count / goal * 100
     if pct >= 100:
         return "Goal achieved!", f"{count:,} steps — excellent."
@@ -162,6 +171,7 @@ def interpret_steps(count: int, goal: int = 10000) -> tuple[str, str]:
 
 
 def interpret_sleep(hours: float) -> tuple[str, str]:
+    """Return (category, advice) for a sleep duration in hours."""
     if hours >= 9.5:
         return "Oversleeping", "More than 9.5 hours may indicate health issues. Check with a doctor."
     if hours >= 7:
