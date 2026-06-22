@@ -108,7 +108,14 @@ _MODULE_EXAMPLES: dict[str, list[str]] = {
 
 
 class EmbeddingRouter:
+    """Semantic router: embeds the query and finds the nearest example phrase.
+
+    The index is built in a background thread so import/startup is non-blocking;
+    until it is ready, route() returns None and the caller uses the LLM router.
+    """
+
     def __init__(self):
+        """Start building the embedding index in a background daemon thread."""
         self._model = None
         self._index = None
         self._labels: list[str] = []   # module name for each indexed vector
@@ -118,6 +125,7 @@ class EmbeddingRouter:
         threading.Thread(target=self._build, daemon=True, name="embed-router").start()
 
     def _build(self):
+        """Embed all module example phrases and build the HNSW cosine index (background)."""
         try:
             import hnswlib
             from fastembed import TextEmbedding
@@ -192,6 +200,7 @@ _init_lock = threading.Lock()
 
 
 def get_router() -> EmbeddingRouter:
+    """Return the process-wide EmbeddingRouter singleton (created on first call)."""
     global _router
     if _router is None:
         with _init_lock:
