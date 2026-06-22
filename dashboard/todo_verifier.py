@@ -46,6 +46,7 @@ def _read_dotenv() -> dict[str, str]:
 # ── Individual verifier functions ─────────────────────────────────────────────
 
 def _verify_env_var(cfg: dict) -> tuple[bool, str]:
+    """Verify a required env var is set (and non-placeholder). Returns (ok, note)."""
     key = cfg.get("key", "")
     if not key:
         return False, "verifier config missing 'key'"
@@ -57,6 +58,7 @@ def _verify_env_var(cfg: dict) -> tuple[bool, str]:
 
 
 def _verify_file_exists(cfg: dict) -> tuple[bool, str]:
+    """Verify a file exists at the configured path. Returns (ok, note)."""
     raw = cfg.get("path", "")
     path = (_PROJECT_ROOT / raw).resolve() if not Path(raw).is_absolute() else Path(raw)
     if path.exists():
@@ -65,6 +67,7 @@ def _verify_file_exists(cfg: dict) -> tuple[bool, str]:
 
 
 def _verify_file_contains(cfg: dict) -> tuple[bool, str]:
+    """Verify a file contains a configured substring/pattern. Returns (ok, note)."""
     raw     = cfg.get("path", "")
     pattern = cfg.get("pattern", "")
     path = (_PROJECT_ROOT / raw).resolve() if not Path(raw).is_absolute() else Path(raw)
@@ -82,6 +85,7 @@ def _verify_file_contains(cfg: dict) -> tuple[bool, str]:
 
 
 def _verify_db_nonempty(cfg: dict) -> tuple[bool, str]:
+    """Verify a DB table has at least one row. Returns (ok, note)."""
     db_name = cfg.get("db", "")
     table   = cfg.get("table", "")
     where   = cfg.get("where", "")
@@ -104,6 +108,7 @@ def _verify_db_nonempty(cfg: dict) -> tuple[bool, str]:
 
 
 def _verify_manual(_cfg: dict) -> tuple[bool, str]:
+    """Manual verifier — always returns unverified (user confirms by hand)."""
     return False, "manual verification required — mark done only after confirming"
 
 
