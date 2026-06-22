@@ -10,9 +10,7 @@ Schema is NOT changed — encrypted values are stored with an 'enc:' prefix
 so the code can detect and decrypt them transparently.
 """
 
-import base64
 import logging
-import os
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -24,6 +22,7 @@ _fernet = None
 
 
 def _load_or_create_key():
+    """Return the cached Fernet, loading the key from disk or creating it (0600) on first use."""
     global _fernet
     if _fernet is not None:
         return _fernet
@@ -74,4 +73,5 @@ def decrypt(value: str | None) -> str | None:
 
 
 def is_encrypted(value: str | None) -> bool:
+    """True if the value carries the 'enc:' prefix (i.e. is an encrypted token)."""
     return isinstance(value, str) and value.startswith(_PREFIX)
