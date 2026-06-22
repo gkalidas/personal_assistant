@@ -1,3 +1,9 @@
+"""Query router — picks which module(s) handle a message.
+
+Tries the fast embedding router first (~1 ms, no LLM); falls back to a small
+LLM classifier. On disagreement between the two, logs a routing mismatch.
+"""
+
 import json
 import logging
 import time
@@ -7,6 +13,17 @@ from core.config import OLLAMA_URL, ROUTER_MODEL
 from core.base_module import BaseModule, ModuleResponse
 
 log = logging.getLogger(__name__)
+
+# Short keyword hints per module — easier for a 0.5b router model than long prose.
+_MODULE_KEYWORDS = {
+    "finance": "money, expenses, income, budget, savings, loans, spent, earned, SIP, EMI, tax",
+    "farming": "crops, weather, spray, soil, disease, farm, harvest, rain, plot, fertilizer, mandi, price, market rate, APMC",
+    "health":  "BP, blood pressure, steps, weight, sleep, sugar, glucose, health, walked, kg, hours slept",
+    "system":  "system load, CPU, RAM, busy, idle, load pattern, heatmap, security guardian, CVE scan, threat intel, anomaly, audit, background tasks, task schedule",
+    "diary":   "diary, photos, journal, write diary, photo diary, show diary, approve diary, draft, daily log, weekly summary, week review, this week",
+    "search":  "search, news, latest, current events, what is, who is, government scheme, policy, regulation, internet, web, find out, look up",
+    "code":    "analyze code, codebase, lines of code, LOC, complexity, security scan code, what does this directory do, explain module, file breakdown",
+}
 
 
 
@@ -49,42 +66,46 @@ Reply format: {{"modules": ["name"]}}"""
 
 
 def _build_system_prompt(modules: dict[str, BaseModule]) -> str:
-    # Short keyword list — easier for a 0.5b model than long descriptions
-    keywords = {
-        "finance": "money, expenses, income, budget, savings, loans, spent, earned, SIP, EMI, tax",
-        "farming": "crops, weather, spray, soil, disease, farm, harvest, rain, plot, fertilizer, mandi, price, market rate, APMC",
-        "health":  "BP, blood pressure, steps, weight, sleep, sugar, glucose, health, walked, kg, hours slept",
-        "system":  "system load, CPU, RAM, busy, idle, load pattern, heatmap, security guardian, CVE scan, threat intel, anomaly, audit, background tasks, task schedule",
-        "diary":   "diary, photos, journal, write diary, photo diary, show diary, approve diary, draft, daily log, weekly summary, week review, this week",
-        "search":  "search, news, latest, current events, what is, who is, government scheme, policy, regulation, internet, web, find out, look up",
-        "code":    "analyze code, codebase, lines of code, LOC, complexity, security scan code, what does this directory do, explain module, file breakdown",
-    }
-    lines = []
-    for name in modules:
-        hint = keywords.get(name, name)
-        lines.append(f"- {name}: {hint}")
+    """Render the router system prompt with a keyword hint line per active module."""
+    lines = [f"- {name}: {_MODULE_KEYWORDS.get(name, name)}" for name in modules]
     return _SYSTEM_PROMPT.format(module_list="\n".join(lines))
 
 
-def route(query: str, modules: dict[str, BaseModule]) -> list[str]:
-    """Return list of module names that should handle this query."""
-    # Fast path: embedding router (~1 ms, no LLM call)
-    _embed_choice: str | None = None
+def _embed_route(query: str, modules: dict[str, BaseModule]) -> str | None:
+    """Fast embedding-based route (~1 ms). Returns a module name, or None to fall back."""
     try:
         from core.embedding_router import fast_route
-        _embed_choice = fast_route(query)
-        if _embed_choice and _embed_choice in modules:
-            log.info("embed-route → %s  q=%r", _embed_choice, query[:80])
-            return [_embed_choice]
+        choice = fast_route(query)
+        if choice and choice in modules:
+            return choice
     except Exception as e:
         log.debug("embed fast-path skip: %s", e)
+    return None
 
-    # Fall back to LLM router
-    system = _build_system_prompt(modules)
+
+def _log_routing_mismatch(query: str, embed_choice: str, routed: list[str]) -> None:
+    """Record a low-severity mistake when the embedding and LLM routers disagree."""
+    if not (embed_choice and routed and embed_choice not in routed):
+        return
+    try:
+        from core.mistake_log import log_mistake
+        log_mistake("routing_mismatch", query=query[:300],
+                    details={"embed": embed_choice, "llm": routed}, severity="low")
+    except Exception:
+        pass
+
+
+def route(query: str, modules: dict[str, BaseModule]) -> list[str]:
+    """Return the list of module names that should handle this query."""
+    embed_choice = _embed_route(query, modules)
+    if embed_choice:
+        log.info("embed-route → %s  q=%r", embed_choice, query[:80])
+        return [embed_choice]
+
     payload = {
         "model": ROUTER_MODEL,
         "messages": [
-            {"role": "system", "content": system},
+            {"role": "system", "content": _build_system_prompt(modules)},
             {"role": "user", "content": query},
         ],
         "stream": False,
@@ -93,33 +114,13 @@ def route(query: str, modules: dict[str, BaseModule]) -> list[str]:
 
     t0 = time.monotonic()
     try:
-        resp = httpx.post(
-            f"{OLLAMA_URL}/api/chat",
-            json=payload,
-            timeout=300.0,  # i3-4005U CPU cold-start can take 2-3 min
-        )
+        resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=300.0)
         resp.raise_for_status()
-        content = resp.json()["message"]["content"]
-        result = json.loads(content)
-        chosen = result.get("modules", [])
-        valid = [m for m in chosen if m in modules]
+        chosen = json.loads(resp.json()["message"]["content"]).get("modules", [])
+        valid  = [m for m in chosen if m in modules]
         routed = valid if valid else list(modules.keys())
-        ms = int((time.monotonic() - t0) * 1000)
-        log.info("route → %s  (%dms)  q=%r", routed, ms, query[:80])
-
-        # Log mismatch when embed router and LLM router disagreed
-        if (_embed_choice and routed and _embed_choice not in routed):
-            try:
-                from core.mistake_log import log_mistake
-                log_mistake(
-                    "routing_mismatch",
-                    query=query[:300],
-                    details={"embed": _embed_choice, "llm": routed},
-                    severity="low",
-                )
-            except Exception:
-                pass
-
+        log.info("route → %s  (%dms)  q=%r", routed, int((time.monotonic() - t0) * 1000), query[:80])
+        _log_routing_mismatch(query, embed_choice, routed)
         return routed
     except Exception as e:
         log.error("router LLM failed (%dms): %s", int((time.monotonic() - t0) * 1000), e)
