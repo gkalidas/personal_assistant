@@ -15,8 +15,29 @@ from core.memory import events_for_week, save_diary_draft, get_diary_draft
 
 
 def current_iso_week() -> str:
+    """Return the current ISO week as 'YYYY-Www' (e.g. '2026-W25')."""
     today = date.today()
     return f"{today.isocalendar()[0]}-W{today.isocalendar()[1]:02d}"
+
+
+def _time_of_day_buckets(events: list[dict]) -> dict[str, int]:
+    """Count events into morning/afternoon/evening/night buckets by their hour."""
+    buckets = {"morning (6-12)": 0, "afternoon (12-17)": 0,
+               "evening (17-21)": 0, "night (21-6)": 0}
+    for e in events:
+        try:
+            h = datetime.fromisoformat(e["ts"]).hour
+        except Exception:
+            continue
+        if 6 <= h < 12:
+            buckets["morning (6-12)"] += 1
+        elif 12 <= h < 17:
+            buckets["afternoon (12-17)"] += 1
+        elif 17 <= h < 21:
+            buckets["evening (17-21)"] += 1
+        else:
+            buckets["night (21-6)"] += 1
+    return buckets
 
 
 def analyse_week(week: str | None = None) -> dict[str, Any]:
@@ -29,23 +50,7 @@ def analyse_week(week: str | None = None) -> dict[str, Any]:
 
     modules = Counter(e["module"] for e in events)
     total = len(events)
-
-    # time-of-day distribution
-    hour_buckets = {"morning (6-12)": 0, "afternoon (12-17)": 0,
-                    "evening (17-21)": 0, "night (21-6)": 0}
-    for e in events:
-        try:
-            h = datetime.fromisoformat(e["ts"]).hour
-            if 6 <= h < 12:
-                hour_buckets["morning (6-12)"] += 1
-            elif 12 <= h < 17:
-                hour_buckets["afternoon (12-17)"] += 1
-            elif 17 <= h < 21:
-                hour_buckets["evening (17-21)"] += 1
-            else:
-                hour_buckets["night (21-6)"] += 1
-        except Exception:
-            pass
+    hour_buckets = _time_of_day_buckets(events)
 
     # average latency per module
     latencies: dict[str, list[int]] = {}
