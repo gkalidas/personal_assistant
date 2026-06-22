@@ -6,6 +6,12 @@
 >
 > **Started:** 2026-06-22  •  **Owner of decisions:** Ganesh (user)
 > **Last updated by:** Claude (Opus 4.8)
+>
+> **Related work item (not part of the quality pass):** building the
+> auto-read → auto-apply security loop (official LLM-security sources + safe
+> auto-hardening) and the threat model are documented separately in
+> [`docs/self_improving_security.md`](./self_improving_security.md). See its §6
+> build checklist.
 
 ---
 
