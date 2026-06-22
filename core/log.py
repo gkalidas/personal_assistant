@@ -38,8 +38,31 @@ _FMT_CONSOLE = "[%(levelname)-5s] %(name)s: %(message)s"
 _DATE        = "%Y-%m-%d %H:%M:%S"
 
 
+# Third-party libraries to silence to WARNING in every config.
+_NOISY_LOGGERS = {
+    "httpx":              {"level": "WARNING", "propagate": True},
+    "httpcore":           {"level": "WARNING", "propagate": True},
+    "urllib3":            {"level": "WARNING", "propagate": True},
+    "charset_normalizer": {"level": "WARNING", "propagate": True},
+}
+
+
 def _level() -> str:
+    """Return 'DEBUG' when GK_DEBUG is set in the environment, else 'INFO'."""
     return "DEBUG" if os.getenv("GK_DEBUG", "").lower() in ("1", "true", "yes") else "INFO"
+
+
+def _archiving_handler(filename: Path, max_bytes: int, level: str) -> dict:
+    """Build a dictConfig entry for an archiving rotating file handler."""
+    return {
+        "class":       "core.log_archiver.ArchivingRotatingHandler",
+        "filename":    str(filename),
+        "maxBytes":    max_bytes,
+        "archive_dir": str(_LOG_DIR / "archive"),
+        "encoding":    "utf-8",
+        "formatter":   "file",
+        "level":       level,
+    }
 
 
 def setup_logging() -> None:
@@ -64,26 +87,8 @@ def setup_logging() -> None:
         },
 
         "handlers": {
-            # Main log — archives key lines on rollover, deletes original
-            "gk_file": {
-                "class":       "core.log_archiver.ArchivingRotatingHandler",
-                "filename":    str(_LOG_DIR / "gk.log"),
-                "maxBytes":    5 * 1024 * 1024,   # 5 MB → triggers archive
-                "archive_dir": str(_LOG_DIR / "archive"),
-                "encoding":    "utf-8",
-                "formatter":   "file",
-                "level":       _level(),
-            },
-            # Errors from every component — easy failure audit
-            "errors_file": {
-                "class":       "core.log_archiver.ArchivingRotatingHandler",
-                "filename":    str(_LOG_DIR / "errors.log"),
-                "maxBytes":    2 * 1024 * 1024,   # 2 MB → triggers archive
-                "archive_dir": str(_LOG_DIR / "archive"),
-                "encoding":    "utf-8",
-                "formatter":   "file",
-                "level":       "ERROR",
-            },
+            "gk_file":     _archiving_handler(_LOG_DIR / "gk.log",     5 * 1024 * 1024, _level()),
+            "errors_file": _archiving_handler(_LOG_DIR / "errors.log", 2 * 1024 * 1024, "ERROR"),
             # Console — WARNING+ only, keep the terminal clean
             "console": {
                 "class":     "logging.StreamHandler",
@@ -99,13 +104,7 @@ def setup_logging() -> None:
         },
 
         # Silence noisy third-party libraries
-        "loggers": {
-            "httpx":               {"level": "WARNING", "propagate": True},
-            "httpcore":            {"level": "WARNING", "propagate": True},
-            "urllib3":             {"level": "WARNING", "propagate": True},
-            "charset_normalizer":  {"level": "WARNING", "propagate": True},
-            "matplotlib":          {"level": "WARNING", "propagate": True},
-        },
+        "loggers": {**_NOISY_LOGGERS, "matplotlib": {"level": "WARNING", "propagate": True}},
     }
 
     logging.config.dictConfig(config)
@@ -136,26 +135,8 @@ def setup_security_logging() -> None:
         },
 
         "handlers": {
-            # Security-specific log — archives on rollover
-            "security_file": {
-                "class":       "core.log_archiver.ArchivingRotatingHandler",
-                "filename":    str(_SEC_DIR / "guardian.log"),
-                "maxBytes":    5 * 1024 * 1024,
-                "archive_dir": str(_LOG_DIR / "archive"),
-                "encoding":    "utf-8",
-                "formatter":   "file",
-                "level":       "INFO",
-            },
-            # Shared errors log
-            "errors_file": {
-                "class":       "core.log_archiver.ArchivingRotatingHandler",
-                "filename":    str(_LOG_DIR / "errors.log"),
-                "maxBytes":    2 * 1024 * 1024,
-                "archive_dir": str(_LOG_DIR / "archive"),
-                "encoding":    "utf-8",
-                "formatter":   "file",
-                "level":       "ERROR",
-            },
+            "security_file": _archiving_handler(_SEC_DIR / "guardian.log", 5 * 1024 * 1024, "INFO"),
+            "errors_file":   _archiving_handler(_LOG_DIR / "errors.log",    2 * 1024 * 1024, "ERROR"),
             # Console — INFO+ for the daemon (it runs in background, stdout goes to file)
             "console": {
                 "class":     "logging.StreamHandler",
@@ -170,12 +151,7 @@ def setup_security_logging() -> None:
             "handlers": ["security_file", "errors_file", "console"],
         },
 
-        "loggers": {
-            "httpx":              {"level": "WARNING", "propagate": True},
-            "httpcore":           {"level": "WARNING", "propagate": True},
-            "urllib3":            {"level": "WARNING", "propagate": True},
-            "charset_normalizer": {"level": "WARNING", "propagate": True},
-        },
+        "loggers": dict(_NOISY_LOGGERS),
     }
 
     logging.config.dictConfig(config)
