@@ -220,6 +220,44 @@ def _confirm_fix(bypass_payload: str) -> bool:
         return False
 
 
+# ── Rollback safety guard ──────────────────────────────────────────────────────
+
+def _snapshot_patterns() -> str:
+    """Return the current raw patterns.json text, for rollback."""
+    return PATTERNS_FILE.read_text() if PATTERNS_FILE.exists() else ""
+
+
+def _restore_patterns(snapshot: str) -> None:
+    """Restore patterns.json from a snapshot and hot-reload the sanitizer."""
+    if not snapshot:
+        return
+    PATTERNS_FILE.write_text(snapshot)
+    try:
+        from core.sanitizer import reload_patterns
+        reload_patterns()
+    except Exception as e:
+        log.warning("Could not reload sanitizer after restore: %s", e)
+
+
+def _defense_score() -> tuple[int, int]:
+    """Run the red team + jailbreak sim and return (attacks_bypassed, jail_escaped).
+
+    Lower is better. Used to detect whether a batch of promoted patterns made
+    the system *worse* (e.g. a malformed regex that broke the combined pattern).
+    Returns (-1, -1) if the checks can't run, so the caller skips the guard.
+    """
+    try:
+        from security.red_team import run_red_team
+        from security.jailbreak_sim import run_jailbreak_sim
+        rt = run_red_team(llm=False, verbose=False)
+        jb = run_jailbreak_sim(llm=False, verbose=False)
+        escaped = sum(1 for r in jb if not r.contained)
+        return rt.bypassed, escaped
+    except Exception as e:
+        log.warning("defense-score check failed (guard skipped): %s", e)
+        return -1, -1
+
+
 # ── Main runner ────────────────────────────────────────────────────────────────
 
 def _resolve_red_team_report(red_team_report: dict | None) -> dict | None:
@@ -307,16 +345,24 @@ def _apply_proposal_outcome(
             print(f"    False positives: {proposal.false_positives[:2]}")
 
 
+# Max patterns auto-promoted in one run — caps the blast radius of a poisoned
+# feed or a misbehaving generator. Excess valid patterns wait for the next run.
+MAX_PROMOTIONS_PER_RUN = 5
+
+
 def run_autodefense(
     red_team_report: dict | None = None,
     dry_run: bool = False,
     verbose: bool = True,
+    max_promotions: int = MAX_PROMOTIONS_PER_RUN,
+    rollback_guard: bool = True,
 ) -> list[DefenseProposal]:
     """Process red-team bypasses and generate/promote defense patterns.
 
-    Reads from red_team_latest.json when ``red_team_report`` is None. Delegates
-    each bypass to :func:`_process_bypass`, saves an autodefense report (unless
-    ``dry_run``), and returns the list of proposals.
+    Reads from red_team_latest.json when ``red_team_report`` is None. Safety
+    gates: at most ``max_promotions`` patterns per run, and (when
+    ``rollback_guard``) the whole batch is reverted if it makes the red-team /
+    jailbreak scores *worse* (e.g. a malformed regex breaking the sanitizer).
     """
     red_team_report = _resolve_red_team_report(red_team_report)
     if red_team_report is None:
@@ -333,22 +379,68 @@ def run_autodefense(
         print(f"  AUTO-DEFENSE — processing {len(bypasses)} bypass(es)")
         print(f"{'='*65}")
 
-    data = _load_patterns()
-    proposals: list[DefenseProposal] = []
-    for bypass in bypasses:
-        proposal = _process_bypass(bypass, data, dry_run, verbose)
-        if proposal is None:
-            continue
-        proposals.append(proposal)
-        if proposal.promoted:
-            data = _load_patterns()  # reload after a write so IDs stay unique
+    snapshot = _snapshot_patterns() if (not dry_run and rollback_guard) else ""
+    proposals, promoted = _promote_bypasses(bypasses, dry_run, max_promotions, verbose)
 
+    if promoted and not dry_run and rollback_guard:
+        _enforce_rollback_guard(snapshot, red_team_report.get("bypassed", 0), proposals, verbose)
     if not dry_run:
         _save_autodefense_report(proposals, red_team_report)
-
     if verbose:
         _print_autodefense_summary(proposals, dry_run)
     return proposals
+
+
+def _promote_bypasses(bypasses: list[dict], dry_run: bool, max_promotions: int,
+                      verbose: bool) -> tuple[list[DefenseProposal], int]:
+    """Run the per-bypass defense loop with the per-run promotion cap.
+
+    Once ``max_promotions`` patterns are promoted, remaining valid patterns are
+    validated but deferred (not written). Returns (proposals, promoted_count).
+    """
+    data = _load_patterns()
+    proposals: list[DefenseProposal] = []
+    promoted = 0
+    for bypass in bypasses:
+        effective_dry = dry_run or (promoted >= max_promotions)
+        proposal = _process_bypass(bypass, data, effective_dry, verbose)
+        if proposal is None:
+            continue
+        if effective_dry and not dry_run and proposal.is_valid and not proposal.promoted:
+            proposal.reason = f"Rate limit reached ({max_promotions}/run) — deferred"
+        proposals.append(proposal)
+        if proposal.promoted:
+            promoted += 1
+            data = _load_patterns()  # reload after a write so IDs stay unique
+    return proposals, promoted
+
+
+def _enforce_rollback_guard(snapshot: str, baseline_bypassed: int,
+                            proposals: list[DefenseProposal], verbose: bool) -> None:
+    """Revert the promoted batch if it made the defenses worse.
+
+    Recomputes the red-team bypass count and jailbreak escapes after promotion.
+    If bypasses increased over ``baseline_bypassed`` (or any jail escape
+    appeared), restore the pre-promotion snapshot and mark the proposals.
+    """
+    rt_bypassed, jb_escaped = _defense_score()
+    if rt_bypassed < 0:            # guard could not run — leave changes in place
+        return
+    regressed = rt_bypassed > baseline_bypassed or jb_escaped > 0
+    if not regressed:
+        if verbose:
+            print(f"  ✓ Rollback guard: defenses OK (bypassed {rt_bypassed}, escaped {jb_escaped})")
+        return
+
+    log.error("Auto-defense REGRESSION: bypassed %d (was %d), escaped %d — rolling back.",
+              rt_bypassed, baseline_bypassed, jb_escaped)
+    _restore_patterns(snapshot)
+    for p in proposals:
+        if p.promoted:
+            p.promoted = False
+            p.reason = f"ROLLED BACK — batch regressed defenses (bypassed {rt_bypassed}, escaped {jb_escaped})"
+    if verbose:
+        print(f"  ⚠ Rollback guard: defenses regressed — reverted all promotions this run")
 
 
 def _print_autodefense_summary(proposals: list[DefenseProposal], dry_run: bool) -> None:
