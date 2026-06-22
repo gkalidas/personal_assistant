@@ -19,12 +19,14 @@ _DB_PATH = Path(__file__).parent.parent.parent / "faces.db"
 
 
 def _conn() -> sqlite3.Connection:
+    """Open the faces SQLite DB (thread-safe) with a Row factory."""
     con = sqlite3.connect(_DB_PATH, check_same_thread=False)
     con.row_factory = sqlite3.Row
     return con
 
 
 def init() -> None:
+    """Create the faces and clusters tables and indexes if absent."""
     with _conn() as con:
         con.executescript("""
         CREATE TABLE IF NOT EXISTS faces (
@@ -54,6 +56,7 @@ def init() -> None:
 
 def insert_face(photo_path: str, face_idx: int, embedding: list[float],
                 bbox: list[int] | None = None, det_score: float | None = None) -> int:
+    """Insert a detected face (embedding/bbox JSON-encoded) and return its id."""
     with _conn() as con:
         cur = con.execute(
             "INSERT INTO faces (photo_path, face_idx, embedding, bbox, det_score) "
@@ -65,6 +68,7 @@ def insert_face(photo_path: str, face_idx: int, embedding: list[float],
 
 
 def get_all_embeddings() -> list[dict]:
+    """Return every face row with its embedding and cluster assignment."""
     with _conn() as con:
         rows = con.execute(
             "SELECT id, photo_path, face_idx, embedding, cluster_id FROM faces"
@@ -73,6 +77,7 @@ def get_all_embeddings() -> list[dict]:
 
 
 def get_unassigned() -> list[dict]:
+    """Return faces not yet assigned to a cluster."""
     with _conn() as con:
         rows = con.execute(
             "SELECT id, photo_path, face_idx, embedding FROM faces WHERE cluster_id IS NULL"
@@ -81,6 +86,7 @@ def get_unassigned() -> list[dict]:
 
 
 def already_processed(photo_path: str) -> bool:
+    """True if any face row already exists for this photo path."""
     with _conn() as con:
         row = con.execute(
             "SELECT 1 FROM faces WHERE photo_path=? LIMIT 1", (photo_path,)
@@ -89,6 +95,7 @@ def already_processed(photo_path: str) -> bool:
 
 
 def assign_cluster(face_id: int, cluster_id: int) -> None:
+    """Set a face row's cluster_id."""
     with _conn() as con:
         con.execute("UPDATE faces SET cluster_id=? WHERE id=?", (cluster_id, face_id))
 
@@ -111,6 +118,7 @@ def upsert_cluster(name: str, exemplar_face_id: int | None, face_count: int) -> 
 
 
 def list_clusters() -> list[dict]:
+    """Return clusters with face counts and an exemplar photo path, largest first."""
     with _conn() as con:
         rows = con.execute(
             "SELECT c.id, c.name, c.face_count, c.updated_at, "
@@ -123,6 +131,7 @@ def list_clusters() -> list[dict]:
 
 
 def rename_cluster(cluster_id: int, name: str) -> None:
+    """Rename a cluster (e.g. label a person) and bump its updated_at."""
     with _conn() as con:
         con.execute(
             "UPDATE clusters SET name=?, updated_at=datetime('now') WHERE id=?",
@@ -131,6 +140,7 @@ def rename_cluster(cluster_id: int, name: str) -> None:
 
 
 def faces_for_photo(photo_path: str) -> list[dict]:
+    """Return faces in a photo with their bbox, cluster id, and person name."""
     with _conn() as con:
         rows = con.execute(
             "SELECT f.id, f.face_idx, f.bbox, f.cluster_id, c.name as person_name "
@@ -142,6 +152,7 @@ def faces_for_photo(photo_path: str) -> list[dict]:
 
 
 def stats() -> dict:
+    """Return totals: faces, clusters, and unassigned faces."""
     with _conn() as con:
         total_faces    = con.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
         total_clusters = con.execute("SELECT COUNT(*) FROM clusters").fetchone()[0]
