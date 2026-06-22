@@ -54,7 +54,33 @@ _CROP_ALIASES: dict[str, str] = {
 
 
 def _api_key() -> str:
+    """Return the data.gov.in API key (env override, else the public demo key)."""
     return os.getenv("MANDI_API_KEY", _DEMO_KEY)
+
+
+def _mandi_sort_key(r: dict) -> tuple:
+    """Sort key for records: most recent arrival_date first, then modal price."""
+    try:
+        dt = datetime.strptime(r.get("arrival_date", "01/01/2000"), "%d/%m/%Y")
+    except Exception:
+        dt = datetime.min
+    return (dt, r.get("modal_price", 0))
+
+
+def _fetch_mandi(canonical: str, state: str, district: str | None, limit: int) -> dict:
+    """Query the data.gov.in mandi API. Returns the parsed JSON, or an {'error': ...} dict."""
+    params: list[tuple[str, Any]] = [
+        ("api-key", _api_key()), ("format", "json"),
+        ("filters[state]", state), ("filters[commodity]", canonical), ("limit", limit),
+    ]
+    if district:
+        params.append(("filters[district]", district))
+    try:
+        resp = httpx.get(_BASE, params=params, timeout=20.0)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        return {"error": f"Mandi API error: {e}", "commodity": canonical}
 
 
 def get_prices(
@@ -71,22 +97,9 @@ def get_prices(
     if cached_data and (time.monotonic() - cached_at) < _CACHE_TTL:
         return cached_data
 
-    params: list[tuple[str, Any]] = [
-        ("api-key", _api_key()),
-        ("format", "json"),
-        ("filters[state]", state),
-        ("filters[commodity]", canonical),
-        ("limit", limit),
-    ]
-    if district:
-        params.append(("filters[district]", district))
-
-    try:
-        resp = httpx.get(_BASE, params=params, timeout=20.0)
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:
-        return {"error": f"Mandi API error: {e}", "commodity": canonical}
+    data = _fetch_mandi(canonical, state, district, limit)
+    if "error" in data:
+        return data
 
     records = data.get("records", [])
     if not records:
@@ -96,16 +109,7 @@ def get_prices(
             "commodity": canonical,
         }
 
-    # Sort by arrival_date desc, then modal_price desc
-    def _sort_key(r: dict) -> tuple:
-        try:
-            dt = datetime.strptime(r.get("arrival_date", "01/01/2000"), "%d/%m/%Y")
-        except Exception:
-            dt = datetime.min
-        return (dt, r.get("modal_price", 0))
-
-    records.sort(key=_sort_key, reverse=True)
-
+    records.sort(key=_mandi_sort_key, reverse=True)
     result = {
         "commodity": canonical,
         "state": state,
@@ -118,6 +122,7 @@ def get_prices(
 
 
 def format_prices(data: dict) -> str:
+    """Format a mandi-price result dict into a market table with summary stats."""
     if "error" in data:
         return f"Mandi prices unavailable: {data['error']}"
 
