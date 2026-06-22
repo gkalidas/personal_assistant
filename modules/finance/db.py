@@ -7,12 +7,14 @@ FINANCE_DB = os.getenv("FINANCE_DB", "finance.db")
 
 
 def conn() -> sqlite3.Connection:
+    """Open the finance SQLite DB with a Row factory."""
     c = sqlite3.connect(FINANCE_DB)
     c.row_factory = sqlite3.Row
     return c
 
 
 def init() -> None:
+    """Create the transactions, budgets, and goals tables if absent."""
     with conn() as c:
         c.executescript("""
             CREATE TABLE IF NOT EXISTS transactions (

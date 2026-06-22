@@ -5,12 +5,14 @@ HEALTH_DB = os.getenv("HEALTH_DB", "health.db")
 
 
 def conn() -> sqlite3.Connection:
+    """Open the health SQLite DB with a Row factory."""
     c = sqlite3.connect(HEALTH_DB)
     c.row_factory = sqlite3.Row
     return c
 
 
 def init() -> None:
+    """Create the health_readings and health_goals tables if absent."""
     with conn() as c:
         c.executescript("""
             CREATE TABLE IF NOT EXISTS health_readings (
