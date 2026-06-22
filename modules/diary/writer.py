@@ -17,16 +17,8 @@ from core.sanitizer import sanitize_external_text
 log = logging.getLogger(__name__)
 
 
-def _day_context(date_str: str) -> str:
-    """
-    Pull cross-module context for a given diary date.
-    Returns a plain-text block injected into the diary LLM prompt so the entry
-    reflects health readings, farm activity, spending, and completed tasks — not
-    just photos.
-    """
-    parts = []
-
-    # ── Health readings ────────────────────────────────────────────────────────
+def _health_context(date_str: str) -> str:
+    """Return a 'Health: …' summary line of readings logged on the date (or '')."""
     try:
         from modules.health.db import conn as _hconn
         with _hconn() as c:
@@ -34,54 +26,48 @@ def _day_context(date_str: str) -> str:
                 "SELECT type, value1, value2, unit FROM health_readings "
                 "WHERE date=? ORDER BY time", (date_str,)
             ).fetchall()
-        health_lines = []
-        for r in rows:
-            t = r["type"]
-            if t == "bp":
-                health_lines.append(f"BP {int(r['value1'])}/{int(r['value2'])} mmHg")
-            elif t == "steps":
-                health_lines.append(f"{int(r['value1'])} steps")
-            elif t == "sleep":
-                health_lines.append(f"slept {r['value1']}h")
-            elif t == "weight":
-                health_lines.append(f"weight {r['value1']} kg")
-            elif t == "sugar":
-                health_lines.append(f"sugar {r['value1']} mg/dL")
-            elif t == "mood":
-                health_lines.append(f"mood: {r['unit'] or r['value1']}")
-        if health_lines:
-            parts.append("Health: " + ", ".join(health_lines))
     except Exception:
-        pass
+        return ""
+    fmt = {
+        "bp":     lambda r: f"BP {int(r['value1'])}/{int(r['value2'])} mmHg",
+        "steps":  lambda r: f"{int(r['value1'])} steps",
+        "sleep":  lambda r: f"slept {r['value1']}h",
+        "weight": lambda r: f"weight {r['value1']} kg",
+        "sugar":  lambda r: f"sugar {r['value1']} mg/dL",
+        "mood":   lambda r: f"mood: {r['unit'] or r['value1']}",
+    }
+    lines = [fmt[r["type"]](r) for r in rows if r["type"] in fmt]
+    return "Health: " + ", ".join(lines) if lines else ""
 
-    # ── Farm activities ────────────────────────────────────────────────────────
+
+def _farm_context(date_str: str) -> str:
+    """Return a 'Farm: …' summary of sprays + observations on the date (or '')."""
     try:
         from modules.farming.db import conn as _fconn
         with _fconn() as c:
             sprays = c.execute(
                 "SELECT p.name as plot, s.chemical, s.quantity "
-                "FROM spray_logs s JOIN plots p ON s.plot_id=p.id WHERE s.date=?",
-                (date_str,)
+                "FROM spray_logs s JOIN plots p ON s.plot_id=p.id WHERE s.date=?", (date_str,)
             ).fetchall()
             obs = c.execute(
                 "SELECT p.name as plot, o.type, o.description, o.severity "
-                "FROM observations o JOIN plots p ON o.plot_id=p.id WHERE o.date=?",
-                (date_str,)
+                "FROM observations o JOIN plots p ON o.plot_id=p.id WHERE o.date=?", (date_str,)
             ).fetchall()
-        farm_lines = []
-        for s in sprays:
-            qty = f" ({s['quantity']})" if s["quantity"] else ""
-            farm_lines.append(f"sprayed {s['chemical']}{qty} on {s['plot']}")
-        for o in obs:
-            sev = f" [{o['severity']}]" if o["severity"] else ""
-            desc = sanitize_external_text(o["description"][:60], label="ctx:obs")
-            farm_lines.append(f"{o['type']} on {o['plot']}: {desc}{sev}")
-        if farm_lines:
-            parts.append("Farm: " + "; ".join(farm_lines))
     except Exception:
-        pass
+        return ""
+    lines = []
+    for s in sprays:
+        qty = f" ({s['quantity']})" if s["quantity"] else ""
+        lines.append(f"sprayed {s['chemical']}{qty} on {s['plot']}")
+    for o in obs:
+        sev  = f" [{o['severity']}]" if o["severity"] else ""
+        desc = sanitize_external_text(o["description"][:60], label="ctx:obs")
+        lines.append(f"{o['type']} on {o['plot']}: {desc}{sev}")
+    return "Farm: " + "; ".join(lines) if lines else ""
 
-    # ── Finance transactions ───────────────────────────────────────────────────
+
+def _finance_context(date_str: str) -> str:
+    """Return a 'Spending: …' summary of transactions on the date (or '')."""
     try:
         from modules.finance.db import conn as _finconn
         from core.crypto import decrypt as _dec
@@ -90,32 +76,42 @@ def _day_context(date_str: str) -> str:
                 "SELECT amount, type, category, description FROM transactions "
                 "WHERE date(ts)=? ORDER BY ts", (date_str,)
             ).fetchall()
-        fin_lines = []
-        for r in rows:
-            desc = _dec(r["description"]) if r["description"] else ""
-            desc = sanitize_external_text(desc[:40], label="ctx:finance") if desc else ""
-            sign = "+" if r["type"] == "income" else "-"
-            label = f"{sign}₹{r['amount']:.0f} {r['category']}"
-            if desc:
-                label += f" ({desc})"
-            fin_lines.append(label)
-        if fin_lines:
-            parts.append("Spending: " + "; ".join(fin_lines))
     except Exception:
-        pass
+        return ""
+    lines = []
+    for r in rows:
+        desc = _dec(r["description"]) if r["description"] else ""
+        desc = sanitize_external_text(desc[:40], label="ctx:finance") if desc else ""
+        sign = "+" if r["type"] == "income" else "-"
+        label = f"{sign}₹{r['amount']:.0f} {r['category']}"
+        if desc:
+            label += f" ({desc})"
+        lines.append(label)
+    return "Spending: " + "; ".join(lines) if lines else ""
 
-    # ── Completed todos ────────────────────────────────────────────────────────
+
+def _todo_context(date_str: str) -> str:
+    """Return a 'Completed tasks: …' summary of todos finished on the date (or '')."""
     try:
         from dashboard.todo_store import list_todos as _todos
         done = [t["text"] for t in _todos(include_done=True)
                 if t.get("done") == 1 and (t.get("updated_at") or "")[:10] == date_str]
-        if done:
-            safe_done = [sanitize_external_text(d[:60], label="ctx:todo") for d in done]
-            parts.append("Completed tasks: " + "; ".join(safe_done))
     except Exception:
-        pass
+        return ""
+    if not done:
+        return ""
+    safe = [sanitize_external_text(d[:60], label="ctx:todo") for d in done]
+    return "Completed tasks: " + "; ".join(safe)
 
-    return "\n".join(parts)
+
+def _day_context(date_str: str) -> str:
+    """Pull cross-module context (health, farm, spending, todos) for a diary date.
+
+    Returns a plain-text block injected into the diary LLM prompt so the entry
+    reflects real activity, not just photos. Each section degrades to '' on error.
+    """
+    sections = (_health_context, _farm_context, _finance_context, _todo_context)
+    return "\n".join(part for part in (s(date_str) for s in sections) if part)
 
 
 _SYSTEM = """You are writing a personal diary for Ganesh Kalidas, a farmer and entrepreneur
@@ -168,47 +164,12 @@ def write_diary_entry(
     Returns:
         Diary entry text (150-250 words).
     """
-    # Format date nicely
     try:
-        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-        date_human = date_obj.strftime("%A, %d %B %Y")   # "Sunday, 03 August 2025"
+        date_human = datetime.strptime(date_str, "%Y-%m-%d").strftime("%A, %d %B %Y")
     except ValueError:
         date_human = date_str
 
-    # Location context from profile
-    farms = profile.get("farms", [])
-    farm_names = ", ".join(f.get("label", "") for f in farms if f.get("label"))
-    homes = profile.get("homes", [])
-    home_names = ", ".join(h.get("label", "") for h in homes if h.get("label"))
-
-    # Device info (deduplicated)
-    devices = list({m["device"] for m in photos if m.get("device") != "unknown device"})
-    device_note = f"(shot on {devices[0]})" if devices else ""
-
-    # Photo summary
-    photo_summary = _build_photo_summary(photos, captions)
-
-    # Time range
-    times = [m["time_str"] for m in photos if m.get("time_str")]
-    time_range = f"{times[0]} to {times[-1]}" if len(times) > 1 else (times[0] if times else "")
-
-    # Cross-module context: health, farming, finance, todos
-    day_ctx = _day_context(date_str)
-
-    prompt = f"""Write a diary entry for: {date_human} {device_note}
-
-Photos taken {time_range}:
-{photo_summary}
-
-Profile context:
-- Farms: {farm_names or 'Barloni farm'}
-- Homes: {home_names or 'Barloni, Pune'}
-{f'''
-Day context (weave naturally into the entry):
-{day_ctx}''' if day_ctx else ''}
-
-Write the diary entry now (150-250 words, first person):"""
-
+    prompt = _build_diary_prompt(date_str, date_human, photos, captions, profile)
     payload = {
         "model": TEXT_MODEL,
         "messages": [
@@ -219,7 +180,6 @@ Write the diary entry now (150-250 words, first person):"""
         "think":  False,
         "options": {"num_predict": 400},
     }
-
     try:
         resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=120.0)
         resp.raise_for_status()
@@ -229,6 +189,35 @@ Write the diary entry now (150-250 words, first person):"""
     except Exception as e:
         log.error("diary LLM call failed for %s: %s", date_str, e)
         return f"[Could not generate diary entry for {date_human} — please try again.]"
+
+
+def _build_diary_prompt(date_str: str, date_human: str, photos: list[dict],
+                        captions: dict[str, str], profile: dict) -> str:
+    """Assemble the diary LLM user prompt from photos, profile, and day context."""
+    farms = ", ".join(f.get("label", "") for f in profile.get("farms", []) if f.get("label"))
+    homes = ", ".join(h.get("label", "") for h in profile.get("homes", []) if h.get("label"))
+
+    devices = list({m["device"] for m in photos if m.get("device") != "unknown device"})
+    device_note = f"(shot on {devices[0]})" if devices else ""
+
+    photo_summary = _build_photo_summary(photos, captions)
+    times = [m["time_str"] for m in photos if m.get("time_str")]
+    time_range = f"{times[0]} to {times[-1]}" if len(times) > 1 else (times[0] if times else "")
+
+    day_ctx = _day_context(date_str)
+    return f"""Write a diary entry for: {date_human} {device_note}
+
+Photos taken {time_range}:
+{photo_summary}
+
+Profile context:
+- Farms: {farms or 'Barloni farm'}
+- Homes: {homes or 'Barloni, Pune'}
+{f'''
+Day context (weave naturally into the entry):
+{day_ctx}''' if day_ctx else ''}
+
+Write the diary entry now (150-250 words, first person):"""
 
 
 def format_draft(date_str: str, entry: str, photo_count: int) -> str:
