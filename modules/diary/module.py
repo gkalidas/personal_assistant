@@ -46,6 +46,7 @@ _DATE_RE   = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
 
 
 def _intent(query: str) -> str:
+    """Classify a diary query into an intent (write/show/list/weekly/approve)."""
     q = query.lower()
     if any(w in q for w in _APPROVE_WORDS) and "diary" in q:
         return "approve"
@@ -113,120 +114,89 @@ def _ask_photo_questions(photos: list, captions: dict, week: str) -> None:
                     asked.add("people")
 
 
+def _resolve_photo_dir(query: str, profile: dict) -> Path:
+    """Return the photo directory named in the query, else the profile default."""
+    m = _PATH_RE.search(query)
+    return Path(m.group(1)).expanduser() if m else default_photo_dir(profile)
+
+
+def _filter_unprocessed(by_date: dict[str, list]) -> tuple[dict, int]:
+    """Drop already-processed photos by path. Returns (filtered_by_date, skipped_count)."""
+    already = get_processed_photo_paths()
+    filtered: dict[str, list] = {}
+    skipped = 0
+    for day, photos in by_date.items():
+        new_photos = [p for p in photos if p.get("path") not in already]
+        if new_photos:
+            filtered[day] = new_photos
+        skipped += len(photos) - len(new_photos)
+    return filtered, skipped
+
+
+def _process_diary_day(date_str: str, photos: list, profile: dict) -> tuple[str, bool]:
+    """Caption + write + save a diary draft for one day. Returns (output_line, written)."""
+    log.info("processing %d photos for %s", len(photos), date_str)
+    captions = caption_batch(photos)
+    entry = write_diary_entry(date_str, photos, captions, profile)
+    if entry.startswith("[Could not generate"):
+        log.warning("diary LLM failed for %s — photos NOT marked processed, will retry", date_str)
+        return f"⚠ {date_str}: generation failed — Ollama may be busy. Try again later.", False
+
+    week_key = _date_to_week(date_str)
+    draft = format_draft(date_str, entry, len(photos))
+    existing = get_diary_draft(week_key)
+    save_diary_draft(week_key, (existing["draft"] + "\n\n" + draft)
+                     if existing and existing.get("draft") else draft)
+    mark_photos_processed(photos, week_key)
+    _ask_photo_questions(photos, captions, week_key)
+    log.info("diary draft saved for week %s (%d captioned)", week_key, len(captions))
+    return draft, True
+
+
 def _do_write(query: str, profile: dict) -> tuple[str, dict | None]:
-    """Scan photos, caption them, write diary entries, save drafts."""
-    # Detect directory from query or use profile default
-    path_match = _PATH_RE.search(query)
-    if path_match:
-        photo_dir = Path(path_match.group(1)).expanduser()
-    else:
-        photo_dir = default_photo_dir(profile)
-
+    """Scan photos, caption them, write diary entries, and save weekly drafts."""
+    photo_dir = _resolve_photo_dir(query, profile)
     if not photo_dir.exists():
-        return (
-            f"Photo directory not found: {photo_dir}\n"
-            "Set a default with: preferences.photo_dir in user_profile.json\n"
-            "Or specify a path: \"write diary from /home/ganesh/Photos\"",
-            None,
-        )
+        return (f"Photo directory not found: {photo_dir}\n"
+                "Set a default with: preferences.photo_dir in user_profile.json\n"
+                "Or specify a path: \"write diary from /home/ganesh/Photos\"", None)
 
-    # Check if a specific date was requested
-    date_filter = None
-    date_match = _DATE_RE.search(query)
-    if date_match:
-        date_filter = date_match.group(1)
-
+    date_match  = _DATE_RE.search(query)
+    date_filter = date_match.group(1) if date_match else None
     log.info("diary write: dir=%s date_filter=%s", photo_dir, date_filter)
 
-    # Load set of already-processed photo paths
-    already_processed = get_processed_photo_paths()
-
-    # Scan photos grouped by date
     by_date = scan_photos(photo_dir)
     if not by_date:
         return f"No photos found in {photo_dir}.", None
-
-    # Filter to specific date if requested
     if date_filter:
         if date_filter not in by_date:
-            available = ", ".join(sorted(by_date.keys()))
-            return (
-                f"No photos found for {date_filter}.\n"
-                f"Available dates in {photo_dir.name}/: {available}",
-                None,
-            )
+            return (f"No photos found for {date_filter}.\n"
+                    f"Available dates in {photo_dir.name}/: {', '.join(sorted(by_date))}", None)
         by_date = {date_filter: by_date[date_filter]}
 
-    # Count totals for reporting
     total_in_dir = sum(len(v) for v in by_date.values())
     skipped_count = 0
-
-    # Filter out already-processed photos unless a specific date was forced
     if not date_filter:
-        filtered = {}
-        for d, photos in by_date.items():
-            new_photos = [p for p in photos if str(getattr(p, "path", p)) not in already_processed]
-            if new_photos:
-                filtered[d] = new_photos
-            skipped_count += len(photos) - len(new_photos)
-        by_date = filtered
-
+        by_date, skipped_count = _filter_unprocessed(by_date)
     if not by_date:
         stats = get_photo_stats()
-        return (
-            f"All {total_in_dir} photos in {photo_dir.name}/ have already been processed "
-            f"({stats['total_processed']} total across {len(stats['by_week'])} weeks).\n"
-            f"To reprocess a specific date, say: \"diary for YYYY-MM-DD\"",
-            None,
-        )
+        return (f"All {total_in_dir} photos in {photo_dir.name}/ have already been processed "
+                f"({stats['total_processed']} total across {len(stats['by_week'])} weeks).\n"
+                f"To reprocess a specific date, say: \"diary for YYYY-MM-DD\"", None)
 
-    # Process each day
-    written_days = []
-    output_lines = []
-
+    written_days, output_lines = [], []
     for date_str in sorted(by_date.keys()):
-        photos = by_date[date_str]
-        log.info("processing %d photos for %s", len(photos), date_str)
-
-        # Caption photos with vision model
-        captions = caption_batch(photos)
-
-        # Write diary entry
-        entry = write_diary_entry(date_str, photos, captions, profile)
-
-        # Skip saving if LLM failed — leave photos unprocessed so retry works
-        if entry.startswith("[Could not generate"):
-            log.warning("diary LLM failed for %s — photos NOT marked processed, will retry", date_str)
-            output_lines.append(f"⚠ {date_str}: generation failed — Ollama may be busy. Try again later.")
-            continue
-
-        # Save draft (keyed by ISO week so multiple days merge into one week draft)
-        week_key = _date_to_week(date_str)
-        existing = get_diary_draft(week_key)
-        if existing and existing.get("draft"):
-            combined = existing["draft"] + "\n\n" + format_draft(date_str, entry, len(photos))
-            save_diary_draft(week_key, combined)
-        else:
-            save_diary_draft(week_key, format_draft(date_str, entry, len(photos)))
-
-        # Mark photos as processed so they won't be re-processed next time
-        mark_photos_processed(photos, week_key)
-
-        # Generate review questions for photos that need context
-        _ask_photo_questions(photos, captions, week_key)
-
-        written_days.append(date_str)
-        output_lines.append(format_draft(date_str, entry, len(photos)))
-
-        caption_note = f" ({len(captions)} photos described by vision model)" if captions else " (no vision model — using date/time context)"
-        log.info("diary draft saved for week %s%s", week_key, caption_note)
+        line, written = _process_diary_day(date_str, by_date[date_str], profile)
+        output_lines.append(line)
+        if written:
+            written_days.append(date_str)
 
     n = len(written_days)
     header = f"Diary written for {n} day{'s' if n > 1 else ''}: {', '.join(written_days)}\n"
     if skipped_count:
-        header += f"({skipped_count} already-processed photo{'s' if skipped_count > 1 else ''} skipped — say \"diary for YYYY-MM-DD\" to reprocess a date)\n"
+        header += (f"({skipped_count} already-processed photo{'s' if skipped_count > 1 else ''} "
+                   "skipped — say \"diary for YYYY-MM-DD\" to reprocess a date)\n")
     header += "Draft saved. Say \"approve diary\" when you're happy with it.\n\n"
-
     return header + "\n\n".join(output_lines), {"days_written": written_days}
 
 
@@ -329,6 +299,7 @@ class DiaryModule(BaseModule):
     )
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
+        """Route a diary query to its handler by intent (no LLM for routing)."""
         profile = context.get("profile", {})
         intent  = _intent(query)
         log.info("intent=%s q=%r", intent, query[:80])
