@@ -29,6 +29,7 @@ _VPN_RE  = re.compile(r"^(tun|tap|wg|tailscale|vpn)\d*")
 
 
 def _iface_type(name: str) -> str:
+    """Classify an interface name as lan/wifi/tethering/vpn/unknown."""
     n = name.lower()
     if _LAN_RE.match(n):                     return "lan"
     if _WIFI_RE.match(n):                    return "wifi"
@@ -49,6 +50,21 @@ def _check_connectivity(bind_ip: Optional[str] = None, timeout: float = 3.0) -> 
         return True
     except Exception:
         return False
+
+
+def _assign_connectivity(ifaces: list) -> None:
+    """Set each interface's is_connected flag (probing non-VPN interfaces).
+
+    VPN tunnels mirror the underlying link, so they're marked connected when up
+    rather than probed separately.
+    """
+    for iface in ifaces:
+        if iface.is_up and iface.ip and iface.type != "vpn":
+            iface.is_connected = _check_connectivity(iface.ip)
+        elif iface.type == "vpn" and iface.is_up:
+            iface.is_connected = iface.is_up
+        else:
+            iface.is_connected = False
 
 
 def _measure_speed(ifaces: list[str], duration: float = 5.0) -> tuple[float, float]:
@@ -100,6 +116,7 @@ class NetworkMonitor:
     SPEED_INTERVAL = 2    # throughput sample window — matches WS push rate
 
     def __init__(self):
+        """Init the network monitor (status state, lock, and primary tracker)."""
         self._status = NetworkStatus()
         self._lock = threading.Lock()
         self._primary: Optional[str] = None
@@ -113,6 +130,7 @@ class NetworkMonitor:
 
     @property
     def status(self) -> NetworkStatus:
+        """Return the current NetworkStatus snapshot (thread-safe)."""
         with self._lock:
             return self._status
 
@@ -130,6 +148,7 @@ class NetworkMonitor:
             time.sleep(self.CHECK_INTERVAL)
 
     def _scan_interfaces(self) -> list[IfaceInfo]:
+        """Enumerate interfaces with their type/IP/up state, priority-sorted."""
         addrs = psutil.net_if_addrs()
         stats = psutil.net_if_stats()
         result = []
@@ -152,50 +171,31 @@ class NetworkMonitor:
         return result
 
     def _do_connectivity_check(self):
+        """Probe each interface, pick the primary, detect failover, and update status."""
         ifaces = self._scan_interfaces()
+        _assign_connectivity(ifaces)
+        # ifaces is priority-sorted, so the first connected one is the primary.
+        new_primary = next((i.name for i in ifaces if i.is_connected), None)
 
-        for iface in ifaces:
-            if iface.is_up and iface.ip and iface.type != "vpn":
-                iface.is_connected = _check_connectivity(iface.ip)
-            elif iface.type == "vpn" and iface.is_up:
-                # VPN connectivity mirrors the underlying interface — mark connected
-                # if any non-VPN interface already has internet.
-                iface.is_connected = iface.is_up
-            else:
-                iface.is_connected = False
-
-        # Best connected interface (highest priority)
-        new_primary: Optional[str] = None
-        for iface in ifaces:
-            if iface.is_connected:
-                if new_primary is None:
-                    new_primary = iface.name
-                    break   # already sorted by priority
-
-        # Failover detection
-        prev = self._primary
-        failover = False
-        if prev is not None and prev != new_primary:
-            if new_primary:
-                log.warning("FAILOVER: %s → %s", prev, new_primary)
-            else:
-                log.warning("FAILOVER: %s → no connectivity", prev)
-            failover = True
-
+        failover = self._detect_failover(self._primary, new_primary)
         self._primary = new_primary
-
         with self._lock:
             self._status.interfaces = ifaces
             self._status.primary = new_primary or ""
             self._status.failover_alert = failover or (new_primary is None and bool(ifaces))
 
-        log.info(
-            "net check: primary=%s connected=%s",
-            new_primary,
-            [i.name for i in ifaces if i.is_connected],
-        )
+        log.info("net check: primary=%s connected=%s", new_primary,
+                 [i.name for i in ifaces if i.is_connected])
+
+    def _detect_failover(self, prev: Optional[str], new_primary: Optional[str]) -> bool:
+        """Log and return True if the primary interface changed from a known previous one."""
+        if prev is None or prev == new_primary:
+            return False
+        log.warning("FAILOVER: %s → %s", prev, new_primary or "no connectivity")
+        return True
 
     def _do_speed_sample(self):
+        """Sample download/upload throughput across active physical interfaces."""
         with self._lock:
             # Exclude VPN tunnels — they re-encapsulate traffic that already
             # appears on the underlying physical interface, causing double-counting.
