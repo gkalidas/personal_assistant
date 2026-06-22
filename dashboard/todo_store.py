@@ -9,6 +9,7 @@ _DB = Path(__file__).parent.parent / "data" / "todos.db"
 
 
 def _con():
+    """Open the todos SQLite DB (thread-safe) with a Row factory."""
     _DB.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(_DB), check_same_thread=False)
     con.row_factory = sqlite3.Row
@@ -16,6 +17,7 @@ def _con():
 
 
 def ensure_table() -> None:
+    """Create the todos table, migrate missing columns, and seed if empty."""
     with _con() as con:
         con.execute("""
             CREATE TABLE IF NOT EXISTS todos (
@@ -47,6 +49,7 @@ def ensure_table() -> None:
 
 
 def _seed(con) -> None:
+    """Insert the initial set of todos into an empty table."""
     import json as _json
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
     # (text, quad, priority, verifier_dict or None)
@@ -74,6 +77,7 @@ def _seed(con) -> None:
 
 
 def list_todos(include_done: bool = False) -> list[dict]:
+    """Return todos ordered by quadrant/priority; excludes done unless include_done."""
     with _con() as con:
         q = "SELECT * FROM todos ORDER BY quad, priority, created_at"
         if not include_done:
@@ -82,6 +86,7 @@ def list_todos(include_done: bool = False) -> list[dict]:
 
 
 def add_todo(text: str, quad: str = "q2", verifier: dict | None = None) -> str:
+    """Insert a new todo (auto-assigned priority) and return its id."""
     import json as _json
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
     tid = str(uuid.uuid4())[:8]
@@ -96,12 +101,14 @@ def add_todo(text: str, quad: str = "q2", verifier: dict | None = None) -> str:
 
 
 def get_todo(tid: str) -> dict | None:
+    """Return the todo with the given id, or None."""
     with _con() as con:
         row = con.execute("SELECT * FROM todos WHERE id=?", (tid,)).fetchone()
     return dict(row) if row else None
 
 
 def update_todo(tid: str, **kwargs) -> None:
+    """Update allow-listed fields of a todo and bump updated_at."""
     allowed = {"text", "quad", "done", "priority", "verifier", "verified", "verify_note"}
     sets, vals = [], []
     for k, v in kwargs.items():
@@ -116,5 +123,6 @@ def update_todo(tid: str, **kwargs) -> None:
 
 
 def delete_todo(tid: str) -> None:
+    """Delete the todo with the given id."""
     with _con() as con:
         con.execute("DELETE FROM todos WHERE id=?", (tid,))
