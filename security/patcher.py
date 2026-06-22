@@ -19,8 +19,12 @@ log = logging.getLogger("security.patcher")
 PYTHON = sys.executable
 PROJECT = Path(__file__).parent.parent
 
+# Lower index = more severe; used for thresholding and dedup.
+_SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
+
 
 def _current_version(package: str) -> str | None:
+    """Return the installed version of a package, or None if not installed."""
     try:
         return importlib.metadata.version(package)
     except importlib.metadata.PackageNotFoundError:
@@ -66,33 +70,64 @@ def patch_vulnerability(vuln: Vulnerability, dry_run: bool = False) -> dict:
             "target":  vuln.fix_version,
         }
 
+    return _run_pip_upgrade(vuln)
+
+
+def _run_pip_upgrade(vuln: Vulnerability) -> dict:
+    """Run ``pip install '<pkg>>=<fix>'`` for a vulnerability. Returns a result dict.
+
+    Status is "patched" on success (with the resulting version), "failed" on a
+    non-zero pip exit, or "error" on a subprocess exception/timeout.
+    """
     try:
         result = subprocess.run(
             [PYTHON, "-m", "pip", "install", "--quiet",
              f"{vuln.package}>={vuln.fix_version}"],
             capture_output=True, text=True, timeout=120,
         )
-        if result.returncode == 0:
-            new_ver = _current_version(vuln.package) or "unknown"
-            log.info(f"  Patched: {vuln.package} now at {new_ver}")
-            return {
-                "status":       "patched",
-                "package":      vuln.package,
-                "from_version": vuln.version,
-                "to_version":   new_ver,
-                "vuln_id":      vuln.vuln_id,
-                "patched_at":   datetime.now().isoformat(),
-            }
-        else:
-            log.error(f"  Patch failed: {result.stderr[:200]}")
-            return {
-                "status":  "failed",
-                "package": vuln.package,
-                "reason":  result.stderr[:200],
-            }
     except Exception as e:
         log.error(f"  Exception patching {vuln.package}: {e}")
         return {"status": "error", "package": vuln.package, "reason": str(e)}
+
+    if result.returncode != 0:
+        log.error(f"  Patch failed: {result.stderr[:200]}")
+        return {"status": "failed", "package": vuln.package, "reason": result.stderr[:200]}
+
+    new_ver = _current_version(vuln.package) or "unknown"
+    log.info(f"  Patched: {vuln.package} now at {new_ver}")
+    return {
+        "status":       "patched",
+        "package":      vuln.package,
+        "from_version": vuln.version,
+        "to_version":   new_ver,
+        "vuln_id":      vuln.vuln_id,
+        "patched_at":   datetime.now().isoformat(),
+    }
+
+
+def _dedup_by_package(vulns: list[Vulnerability]) -> list[Vulnerability]:
+    """Collapse multiple vulns per package to the single highest-severity one."""
+    seen: dict[str, Vulnerability] = {}
+    for v in vulns:
+        existing = seen.get(v.package)
+        if existing is None or _SEVERITY_ORDER.get(v.severity, 99) < _SEVERITY_ORDER.get(existing.severity, 99):
+            seen[v.package] = v
+    return list(seen.values())
+
+
+def _classify_unpatchable(vuln: Vulnerability) -> tuple[str, dict]:
+    """Bucket a non-auto-patchable vuln: ('manual', …) if a major bump exists,
+    else ('no_fix', …) when no fix is available."""
+    if vuln.fix_version:
+        return "manual", {
+            "package": vuln.package, "current": vuln.version, "fix": vuln.fix_version,
+            "severity": vuln.severity, "vuln_id": vuln.vuln_id,
+            "reason": "Major version upgrade required — review manually",
+        }
+    return "no_fix", {
+        "package": vuln.package, "vuln_id": vuln.vuln_id,
+        "severity": vuln.severity, "reason": "No fix available",
+    }
 
 
 def auto_patch_all(
@@ -100,49 +135,25 @@ def auto_patch_all(
     severity_threshold: str = "HIGH",
     dry_run: bool = False,
 ) -> dict:
+    """Patch safe, patchable vulnerabilities at/above the severity threshold.
+
+    Deduplicates by package (highest severity wins), skips below-threshold
+    vulns, routes major-version bumps and fixless vulns to manual/no-fix
+    buckets, and patches the rest via :func:`patch_vulnerability`. Returns a
+    summary of patched / manual / skipped / no-fix outcomes.
     """
-    Patch all safe, patchable vulnerabilities at or above the severity threshold.
-    Returns summary of what was patched, skipped, and flagged for manual review.
-    """
-    severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
-    threshold_level = severity_order.get(severity_threshold, 1)
+    threshold_level = _SEVERITY_ORDER.get(severity_threshold, 1)
+    patched, skipped, manual, no_fix = [], [], [], []
 
-    patched   = []
-    skipped   = []
-    manual    = []
-    no_fix    = []
-
-    # Deduplicate by package (keep highest severity)
-    seen_packages: dict[str, Vulnerability] = {}
-    for v in vulns:
-        if v.package not in seen_packages:
-            seen_packages[v.package] = v
-        else:
-            existing = seen_packages[v.package]
-            if severity_order.get(v.severity, 99) < severity_order.get(existing.severity, 99):
-                seen_packages[v.package] = v
-
-    for vuln in seen_packages.values():
-        vuln_level = severity_order.get(vuln.severity, 99)
-
-        if vuln_level > threshold_level:
+    for vuln in _dedup_by_package(vulns):
+        if _SEVERITY_ORDER.get(vuln.severity, 99) > threshold_level:
             skipped.append({"package": vuln.package, "severity": vuln.severity,
                             "reason": f"Below threshold ({severity_threshold})"})
             continue
 
         if not vuln.patchable:
-            if vuln.fix_version:
-                manual.append({
-                    "package":    vuln.package,
-                    "current":    vuln.version,
-                    "fix":        vuln.fix_version,
-                    "severity":   vuln.severity,
-                    "vuln_id":    vuln.vuln_id,
-                    "reason":     "Major version upgrade required — review manually",
-                })
-            else:
-                no_fix.append({"package": vuln.package, "vuln_id": vuln.vuln_id,
-                                "severity": vuln.severity, "reason": "No fix available"})
+            bucket, entry = _classify_unpatchable(vuln)
+            (manual if bucket == "manual" else no_fix).append(entry)
             continue
 
         result = patch_vulnerability(vuln, dry_run=dry_run)
