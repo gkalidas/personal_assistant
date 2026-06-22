@@ -21,8 +21,25 @@ _PREFIX   = "enc:"
 _fernet = None
 
 
+def _generate_key():
+    """Create a new Fernet key at _KEY_PATH (mode 0600) and return it."""
+    from cryptography.fernet import Fernet
+    key = Fernet.generate_key()
+    _KEY_PATH.write_bytes(key)
+    _KEY_PATH.chmod(0o600)
+    log.info("generated new encryption key at %s", _KEY_PATH)
+    return key
+
+
 def _load_or_create_key():
-    """Return the cached Fernet, loading the key from disk or creating it (0600) on first use."""
+    """Return the cached Fernet, loading the on-disk key or creating one (0600) if missing.
+
+    If an existing key file is structurally invalid (e.g. raw bytes instead of a
+    base64-encoded Fernet key), it is regenerated. This is safe: an unusable key
+    can never have encrypted any data, so nothing is lost — but it does mean a
+    bad key silently disabling encryption is now self-healing instead of
+    permanent.
+    """
     global _fernet
     if _fernet is not None:
         return _fernet
@@ -33,12 +50,17 @@ def _load_or_create_key():
 
     if _KEY_PATH.exists():
         key = _KEY_PATH.read_bytes().strip()
-        log.debug("loaded encryption key from %s", _KEY_PATH)
+        try:
+            _fernet = Fernet(key)
+            log.debug("loaded encryption key from %s", _KEY_PATH)
+            return _fernet
+        except Exception as e:
+            log.error("encryption key at %s is invalid (%s) — regenerating. "
+                      "Existing data is unaffected (an invalid key never encrypted anything).",
+                      _KEY_PATH, e)
+            key = _generate_key()
     else:
-        key = Fernet.generate_key()
-        _KEY_PATH.write_bytes(key)
-        _KEY_PATH.chmod(0o600)
-        log.info("generated new encryption key at %s", _KEY_PATH)
+        key = _generate_key()
 
     _fernet = Fernet(key)
     return _fernet
