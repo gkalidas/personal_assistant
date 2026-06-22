@@ -66,6 +66,7 @@ def _searxng_search(query: str, news: bool = False, max_results: int = 5) -> lis
 
 
 def _ddg_search(query: str, max_results: int = 5) -> list[dict]:
+    """Run a DuckDuckGo web search; returns result dicts ([] on failure)."""
     try:
         from ddgs import DDGS
         with DDGS() as ddgs:
@@ -76,6 +77,7 @@ def _ddg_search(query: str, max_results: int = 5) -> list[dict]:
 
 
 def _ddg_news(query: str, max_results: int = 5) -> list[dict]:
+    """Run a DuckDuckGo news search; returns result dicts ([] on failure)."""
     try:
         from ddgs import DDGS
         with DDGS() as ddgs:
@@ -98,6 +100,7 @@ def _search(query: str, news: bool = False, max_results: int = 5) -> tuple[list[
 # ── Format + summarise ────────────────────────────────────────────────────────
 
 def _format_results(results: list[dict]) -> str:
+    """Format search results into a numbered, source-scrubbed text block."""
     if not results:
         return "No results found."
     parts = []
@@ -110,6 +113,7 @@ def _format_results(results: list[dict]) -> str:
 
 
 def _llm_summarise(query: str, search_text: str, stream: bool = False) -> str:
+    """Summarise search results with the LLM under a read-only guardrail prompt."""
     from core.llm import call as llm_call
     messages = [
         {"role": "system", "content": _SYSTEM},
@@ -142,6 +146,7 @@ class SearchModule(BaseModule):
     )
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
+        """Run a web/news search and return an LLM summary (or raw results on failure)."""
         t0 = time.monotonic()
         is_news = any(w in query.lower() for w in _NEWS_WORDS)
 
