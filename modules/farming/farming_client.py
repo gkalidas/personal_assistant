@@ -115,44 +115,34 @@ def get_history(limit: int = 20) -> list[dict]:
         return []
 
 
+def _bullet_section(lines: list[str], header: str, items, bullet: str) -> None:
+    """Append a '<header>:' line followed by one bulleted line per item."""
+    if items:
+        lines.append(f"\n{header}:")
+        lines.extend(f"  {bullet} {it}" for it in items)
+
+
 def format_diagnosis(result: dict) -> str:
     """Format a farming server diagnosis result into a readable response."""
     if "error" in result:
-        return f"Disease analysis unavailable: {result['error']}"
+        msg = f"Disease analysis unavailable: {result['error']}"
         if result.get("hint"):
-            return f"Disease analysis unavailable: {result['error']}\nHint: {result['hint']}"
+            msg += f"\nHint: {result['hint']}"
+        return msg
 
-    lines = []
-    condition = result.get("condition", "Unknown")
-    severity  = result.get("severity", "unknown")
-    conf      = result.get("confidence", "low")
-    lines.append(f"Diagnosis: {condition} [{severity} severity, {conf} confidence]")
-
-    if result.get("immediate_actions"):
-        lines.append("\nImmediate actions:")
-        for a in result["immediate_actions"]:
-            lines.append(f"  • {a}")
-
+    lines = [
+        f"Diagnosis: {result.get('condition', 'Unknown')} "
+        f"[{result.get('severity', 'unknown')} severity, {result.get('confidence', 'low')} confidence]"
+    ]
+    _bullet_section(lines, "Immediate actions", result.get("immediate_actions"), "•")
     if result.get("spray_timing"):
         lines.append(f"\nSpray timing: {result['spray_timing']}")
-
     if result.get("weather_note"):
         lines.append(f"\nWeather note: {result['weather_note']}")
-
     if result.get("soil_note"):
         lines.append(f"Soil note: {result['soil_note']}")
-
-    if result.get("do_not"):
-        lines.append("\nDo NOT:")
-        for d in result["do_not"]:
-            lines.append(f"  ✗ {d}")
-
-    if result.get("watch_for"):
-        lines.append("\nWatch for:")
-        for w in result["watch_for"]:
-            lines.append(f"  → {w}")
-
+    _bullet_section(lines, "Do NOT", result.get("do_not"), "✗")
+    _bullet_section(lines, "Watch for", result.get("watch_for"), "→")
     if result.get("timeline"):
         lines.append(f"\nTimeline: {result['timeline']}")
-
     return "\n".join(lines)
