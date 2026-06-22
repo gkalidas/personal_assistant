@@ -55,33 +55,36 @@ def _installed_packages() -> list[tuple[str, str]]:
     return sorted(set(pkgs))
 
 
+def _cvss_to_severity(score_str: str) -> str | None:
+    """Map a numeric CVSS score string to a severity band, or None if unparseable."""
+    if not score_str:
+        return None
+    try:
+        score = float(score_str)
+    except ValueError:
+        return None
+    if score >= 9.0: return "CRITICAL"
+    if score >= 7.0: return "HIGH"
+    if score >= 4.0: return "MEDIUM"
+    return "LOW"
+
+
 def _severity_from_osv(vuln: dict) -> str:
-    """Extract highest severity from OSV vuln object."""
+    """Extract the highest severity band from an OSV vuln object.
+
+    Checks the top-level ``severity`` list first, then the per-affected CVSS
+    scores as a fallback. Returns "UNKNOWN" when no score is present.
+    """
     for sev in vuln.get("severity", []):
-        score_str = sev.get("score", "")
-        if score_str:
-            try:
-                score = float(score_str)
-                if score >= 9.0:  return "CRITICAL"
-                if score >= 7.0:  return "HIGH"
-                if score >= 4.0:  return "MEDIUM"
-                return "LOW"
-            except ValueError:
-                pass
-    # Fallback: check database_specific
+        band = _cvss_to_severity(sev.get("score", ""))
+        if band:
+            return band
     for aff in vuln.get("affected", []):
         for sev in aff.get("severity", []):
-            typ = sev.get("type", "")
-            val = sev.get("score", "")
-            if "CVSS" in typ and val:
-                try:
-                    score = float(val)
-                    if score >= 9.0:  return "CRITICAL"
-                    if score >= 7.0:  return "HIGH"
-                    if score >= 4.0:  return "MEDIUM"
-                    return "LOW"
-                except ValueError:
-                    pass
+            if "CVSS" in sev.get("type", ""):
+                band = _cvss_to_severity(sev.get("score", ""))
+                if band:
+                    return band
     return "UNKNOWN"
 
 
@@ -99,53 +102,61 @@ def _fix_version_from_osv(vuln: dict, pkg_name: str) -> str | None:
     return None
 
 
-def scan_packages(packages: list[tuple[str, str]] | None = None) -> list[Vulnerability]:
-    """
-    Query OSV.dev for all installed packages in one batched request.
-    Returns list of Vulnerability objects sorted by severity.
-    """
-    if packages is None:
-        packages = _installed_packages()
+_SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
 
-    if not packages:
-        return []
 
+def _query_osv(packages: list[tuple[str, str]]) -> list[dict]:
+    """Batch-query OSV.dev for the given packages. Returns the per-package
+    result list (parallel to ``packages``), or [] on any request failure."""
     queries = [
         {"package": {"name": name, "ecosystem": "PyPI"}, "version": version}
         for name, version in packages
     ]
-
     log.info(f"Querying OSV.dev for {len(queries)} packages...")
     try:
         resp = httpx.post(
-            OSV_BATCH_URL,
-            json={"queries": queries},
-            timeout=30.0,
+            OSV_BATCH_URL, json={"queries": queries}, timeout=30.0,
             headers={"User-Agent": "GK-Security-Guardian/1.0"},
         )
         resp.raise_for_status()
-        results = resp.json().get("results", [])
+        return resp.json().get("results", [])
     except Exception as e:
         log.error(f"OSV query failed: {e}")
         return []
 
-    vulns: list[Vulnerability] = []
-    severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
 
+def _parse_osv_results(
+    packages: list[tuple[str, str]], results: list[dict]
+) -> list[Vulnerability]:
+    """Turn OSV batch results into Vulnerability objects, sorted by severity."""
+    vulns: list[Vulnerability] = []
     for (name, version), result in zip(packages, results):
         for vuln in result.get("vulns", []):
-            vuln_id  = vuln.get("id", "UNKNOWN")
-            summary  = vuln.get("summary", vuln.get("details", "No summary"))[:200]
-            severity = _severity_from_osv(vuln)
-            fix_ver  = _fix_version_from_osv(vuln, name)
-            aliases  = vuln.get("aliases", [])
             vulns.append(Vulnerability(
-                package=name, version=version, vuln_id=vuln_id,
-                severity=severity, summary=summary,
-                fix_version=fix_ver, aliases=aliases,
+                package=name, version=version,
+                vuln_id=vuln.get("id", "UNKNOWN"),
+                severity=_severity_from_osv(vuln),
+                summary=vuln.get("summary", vuln.get("details", "No summary"))[:200],
+                fix_version=_fix_version_from_osv(vuln, name),
+                aliases=vuln.get("aliases", []),
             ))
+    vulns.sort(key=lambda v: _SEVERITY_ORDER.get(v.severity, 99))
+    return vulns
 
-    vulns.sort(key=lambda v: severity_order.get(v.severity, 99))
+
+def scan_packages(packages: list[tuple[str, str]] | None = None) -> list[Vulnerability]:
+    """Scan installed (or given) packages for known CVEs via OSV.dev.
+
+    Issues one batched request and returns Vulnerability objects sorted by
+    severity. Returns [] when there are no packages or the query fails.
+    """
+    if packages is None:
+        packages = _installed_packages()
+    if not packages:
+        return []
+
+    results = _query_osv(packages)
+    vulns   = _parse_osv_results(packages, results)
     log.info(f"Found {len(vulns)} vulnerabilities across {len(packages)} packages.")
     return vulns
 
