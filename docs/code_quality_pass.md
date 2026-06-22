@@ -230,10 +230,26 @@ Counts = files still needing work / missing docstrings / functions >40 lines.
 | Bucket | Files | No-doc | >40ln | Priority |
 |--------|-------|--------|-------|----------|
 | `security/` | — | — | — | ✅ **DONE** (12 files committed) |
-| `core/` | 13 | 43 | 10 | **2 (NEXT)** |
-| `modules/` | 27 | 138 | 28 | 3 |
+| `core/` | — | — | — | ✅ **DONE** (14 files; crypto bug fixed) |
+| `modules/` | 27 | 138 | 28 | **3 (NEXT)** |
 | `dashboard/` | 9 | 72 | 11 | 4 |
 | `scripts/` | 7 | 37 | 8 | 5 |
+
+### core/ bucket — completed files & commits
+`sanitizer`(adf86d2), `crypto`(**2261866 — bug fix**), `router`(0850945),
+`llm`(adf3caf), `mistake_log`(37249bb), `log`(08de1a6),
+`log_archiver`(82f54fb), `guardrails`(526710c), `embedding_router`(07b20d4),
+`audio`(39354ac), `analysis`(a353ce7), `doc_reader`(7f005f9),
+`knowledge_graph`(9bd1cb5 — dedup hydration/vis), `memory`(2fdc117).
+
+**🔑 Major bug found+fixed in `core/crypto.py` (commit 2261866):** the key at
+`~/.config/gk/master.key` was 32 raw bytes (not a base64 Fernet key), so
+`encrypt()` threw every call and fell back to **plaintext** — encryption at
+rest never worked (0 finance rows had the `enc:` prefix). `_load_or_create_key`
+now validates and regenerates an unusable key (safe: an invalid key can't have
+encrypted anything). Old invalid key backed up at
+`~/.config/gk/master.key.invalid.bak`. Dashboard server restarted so live
+writes now actually encrypt.
 
 > `core/sanitizer.py` is already done (bucket 1). Re-run the §9 audit scoped to
 > `core/` for the current exact list before starting — counts above were the
