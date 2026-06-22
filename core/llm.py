@@ -53,11 +53,13 @@ _FRAMES = "⣾⣽⣻⢿⡿⣟⣯⣷"
 class Spinner:
     """Thread-safe CLI spinner. Call .stop() when done."""
     def __init__(self, msg: str = "  Thinking"):
+        """Start the spinner animation in a background daemon thread."""
         self._stop = threading.Event()
         self._t = threading.Thread(target=self._run, args=(msg,), daemon=True)
         self._t.start()
 
     def _run(self, msg: str):
+        """Animate the spinner frames until stopped, then clear the line."""
         idx = 0
         while not self._stop.is_set():
             sys.stdout.write(f"\r{_FRAMES[idx % len(_FRAMES)]} {msg}…")
@@ -68,6 +70,7 @@ class Spinner:
         sys.stdout.flush()
 
     def stop(self):
+        """Signal the animation thread to stop and wait briefly for it to exit."""
         self._stop.set()
         self._t.join(timeout=0.5)
 
@@ -110,31 +113,37 @@ def call(
     if format:
         payload["format"] = format
 
+    return _call_with_fallback(payload, do_stream, prefix, timeout, use_fallback)
+
+
+def _call_with_fallback(
+    payload: dict, do_stream: bool, prefix: str, timeout: float, use_fallback: bool
+) -> str:
+    """Dispatch the request; on failure retry once with FALLBACK_MODEL (if allowed)."""
+    mdl = payload["model"]
     t0 = time.monotonic()
     try:
         result = _dispatch(payload, do_stream, prefix, timeout)
-        ms = int((time.monotonic() - t0) * 1000)
-        log.debug("llm %s %.0fms stream=%s", mdl, ms, do_stream)
+        log.debug("llm %s %.0fms stream=%s", mdl, (time.monotonic() - t0) * 1000, do_stream)
         return result
     except Exception as exc:
-        ms = int((time.monotonic() - t0) * 1000)
-        log.warning("llm %s failed %.0fms: %s", mdl, ms, exc)
-
+        log.warning("llm %s failed %.0fms: %s", mdl, (time.monotonic() - t0) * 1000, exc)
         if not use_fallback or mdl == FALLBACK_MODEL:
             raise
 
-        log.info("retrying with fallback model %s", FALLBACK_MODEL)
-        payload["model"] = FALLBACK_MODEL
-        try:
-            result = _dispatch(payload, do_stream, prefix, timeout)
-            log.info("fallback succeeded: %s", FALLBACK_MODEL)
-            return result
-        except Exception as exc2:
-            log.error("fallback %s also failed: %s", FALLBACK_MODEL, exc2)
-            raise exc2
+    log.info("retrying with fallback model %s", FALLBACK_MODEL)
+    payload["model"] = FALLBACK_MODEL
+    try:
+        result = _dispatch(payload, do_stream, prefix, timeout)
+        log.info("fallback succeeded: %s", FALLBACK_MODEL)
+        return result
+    except Exception as exc2:
+        log.error("fallback %s also failed: %s", FALLBACK_MODEL, exc2)
+        raise
 
 
 def _dispatch(payload: dict, do_stream: bool, prefix: str, timeout: float) -> str:
+    """Send one chat request — streaming or buffered — and return the response text."""
     if do_stream:
         return _stream(payload, prefix, timeout)
     resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=timeout)
