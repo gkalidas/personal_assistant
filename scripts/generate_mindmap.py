@@ -118,12 +118,14 @@ BRANCHES = [
 # ── Drawing helpers ────────────────────────────────────────────────────────────
 
 def polar(angle_deg, r):
+    """Convert a polar (angle°, radius) to cartesian (x, y)."""
     a = math.radians(angle_deg)
     return r * math.cos(a), r * math.sin(a)
 
 
 def draw_rounded_box(ax, cx, cy, text, color, fontsize=9, alpha=0.92,
                      width=None, height=None, text_color=None):
+    """Draw a rounded, filled text box centered at (cx, cy)."""
     tc = text_color or C["text_dark"]
     bbox = dict(boxstyle="round,pad=0.35", facecolor=color, edgecolor="white",
                 linewidth=0.6, alpha=alpha)
@@ -133,6 +135,7 @@ def draw_rounded_box(ax, cx, cy, text, color, fontsize=9, alpha=0.92,
 
 
 def draw_line(ax, x0, y0, x1, y1, color, lw=1.0, alpha=0.5, style="-"):
+    """Draw a straight line between two points."""
     ax.plot([x0, x1], [y0, y1], color=color, lw=lw, alpha=alpha,
             linestyle=style, zorder=2)
 
@@ -154,94 +157,76 @@ def draw_curve(ax, x0, y0, x1, y1, color, lw=1.2, alpha=0.55):
 
 # ── Main draw ──────────────────────────────────────────────────────────────────
 
-def build(fig, ax):
-    ax.set_facecolor(C["bg"])
-    fig.patch.set_facecolor(C["bg"])
-    ax.set_xlim(-11, 11)
-    ax.set_ylim(-11, 11)
-    ax.set_aspect("equal")
-    ax.axis("off")
-
-    # ── Center node ──
-    circle = plt.Circle((0, 0), 1.35, color=C["center"], zorder=4)
-    ax.add_patch(circle)
+def _draw_center(ax) -> None:
+    """Draw the central GK node and the subtitle line."""
+    ax.add_patch(plt.Circle((0, 0), 1.35, color=C["center"], zorder=4))
     ax.text(0, 0.18, "GK", ha="center", va="center", fontsize=22,
             fontweight="bold", color=C["text_dark"], zorder=6)
     ax.text(0, -0.28, "Personal", ha="center", va="center", fontsize=9,
             color=C["text_dark"], zorder=6)
     ax.text(0, -0.62, "Assistant", ha="center", va="center", fontsize=9,
             color=C["text_dark"], zorder=6)
-
-    # ── Subtitle ring ──
     ax.text(0, -1.75, "100% local · private · no cloud · router-based",
-            ha="center", va="center", fontsize=8,
-            color=C["sub_text"], zorder=4)
+            ha="center", va="center", fontsize=8, color=C["sub_text"], zorder=4)
 
-    # ── Branches ──
-    for angle, label, ckey, subs in BRANCHES:
-        color = C[ckey]
-        # Branch node distance
-        br = 4.2
-        bx, by = polar(angle, br)
 
-        # Curve from center to branch
-        draw_curve(ax, 0, 0, bx, by, color, lw=2.0, alpha=0.7)
+def _draw_branch(ax, angle, label, ckey, subs) -> None:
+    """Draw one branch node, its curve from center, and its fanned-out sub-items."""
+    color = C[ckey]
+    bx, by = polar(angle, 4.2)
+    draw_curve(ax, 0, 0, bx, by, color, lw=2.0, alpha=0.7)
+    draw_rounded_box(ax, bx, by, label, color, fontsize=10, text_color=C["text_dark"])
 
-        # Branch label box
-        draw_rounded_box(ax, bx, by, label, color, fontsize=10,
-                         text_color=C["text_dark"])
+    n = len(subs)
+    spread  = min(50, n * 9)             # wedge width around the branch angle
+    start_a = angle - spread / 2
+    step_a  = spread / max(n - 1, 1) if n > 1 else 0
+    for i, sub in enumerate(subs):
+        sx, sy = polar(start_a + i * step_a, 7.8)
+        draw_line(ax, bx, by, sx, sy, color, lw=0.9, alpha=0.45)
+        ax.text(sx, sy, sub, ha="center", va="center", fontsize=6.6,
+                color=C["text_light"], zorder=5,
+                bbox=dict(boxstyle="round,pad=0.25", facecolor="#161b22",
+                          edgecolor=color, linewidth=0.8, alpha=0.88))
 
-        # Sub-items — fan out from branch
-        n = len(subs)
-        # Spread sub-items in a wedge around the branch angle
-        spread = min(50, n * 9)
-        start_a = angle - spread / 2
-        step_a  = spread / max(n - 1, 1) if n > 1 else 0
 
-        sr = 7.8   # sub-item ring radius
-        for i, sub in enumerate(subs):
-            sa = start_a + i * step_a
-            sx, sy = polar(sa, sr)
-
-            # Line from branch to sub
-            draw_line(ax, bx, by, sx, sy, color, lw=0.9, alpha=0.45)
-
-            # Sub text (smaller box)
-            ax.text(sx, sy, sub, ha="center", va="center", fontsize=6.6,
-                    color=C["text_light"], zorder=5,
-                    bbox=dict(boxstyle="round,pad=0.25",
-                              facecolor="#161b22", edgecolor=color,
-                              linewidth=0.8, alpha=0.88))
-
-    # ── LLM stack badge (bottom-center) ──
+def _draw_badges(ax) -> None:
+    """Draw the LLM-stack line, the stat badges, and the title/subtitle."""
     ax.text(0, -10.5,
             "LLM Stack (fully local):  qwen3:1.7b  ·  qwen2.5:0.5b  |  "
             "Ollama  ·  SQLite  ·  Python 3.10",
             ha="center", va="center", fontsize=8, color=C["sub_text"])
-
-    # ── Stats badges ──
     stats = [
-        ("5 Modules",      -6.5, 10.2, C["farming"]),
-        ("10 Core files",  -3.2, 10.2, C["llm"]),
-        ("9 Free APIs",     0.0, 10.2, C["apis"]),
-        ("45 Sec patterns", 3.2, 10.2, C["security"]),
-        ("384 Tests",       6.5, 10.2, C["eval"]),
+        ("5 Modules", -6.5, 10.2, C["farming"]), ("10 Core files", -3.2, 10.2, C["llm"]),
+        ("9 Free APIs", 0.0, 10.2, C["apis"]), ("45 Sec patterns", 3.2, 10.2, C["security"]),
+        ("384 Tests", 6.5, 10.2, C["eval"]),
     ]
     for label, sx, sy, sc in stats:
         ax.text(sx, sy, label, ha="center", va="center", fontsize=8,
                 fontweight="bold", color=C["text_dark"],
-                bbox=dict(boxstyle="round,pad=0.3", facecolor=sc,
-                          edgecolor="none", alpha=0.9))
-
-    # ── Title ──
+                bbox=dict(boxstyle="round,pad=0.3", facecolor=sc, edgecolor="none", alpha=0.9))
     ax.text(0, 10.8, "GK Personal Assistant — Architecture Mind Map",
-            ha="center", va="center", fontsize=13, fontweight="bold",
-            color=C["text_light"])
+            ha="center", va="center", fontsize=13, fontweight="bold", color=C["text_light"])
     ax.text(0, 10.45, "June 2026  ·  v0.1  ·  github.com/gkalidas",
             ha="center", va="center", fontsize=8, color=C["sub_text"])
 
 
+def build(fig, ax):
+    """Render the full architecture mind map onto the figure/axes."""
+    ax.set_facecolor(C["bg"])
+    fig.patch.set_facecolor(C["bg"])
+    ax.set_xlim(-11, 11)
+    ax.set_ylim(-11, 11)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    _draw_center(ax)
+    for angle, label, ckey, subs in BRANCHES:
+        _draw_branch(ax, angle, label, ckey, subs)
+    _draw_badges(ax)
+
+
 def main():
+    """Generate the mind-map PNG and save it to OUT."""
     fig, ax = plt.subplots(figsize=(26, 26), dpi=160)
     build(fig, ax)
     plt.tight_layout(pad=0.2)
