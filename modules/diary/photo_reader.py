@@ -29,19 +29,20 @@ _PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".tiff", ".webp"
 _EXIF_DATE_FMT    = "%Y:%m:%d %H:%M:%S"
 
 
+def _rational_to_float(r) -> float:
+    """Convert a Pillow IFDRational (or (num, den) tuple) to a float."""
+    return float(r[0]) / float(r[1]) if isinstance(r, tuple) else float(r)
+
+
+def _dms_to_deg(dms) -> float:
+    """Convert a (degrees, minutes, seconds) GPS triple to decimal degrees."""
+    return (_rational_to_float(dms[0]) + _rational_to_float(dms[1]) / 60
+            + _rational_to_float(dms[2]) / 3600)
+
+
 def _parse_gps(gps_data: dict) -> tuple[float, float] | None:
     """Convert raw IFD GPS dict to (lat, lon) floats. Returns None if incomplete."""
     try:
-        def _rational_to_float(r):
-            # Pillow returns IFDRational objects
-            return float(r[0]) / float(r[1]) if isinstance(r, tuple) else float(r)
-
-        def _dms_to_deg(dms) -> float:
-            d = _rational_to_float(dms[0])
-            m = _rational_to_float(dms[1])
-            s = _rational_to_float(dms[2])
-            return d + m / 60 + s / 3600
-
         named = {GPSTAGS.get(k, k): v for k, v in gps_data.items()}
         lat = _dms_to_deg(named["GPSLatitude"])
         lon = _dms_to_deg(named["GPSLongitude"])
@@ -79,37 +80,12 @@ def read_exif(photo_path: Path) -> dict[str, Any]:
     try:
         img = Image.open(photo_path)
         result["width"], result["height"] = img.size
-
         raw = img._getexif()
-        if not raw:
-            # No EXIF — fall back to file mtime
-            mtime = photo_path.stat().st_mtime
-            result["date"] = datetime.fromtimestamp(mtime)
-            log.debug("no EXIF in %s — using file mtime", photo_path.name)
+        if raw:
+            _apply_exif_fields(raw, photo_path, result)
         else:
-            # Date
-            dt_str = raw.get(_TAG_DATETIME_ORIGINAL) or raw.get(_TAG_DATETIME)
-            if dt_str:
-                try:
-                    result["date"] = datetime.strptime(dt_str, _EXIF_DATE_FMT)
-                except ValueError:
-                    result["date"] = datetime.fromtimestamp(photo_path.stat().st_mtime)
-            else:
-                result["date"] = datetime.fromtimestamp(photo_path.stat().st_mtime)
-
-            # Device
-            make  = raw.get(_TAG_MAKE, "")
-            model = raw.get(_TAG_MODEL, "")
-            if make or model:
-                result["device"] = f"{make} {model}".strip()
-
-            # GPS
-            if _TAG_GPS_INFO in raw:
-                coords = _parse_gps(raw[_TAG_GPS_INFO])
-                if coords:
-                    result["gps"]     = coords
-                    result["has_gps"] = True
-
+            result["date"] = datetime.fromtimestamp(photo_path.stat().st_mtime)
+            log.debug("no EXIF in %s — using file mtime", photo_path.name)
     except Exception as e:
         log.warning("could not read EXIF from %s: %s", photo_path.name, e)
         result["date"] = datetime.fromtimestamp(photo_path.stat().st_mtime)
@@ -117,8 +93,27 @@ def read_exif(photo_path: Path) -> dict[str, Any]:
     if result["date"]:
         result["date_str"] = result["date"].strftime("%Y-%m-%d")
         result["time_str"] = result["date"].strftime("%H:%M")
-
     return result
+
+
+def _apply_exif_fields(raw: dict, photo_path: Path, result: dict) -> None:
+    """Fill date/device/gps into ``result`` from a photo's raw EXIF dict."""
+    dt_str = raw.get(_TAG_DATETIME_ORIGINAL) or raw.get(_TAG_DATETIME)
+    try:
+        result["date"] = datetime.strptime(dt_str, _EXIF_DATE_FMT) if dt_str else None
+    except ValueError:
+        result["date"] = None
+    if result["date"] is None:
+        result["date"] = datetime.fromtimestamp(photo_path.stat().st_mtime)
+
+    make, model = raw.get(_TAG_MAKE, ""), raw.get(_TAG_MODEL, "")
+    if make or model:
+        result["device"] = f"{make} {model}".strip()
+
+    if _TAG_GPS_INFO in raw:
+        coords = _parse_gps(raw[_TAG_GPS_INFO])
+        if coords:
+            result["gps"], result["has_gps"] = coords, True
 
 
 def scan_photos(directory: str | Path, max_per_day: int = 12) -> dict[str, list[dict]]:
@@ -149,23 +144,22 @@ def scan_photos(directory: str | Path, max_per_day: int = 12) -> dict[str, list[
         return {}
 
     log.info("scanning %d photos in %s", len(photo_files), directory)
+    by_date = _group_photos_by_date(photo_files, max_per_day)
+    log.info("grouped into %d days: %s", len(by_date), sorted(by_date.keys()))
+    return by_date
 
-    # Read EXIF and group by date
+
+def _group_photos_by_date(photo_files: list[Path], max_per_day: int) -> dict[str, list[dict]]:
+    """Read each photo's EXIF, group by date, sort by time, and cap per day."""
     by_date: dict[str, list[dict]] = {}
     for p in photo_files:
         meta = read_exif(p)
-        day = meta["date_str"] or "unknown"
-        by_date.setdefault(day, []).append(meta)
-
-    # Sort each day's photos by time, keep at most max_per_day
-    for day in by_date:
-        by_date[day].sort(key=lambda m: m["time_str"])
-        if len(by_date[day]) > max_per_day:
-            log.info("day %s has %d photos — keeping first %d",
-                     day, len(by_date[day]), max_per_day)
-            by_date[day] = by_date[day][:max_per_day]
-
-    log.info("grouped into %d days: %s", len(by_date), sorted(by_date.keys()))
+        by_date.setdefault(meta["date_str"] or "unknown", []).append(meta)
+    for day, metas in by_date.items():
+        metas.sort(key=lambda m: m["time_str"])
+        if len(metas) > max_per_day:
+            log.info("day %s has %d photos — keeping first %d", day, len(metas), max_per_day)
+            by_date[day] = metas[:max_per_day]
     return by_date
 
 
