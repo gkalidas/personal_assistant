@@ -121,6 +121,8 @@ def _save_state() -> None:
 # ── Task implementations ──────────────────────────────────────────────────────
 
 def task_vuln_scan(auto_patch: bool = True) -> dict:
+
+    """Scan dependencies for CVEs (OSV.dev), optionally auto-patch, and save the report."""
     from security.scanner import scan_packages, scan_report
     from security.patcher import auto_patch_all
 
@@ -156,6 +158,9 @@ def task_vuln_scan(auto_patch: bool = True) -> dict:
 
 
 def task_code_audit() -> dict:
+
+
+    """Run the code security audit (bandit + custom checks) and save the report."""
     from security.auditor import run_audit
 
     log.info("=== Code Security Audit ===")
@@ -180,6 +185,9 @@ def task_code_audit() -> dict:
 
 
 def task_pattern_update() -> dict:
+
+
+    """Refresh injection patterns from intel sources and hot-reload the sanitizer."""
     from security.watcher import update_patterns
 
     log.info("=== Injection Pattern Update ===")
@@ -198,6 +206,9 @@ def task_pattern_update() -> dict:
 
 
 def task_threat_intel() -> dict:
+
+
+    """Fetch recent AI/LLM attack intel, replicate against our defenses, and save the report."""
     from security.threat_intel import run_threat_intel
 
     log.info("=== Threat Intelligence — AI/LLM Attack News & Replication ===")
@@ -219,6 +230,11 @@ def task_threat_intel() -> dict:
 
 
 def task_red_team() -> dict:
+    """Run the red team, auto-defend any bypasses, then jailbreak-sim and posture.
+
+    If attacks bypass the sanitizer, runs autodefense and re-runs the red team
+    to confirm the fixes. Returns combined attack/jailbreak/posture stats.
+    """
     from security.red_team      import run_red_team, save_report
     from security.autodefense   import run_autodefense
     from security.posture       import calculate_posture
@@ -257,6 +273,7 @@ def task_red_team() -> dict:
 
 
 def task_jailbreak(quiet: bool = False) -> dict:
+    """Run the output-side jailbreak simulation and return contained/escaped counts."""
     from security.jailbreak_sim import run_jailbreak_sim
     log.info("=== Jailbreak Simulation (output-side jail) ===")
     results  = run_jailbreak_sim(llm=False, verbose=not quiet)
@@ -269,6 +286,9 @@ def task_jailbreak(quiet: bool = False) -> dict:
 
 
 def task_anomaly_detect() -> dict:
+
+
+    """Scan the last 24h of events for anomalies and save the report."""
     from security.watcher import detect_anomalies
 
     result = detect_anomalies(hours=24)
@@ -308,6 +328,7 @@ def _reload_sanitizer_patterns() -> None:
 # ── Report storage ────────────────────────────────────────────────────────────
 
 def _save_report(task: str, data: dict) -> None:
+    """Write a task report to logs/security/<task>_{ts}.json and <task>_latest.json."""
     ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
     out = LOG_DIR / f"{task}_{ts}.json"
     out.write_text(json.dumps(data, indent=2, ensure_ascii=False))
@@ -316,19 +337,52 @@ def _save_report(task: str, data: dict) -> None:
     latest.write_text(json.dumps(data, indent=2, ensure_ascii=False))
 
 
+# Tasks run by a full scan, in order (lightest first).
+_FULL_SCAN_TASKS = [
+    ("anomaly_detect",  task_anomaly_detect),
+    ("pattern_update",  task_pattern_update),
+    ("red_team",        task_red_team),
+    ("jailbreak",       task_jailbreak),
+    ("vuln_scan",       lambda: task_vuln_scan(auto_patch=True)),
+    ("code_audit",      task_code_audit),
+    ("threat_intel",    task_threat_intel),
+]
+
+
+def _print_scan_report(results: dict) -> None:
+    """Print the human-readable full-scan summary table to stdout."""
+    print("\n" + "="*60)
+    print(f"  GK Security Report — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print("="*60)
+    for task, res in results.items():
+        if "error" in res:
+            print(f"  {task:<20} ERROR: {res['error'][:50]}")
+        elif task == "vuln_scan":
+            n = res.get("total_vulns", 0)
+            p = res.get("patch_result", {}).get("summary", {}).get("patched", 0)
+            print(f"  {'Dependencies':<20} {n} CVEs found, {p} auto-patched")
+        elif task == "code_audit":
+            n = res.get("total_issues", 0)
+            c = res.get("severity_counts", {})
+            print(f"  {'Code':<20} {n} issues (CRIT={c.get('CRITICAL',0)} HIGH={c.get('HIGH',0)})")
+        elif task == "anomaly_detect":
+            print(f"  {'Anomalies':<20} {res.get('alert_count', 0)} alert(s) in last 24h")
+        elif task == "pattern_update":
+            print(f"  {'Patterns':<20} {res.get('total', 0)} total (+{res.get('added', 0)} new)")
+        elif task == "threat_intel":
+            n  = res.get("vulnerabilities_found", 0)
+            t  = res.get("new_threats_tested", 0)
+            flag = " !! REQUIRES MANUAL FIX" if n > 0 else ""
+            print(f"  {'Threat Intel':<20} {t} threats tested, {n} vuln(s) found [{res.get('sources', 4)} sources]{flag}")
+    print(f"\n  Reports: {LOG_DIR}")
+    print("="*60)
+
+
 def _full_scan() -> dict:
-    """Run all tasks once and return combined report."""
+    """Run every guardian task once, print a summary, and return the combined report."""
     started = datetime.now().isoformat()
     results = {}
-    for task_name, fn in [
-        ("anomaly_detect",  task_anomaly_detect),
-        ("pattern_update",  task_pattern_update),
-        ("red_team",        task_red_team),
-        ("jailbreak",       task_jailbreak),
-        ("vuln_scan",       lambda: task_vuln_scan(auto_patch=True)),
-        ("code_audit",      task_code_audit),
-        ("threat_intel",    task_threat_intel),
-    ]:
+    for task_name, fn in _FULL_SCAN_TASKS:
         try:
             results[task_name] = fn()
         except Exception as e:
@@ -350,36 +404,7 @@ def _full_scan() -> dict:
         },
     }
     _save_report("full_scan", summary)
-
-    print("\n" + "="*60)
-    print(f"  GK Security Report — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    print("="*60)
-    for task, res in results.items():
-        if "error" in res:
-            print(f"  {task:<20} ERROR: {res['error'][:50]}")
-        elif task == "vuln_scan":
-            n = res.get("total_vulns", 0)
-            p = res.get("patch_result", {}).get("summary", {}).get("patched", 0)
-            print(f"  {'Dependencies':<20} {n} CVEs found, {p} auto-patched")
-        elif task == "code_audit":
-            n = res.get("total_issues", 0)
-            c = res.get("severity_counts", {})
-            print(f"  {'Code':<20} {n} issues (CRIT={c.get('CRITICAL',0)} HIGH={c.get('HIGH',0)})")
-        elif task == "anomaly_detect":
-            n = res.get("alert_count", 0)
-            print(f"  {'Anomalies':<20} {n} alert(s) in last 24h")
-        elif task == "pattern_update":
-            n = res.get("total", 0)
-            a = res.get("added", 0)
-            print(f"  {'Patterns':<20} {n} total (+{a} new)")
-        elif task == "threat_intel":
-            n  = res.get("vulnerabilities_found", 0)
-            t  = res.get("new_threats_tested", 0)
-            src = res.get("sources", 4)
-            flag = " !! REQUIRES MANUAL FIX" if n > 0 else ""
-            print(f"  {'Threat Intel':<20} {t} threats tested, {n} vuln(s) found [{src} sources]{flag}")
-    print(f"\n  Reports: {LOG_DIR}")
-    print("="*60)
+    _print_scan_report(results)
     return summary
 
 
@@ -447,11 +472,8 @@ def _run_one(name: str) -> None:
     log.info(f"[scheduler] Done: {name}  (cooldown {TASK_COOLDOWN//60}m before next task)")
 
 
-def run_daemon() -> None:
-    from security.load_monitor import observe, is_idle, predicted_idle_hours
-
-    _load_state()   # restore last-run times from previous daemon run
-
+def _log_startup_banner() -> None:
+    """Log the daemon banner and the configured task intervals."""
     log.info("=" * 60)
     log.info("GK Security Guardian — idle-aware scheduler starting")
     log.info("  Tasks run ONE AT A TIME, only when system is idle.")
@@ -464,12 +486,28 @@ def run_daemon() -> None:
     log.info(f"  Cool-down between tasks: {TASK_COOLDOWN // 60}m")
     log.info("=" * 60)
 
-    # First run: anomaly + pattern only (lightest tasks) so startup is fast
+
+def _run_startup_tasks() -> None:
+    """Run the lightest tasks once at startup so the daemon comes up fast."""
     for name in ("anomaly_detect", "pattern_update"):
         try:
             _run_one(name)
         except Exception as e:
             log.error(f"Startup task {name} failed: {e}")
+
+
+def run_daemon() -> None:
+    """Idle-aware scheduler loop: observe load every 60s and run due tasks.
+
+    Runs forever. Forces critically-overdue tasks regardless of load; otherwise
+    runs the most-overdue task only when the system is idle and the inter-task
+    cooldown has elapsed.
+    """
+    from security.load_monitor import observe, is_idle, predicted_idle_hours
+
+    _load_state()   # restore last-run times from previous daemon run
+    _log_startup_banner()
+    _run_startup_tasks()
 
     last_task_time = time.monotonic()   # tracks when we last finished a task
     last_log_busy  = 0.0               # throttle "system busy" log messages
@@ -522,59 +560,76 @@ def run_daemon() -> None:
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
-def main() -> None:
-    cmd = sys.argv[1] if len(sys.argv) > 1 else "scan"
+def _cmd_load():
+    """CLI: print the current load snapshot and usage-pattern heatmap."""
+    from security.load_monitor import report, print_pattern
+    r = report()
+    c = r["current"]
+    p = r["pattern"]
+    print(f"\n  Current load:  CPU={c['cpu_pct']}%  RAM={c['ram_pct']}%  "
+          f"IO={c['io_busy_pct']}%  score={c['load_score']}")
+    print(f"  Recent queries: {c['recent_queries']}   "
+          f"Ollama busy: {c['ollama_busy']}   "
+          f"Idle now: {c['is_idle']}")
+    print(f"\n  Pattern data:  {p['observations_total']} observations "
+          f"since {p['observing_since']}  ({p['data_quality']})")
+    print(f"  Predicted idle hours: {p['predicted_idle_hours']}")
+    print_pattern()
 
-    def _cmd_load():
-        from security.load_monitor import report, print_pattern
-        r = report()
-        c = r["current"]
-        p = r["pattern"]
-        print(f"\n  Current load:  CPU={c['cpu_pct']}%  RAM={c['ram_pct']}%  "
-              f"IO={c['io_busy_pct']}%  score={c['load_score']}")
-        print(f"  Recent queries: {c['recent_queries']}   "
-              f"Ollama busy: {c['ollama_busy']}   "
-              f"Idle now: {c['is_idle']}")
-        print(f"\n  Pattern data:  {p['observations_total']} observations "
-              f"since {p['observing_since']}  ({p['data_quality']})")
-        print(f"  Predicted idle hours: {p['predicted_idle_hours']}")
-        print_pattern()
 
-    def _cmd_redteam():
-        from security.red_team import run_red_team, save_report
-        r = run_red_team(llm="--llm" in sys.argv, verbose=True)
-        save_report(r)
+def _cmd_redteam():
+    """CLI: run the red-team simulation and save its report."""
+    from security.red_team import run_red_team, save_report
+    r = run_red_team(llm="--llm" in sys.argv, verbose=True)
+    save_report(r)
 
-    def _cmd_autodefense():
-        from security.autodefense import run_autodefense
-        run_autodefense(dry_run="--dry-run" in sys.argv, verbose=True)
 
-    def _cmd_posture():
-        from security.posture import calculate_posture
-        calculate_posture(verbose=True)
+def _cmd_autodefense():
+    """CLI: run autodefense over the latest red-team bypasses."""
+    from security.autodefense import run_autodefense
+    run_autodefense(dry_run="--dry-run" in sys.argv, verbose=True)
 
-    dispatch = {
-        "daemon":     run_daemon,
-        "scan":       _full_scan,
-        "vuln":       lambda: task_vuln_scan(auto_patch=("--patch" in sys.argv)),
-        "audit":      lambda: (_load_state(), _run_one("code_audit")),
-        "patterns":   task_pattern_update,
-        "anomaly":    task_anomaly_detect,
-        "patch":      lambda: task_vuln_scan(auto_patch=True),
-        "intel":      task_threat_intel,
-        "redteam":    _cmd_redteam,       # run input-side attack simulation
-        "jailbreak":  lambda: __import__("security.jailbreak_sim", fromlist=["run_jailbreak_sim"]).run_jailbreak_sim(llm="--llm" in sys.argv, verbose=True),
-        "autodefense":_cmd_autodefense,   # auto-fix bypasses from red team
-        "posture":    _cmd_posture,       # show security score
-        "load":       _cmd_load,
+
+def _cmd_posture():
+    """CLI: compute and print the security posture score."""
+    from security.posture import calculate_posture
+    calculate_posture(verbose=True)
+
+
+def _cmd_jailbreak():
+    """CLI: run the jailbreak simulation (output-side jail)."""
+    from security.jailbreak_sim import run_jailbreak_sim
+    run_jailbreak_sim(llm="--llm" in sys.argv, verbose=True)
+
+
+def _build_dispatch() -> dict:
+    """Map CLI command names to their handlers."""
+    return {
+        "daemon":      run_daemon,
+        "scan":        _full_scan,
+        "vuln":        lambda: task_vuln_scan(auto_patch=("--patch" in sys.argv)),
+        "audit":       lambda: (_load_state(), _run_one("code_audit")),
+        "patterns":    task_pattern_update,
+        "anomaly":     task_anomaly_detect,
+        "patch":       lambda: task_vuln_scan(auto_patch=True),
+        "intel":       task_threat_intel,
+        "redteam":     _cmd_redteam,       # input-side attack simulation
+        "jailbreak":   _cmd_jailbreak,     # output-side jail simulation
+        "autodefense": _cmd_autodefense,   # auto-fix bypasses from red team
+        "posture":     _cmd_posture,       # show security score
+        "load":        _cmd_load,
     }
 
+
+def main() -> None:
+    """CLI entry point: dispatch the sub-command (default 'scan')."""
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "scan"
+    dispatch = _build_dispatch()
     fn = dispatch.get(cmd)
     if not fn:
         print(f"Unknown command: {cmd}")
         print(f"Available: {', '.join(dispatch)}")
         sys.exit(1)
-
     fn()
 
 
