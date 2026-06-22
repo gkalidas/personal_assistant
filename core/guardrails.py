@@ -61,6 +61,7 @@ class GuardrailResult:
 
 
 def _strip_html(text: str) -> str:
+    """Strip script/style blocks, tags, and entities; collapse whitespace to plain text."""
     text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<script[^>]*>.*?</script>", " ", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<[^>]+>", " ", text)
@@ -70,6 +71,11 @@ def _strip_html(text: str) -> str:
 
 
 def _score_trust(url: str, text: str) -> tuple[str, list[str]]:
+    """Rate a source 'high'/'medium'/'low' from its domain and spam signals.
+
+    Returns (trust_level, reasons). Gov/known domains are high, edu/academic
+    medium, commercial-spam content low, unknown domains medium.
+    """
     reasons = []
     domain = ""
     try:
@@ -100,6 +106,7 @@ def _score_trust(url: str, text: str) -> tuple[str, list[str]]:
 
 
 def _find_injections(text: str) -> list[str]:
+    """Return short context snippets around each prompt-injection match in the text."""
     snippets = []
     for m in _INJECTION_RE.finditer(text):
         start = max(0, m.start() - 30)
