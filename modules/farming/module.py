@@ -94,6 +94,9 @@ Examples (follow this format exactly):
 
 
 def _profile_summary(context: dict) -> str:
+
+
+    """Render a short farm/profile context block for the LLM system prompt."""
     farm = context.get("default_farm", {})
     profile = context.get("profile", {})
     name = profile.get("name") or profile.get("alias") or "Ganesh"
@@ -135,6 +138,9 @@ def _recent_history(limit: int = 4) -> list[dict]:
 
 
 def _call_llm(query: str, context: dict) -> dict:
+
+
+    """Call the farming LLM with profile + recent history and return the parsed action dict."""
     from datetime import date as _date
     extras = "\n" + _profile_summary(context)
     extras += f"\nToday: {_date.today().isoformat()}"
@@ -172,6 +178,9 @@ def _call_llm(query: str, context: dict) -> dict:
 
 
 def _fmt_forecast(days: list[dict]) -> str:
+
+
+    """Format a forecast dict into a short human-readable line."""
     lines = []
     for d in days:
         rain = d.get("rain_mm") or 0
@@ -239,6 +248,8 @@ def _loc(
 # ── Action handlers (one per farming action) ──────────────────────────────────
 
 def _h_add_plot(action, _lat, _lon, _name):
+
+    """Handler: create a plot from the action fields."""
     loc = action.get("location", "")
     lat = lon = None
     if loc:
@@ -251,6 +262,8 @@ def _h_add_plot(action, _lat, _lon, _name):
     return f"Plot added: {action['name']}{area}{loc_str}", r
 
 def _h_list_plots(action, _lat, _lon, _name):
+
+    """Handler: list all plots."""
     plots = tools.list_plots()
     if not plots:
         return "No plots yet. Try: 'add my north field, 3 acres, black soil, Solapur'", None
@@ -262,6 +275,8 @@ def _h_list_plots(action, _lat, _lon, _name):
     return "\n".join(lines), plots
 
 def _h_plant_crop(action, _lat, _lon, _name):
+
+    """Handler: plant a crop on the named plot."""
     r = tools.plant_crop(action["plot"], action["crop"], action.get("variety"),
                          action.get("planted_date"), action.get("expected_harvest"))
     if "error" in r:
@@ -270,6 +285,8 @@ def _h_plant_crop(action, _lat, _lon, _name):
     return f"Planted {action['crop']} in {action['plot']} on {r['planted']}{harvest}", r
 
 def _h_list_crops(action, _lat, _lon, _name):
+
+    """Handler: list crops, optionally for one plot."""
     crops = tools.list_crops(action.get("plot"))
     if not crops:
         return "No active crops found.", None
@@ -281,11 +298,15 @@ def _h_list_crops(action, _lat, _lon, _name):
     return "\n".join(lines), crops
 
 def _h_harvest_crop(action, _lat, _lon, _name):
+
+    """Handler: mark a crop harvested."""
     r = tools.update_crop_status(action["crop_id"], "harvested", action.get("yield_kg"))
     yield_str = f" — {action['yield_kg']}kg yield" if action.get("yield_kg") else ""
     return f"Crop #{action['crop_id']} marked as harvested{yield_str}", r
 
 def _h_log_spray(action, _lat, _lon, _name):
+
+    """Handler: log a spray (auto-logs cost to finance when given)."""
     r = tools.log_spray(action["plot"], action["chemical"], action.get("quantity"), action.get("reason"))
     if "error" in r:
         return r["error"], None
@@ -305,6 +326,8 @@ def _h_log_spray(action, _lat, _lon, _name):
     return note, r
 
 def _h_spray_history(action, _lat, _lon, _name):
+
+    """Handler: show recent spray history for a plot."""
     logs = tools.spray_history(action.get("plot", ""))
     if not logs:
         return "No spray logs found.", None
@@ -315,6 +338,8 @@ def _h_spray_history(action, _lat, _lon, _name):
     return "\n".join(lines), logs
 
 def _h_log_observation(action, _lat, _lon, _name):
+
+    """Handler: record a field observation on a plot."""
     r = tools.log_observation(action["plot"], action["type"], action["description"],
                               action.get("severity"))
     if "error" in r:
@@ -323,6 +348,8 @@ def _h_log_observation(action, _lat, _lon, _name):
     return f"Observation logged on {action['plot']}: {action['type']}{sev}", r
 
 def _h_open_observations(action, _lat, _lon, _name):
+
+    """Handler: list unresolved observations."""
     obs = tools.open_observations(action.get("plot"))
     if not obs:
         return "No open observations.", None
@@ -334,6 +361,8 @@ def _h_open_observations(action, _lat, _lon, _name):
     return "\n".join(lines), obs
 
 def _h_mandi_price(action, _lat, _lon, _name):
+
+    """Handler: fetch live APMC/mandi prices for a commodity."""
     crop = action.get("commodity") or action.get("crop")
     if not crop:
         known = list_crops_with_kb()
@@ -345,6 +374,8 @@ def _h_mandi_price(action, _lat, _lon, _name):
     return format_prices(data), data
 
 def _h_ndvi_health(action, _lat, _lon, _name):
+
+    """Handler: fetch NDVI crop-health for a location/plot."""
     loc_raw = action.get("location") or "barloni"
     name, lat, lon = _loc(loc_raw, _lat, _lon, _name)
     if lat is None or lon is None:
@@ -354,6 +385,8 @@ def _h_ndvi_health(action, _lat, _lon, _name):
     return format_ndvi_report(data, plot_name=name or "Barloni farm"), data
 
 def _h_disease_info(action, _lat, _lon, _name):
+
+    """Handler: return knowledge-base disease info for a crop."""
     crop = action.get("crop") or None
     if not crop:
         known = list_crops_with_kb()
@@ -368,6 +401,8 @@ def _h_disease_info(action, _lat, _lon, _name):
     return (kb if kb else f"No knowledge base found for {crop}."), None
 
 def _h_diagnose_photo(action, _lat, _lon, _name):
+
+    """Handler: diagnose a crop disease from a photo."""
     if not farming_server_running():
         kb = kb_context_for_llm(action.get("crop", "pomegranate"))
         return (
@@ -383,6 +418,8 @@ def _h_diagnose_photo(action, _lat, _lon, _name):
     return format_diagnosis(result), result
 
 def _h_weather_now(action, _lat, _lon, _name):
+
+    """Handler: current weather for the farm."""
     loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
     data = wx.current_conditions(lat=lat, lon=lon, name=loc)
     return (
@@ -392,6 +429,8 @@ def _h_weather_now(action, _lat, _lon, _name):
     ), data
 
 def _h_weather_forecast(action, _lat, _lon, _name):
+
+    """Handler: multi-day weather forecast for the farm."""
     loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
     days = action.get("days", 7)
     fc = wx.forecast(lat=lat, lon=lon, days=days, name=loc)
@@ -401,6 +440,8 @@ def _h_weather_forecast(action, _lat, _lon, _name):
     return "\n".join(lines), fc
 
 def _h_spray_safe_tomorrow(action, _lat, _lon, _name):
+
+    """Handler: assess whether tomorrow is safe to spray."""
     loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
     result = wx.spray_safe_tomorrow(lat=lat, lon=lon, name=loc)
     status = "SAFE to spray" if result["safe_to_spray"] else "NOT safe to spray"
@@ -427,6 +468,8 @@ def _h_spray_safe_tomorrow(action, _lat, _lon, _name):
     return "\n".join(lines), result
 
 def _h_rainfall_history(action, _lat, _lon, _name):
+
+    """Handler: historical monthly rainfall for the farm."""
     loc, lat, lon = _loc(action.get("location"), _lat, _lon, _name)
     r = wx.historical_rainfall(lat=lat, lon=lon, name=loc,
                                start=action.get("start"), end=action.get("end"))
@@ -436,6 +479,8 @@ def _h_rainfall_history(action, _lat, _lon, _name):
     return "\n".join(lines), r
 
 def _h_crop_history(action, _lat, _lon, _name):
+
+    """Handler: weather/risk history since a crop was planted."""
     plot = tools.get_plot(action.get("plot", ""))
     if not plot:
         return f"Plot '{action.get('plot')}' not found.", None
@@ -458,6 +503,8 @@ def _h_crop_history(action, _lat, _lon, _name):
     ), h
 
 def _h_soil_data(action, _lat, _lon, _name):
+
+    """Handler: soil properties for the farm location."""
     plot_name = action.get("plot")
     if plot_name:
         plot = tools.get_plot(plot_name)
@@ -469,6 +516,8 @@ def _h_soil_data(action, _lat, _lon, _name):
     return format_soil(data), data
 
 def _h_season_summary(action, _lat, _lon, _name):
+
+    """Handler: season-wide farm summary."""
     s = tools.season_summary()
     return (
         f"Season summary:\n"
@@ -480,6 +529,8 @@ def _h_season_summary(action, _lat, _lon, _name):
     ), s
 
 def _h_analysis_history(action, _lat, _lon, _name):
+
+    """Handler: list recent disease analyses from the farming server."""
     limit = int(action.get("limit", 10))
     rows = farming_history(limit=limit)
     if not rows:
@@ -495,6 +546,8 @@ def _h_analysis_history(action, _lat, _lon, _name):
     return "\n".join(lines), rows
 
 def _h_chat(action, _lat, _lon, _name):
+
+    """Handler: return the LLM chat reply verbatim."""
     return action.get("reply", ""), None
 
 
@@ -527,6 +580,9 @@ _DISPATCH: dict[str, Any] = {
 
 
 def _execute(action: dict, context: dict | None = None) -> tuple[str, dict | None]:
+
+
+    """Dispatch a validated action to its handler and return (text, data)."""
     a    = action.get("action")
     farm = (context or {}).get("default_farm", {})
     _lat  = farm.get("lat") or farm.get("latitude") or None
@@ -553,6 +609,37 @@ _FOLLOW_UPS = {
 }
 
 
+# Queries that must be handled by PA's local dispatch (writes, photo diagnosis,
+# mandi prices, DB lists) rather than delegated to the farming server.
+_LOCAL_ONLY_KEYWORDS = {
+    "photo", "image", "picture", "diagnos",       # photo analysis
+    "add plot", "new plot", "register plot",      # plot creation
+    "plant crop", "planted", "sow",               # crop planting
+    "log spray", "spray log",                     # spray logging
+    "log observation", "observation",             # field notes
+    "mandi", "apmc", "market price", "rate",      # mandi — farming app has no price data
+    "my plots", "list plots", "show plots",       # list from PA DB
+    "my crops", "list crops", "show crops",       # list from PA DB
+    "analysis history", "past analyses",          # history from farming server via client
+}
+
+
+def _apply_named_farm(query: str, context: dict) -> dict:
+    """Switch default_farm when the query explicitly names another farm/owner."""
+    named = _resolve_named_farm(query, context.get("profile", {}))
+    if named and named.get("label") != context.get("default_farm", {}).get("label"):
+        context = dict(context)
+        context["default_farm"] = named
+        log.info("farm context → %s (query named it)", named["label"])
+    return context
+
+
+def _is_local_only(query: str) -> bool:
+    """True if the query must be served locally (writes / photo / mandi / lists)."""
+    q = query.lower()
+    return any(kw in q for kw in _LOCAL_ONLY_KEYWORDS)
+
+
 class FarmingModule(BaseModule):
     name = "farming"
     description = (
@@ -562,80 +649,57 @@ class FarmingModule(BaseModule):
     )
 
     def __init__(self):
+        """Initialize the farming module (ensures the DB schema exists)."""
         db.init()
 
     def handle(self, query: str, context: dict[str, Any]) -> ModuleResponse:
+        """Route a farming query: named-farm switch → server delegation → local dispatch."""
         t0 = time.monotonic()
+        context = _apply_named_farm(query, context)
 
-        # Switch farm context when the query explicitly names another farm/owner
-        named = _resolve_named_farm(query, context.get("profile", {}))
-        if named and named.get("label") != context.get("default_farm", {}).get("label"):
-            context = dict(context)
-            context["default_farm"] = named
-            log.info("farm context → %s (query named it)", named["label"])
+        if not _is_local_only(query) and farming_server_running():
+            resp = self._try_farming_server(query, context, t0)
+            if resp is not None:
+                return resp
 
-        farm = context.get("default_farm", {})
-        _lat  = farm.get("lat") or farm.get("latitude")
-        _lon  = farm.get("lon") or farm.get("longitude")
+        return self._local_dispatch(query, context, t0)
+
+    def _try_farming_server(self, query: str, context: dict, t0: float) -> ModuleResponse | None:
+        """Delegate to the farming server. Returns its response, or None to fall back."""
+        farm  = context.get("default_farm", {})
         _name = (farm.get("city") or farm.get("primary_location")
                  or farm.get("location") or farm.get("label") or "")
         _crop = farm.get("primary_crop") or ""
 
-        # ── Delegate to farming server when it's running ──────────────────────
-        # Photo diagnosis and data-write actions (add_plot, plant_crop, log_spray, etc.)
-        # still go through the local dispatch table. Everything else the farming app
-        # answers better — it has its own weather + soil pipeline and the full KB.
-        _LOCAL_ONLY_KEYWORDS = {
-            "photo", "image", "picture", "diagnos",      # photo analysis
-            "add plot", "new plot", "register plot",      # plot creation
-            "plant crop", "planted", "sow",               # crop planting
-            "log spray", "spray log",                     # spray logging
-            "log observation", "observation",             # field notes
-            "mandi", "apmc", "market price", "rate",     # mandi — farming app has no price data
-            "my plots", "list plots", "show plots",       # list from PA DB
-            "my crops", "list crops", "show crops",       # list from PA DB
-            "analysis history", "past analyses",          # history from farming server via client
-        }
-        q_lower = query.lower()
-        is_local = any(kw in q_lower for kw in _LOCAL_ONLY_KEYWORDS)
+        log.info("delegating to farming server: q=%r", query[:80])
+        result = farming_ask(query=query, crop=_crop, location=_name)
+        if "reply" in result:
+            log.info("farming server replied in %dms", int((time.monotonic() - t0) * 1000))
+            return ModuleResponse(
+                text=result["reply"], module=self.name,
+                data={"source": "farming_server", "modules": result.get("modules", [])},
+            )
+        log.warning("farming server ask failed: %s — falling back", result.get("error"))
+        return None
 
-        if not is_local and farming_server_running():
-            log.info("delegating to farming server: q=%r", query[:80])
-            result = farming_ask(query=query, crop=_crop, location=_name)
-            if "reply" in result:
-                ms = int((time.monotonic() - t0) * 1000)
-                log.info("farming server replied in %dms", ms)
-                return ModuleResponse(
-                    text=result["reply"],
-                    module=self.name,
-                    data={"source": "farming_server", "modules": result.get("modules", [])},
-                )
-            # Server returned an error — fall through to local handlers
-            log.warning("farming server ask failed: %s — falling back", result.get("error"))
-
-        # ── Local fallback: PA's own LLM + dispatch table ─────────────────────
+    def _local_dispatch(self, query: str, context: dict, t0: float) -> ModuleResponse:
+        """Run PA's own LLM → validate_action → dispatch path."""
         try:
             action = _call_llm(query, context)
         except Exception as e:
             log.error("LLM call failed: %s", e, exc_info=True)
-            return ModuleResponse(
-                text="I couldn't process that — please try again.",
-                module=self.name,
-            )
+            return ModuleResponse(text="I couldn't process that — please try again.", module=self.name)
 
         v = validate_action("farming", action)
         action_name = v.action.get("action", "unknown")
-
         if not v.valid:
             log.warning("action blocked action=%s errors=%s", action_name, v.errors)
             return ModuleResponse(
-                text=f"Action blocked by validator: {'; '.join(v.errors)}",
-                module=self.name,
-            )
+                text=f"Action blocked by validator: {'; '.join(v.errors)}", module=self.name)
         for w in v.warnings:
             log.warning("validator: %s", w)
 
         log.info("action=%s latency=%dms", action_name, int((time.monotonic() - t0) * 1000))
         text, data = _execute(v.action, context)
-        follow_up = _FOLLOW_UPS.get(action_name)
-        return ModuleResponse(text=text, module=self.name, data=data, follow_up=follow_up)
+        return ModuleResponse(text=text, module=self.name, data=data,
+                              follow_up=_FOLLOW_UPS.get(action_name))
