@@ -17,18 +17,47 @@ from datetime import datetime
 log = logging.getLogger(__name__)
 
 
+def _upsert_plot(c, plot_name: str, lat, lon, notes, now: str) -> tuple[int, bool]:
+    """Find or insert a plot by name (case-insensitive). Returns (plot_id, was_added)."""
+    existing = c.execute(
+        "SELECT id FROM plots WHERE lower(name)=lower(?)", (plot_name,)
+    ).fetchone()
+    if existing:
+        return existing[0], False
+    cur = c.execute(
+        "INSERT INTO plots (name, lat, lon, notes, created_at) VALUES (?,?,?,?,?)",
+        (plot_name, lat, lon, notes or "", now),
+    )
+    log.info("sync: added plot '%s'", plot_name)
+    return cur.lastrowid, True
+
+
+def _upsert_crop(c, plot_id: int, crop: str, planted_at, now: str) -> bool:
+    """Insert a crop if (plot, crop, planted_date) isn't present. Returns True if added."""
+    existing = c.execute(
+        "SELECT id FROM crops WHERE plot_id=? AND lower(crop_name)=lower(?) AND planted_date=?",
+        (plot_id, crop, planted_at),
+    ).fetchone()
+    if existing:
+        return False
+    c.execute(
+        "INSERT INTO crops (plot_id, crop_name, planted_date, status, created_at) "
+        "VALUES (?,?,?,'active',?)",
+        (plot_id, crop, planted_at, now),
+    )
+    log.info("sync: added crop '%s' on plot id=%d", crop, plot_id)
+    return True
+
+
 def sync_crop_plots_to_pa() -> dict:
-    """
-    Read every row in crop_plots, ensure a matching row exists in PA's
-    plots + crops tables. Idempotent — safe to call repeatedly.
-    Returns {"synced_plots": N, "synced_crops": M}.
+    """Sync the farming server's crop_plots into PA's plots + crops tables.
+
+    Idempotent — safe to call repeatedly. Returns {"synced_plots", "synced_crops"}.
     """
     from modules.farming.db import conn
 
-    synced_plots = 0
-    synced_crops = 0
+    synced_plots = synced_crops = 0
     now = datetime.now().isoformat()
-
     try:
         with conn() as c:
             try:
@@ -37,45 +66,13 @@ def sync_crop_plots_to_pa() -> dict:
                     "FROM crop_plots ORDER BY id"
                 ).fetchall()
             except Exception:
-                # crop_plots doesn't exist — standalone PA DB, nothing to sync
-                return {"synced_plots": 0, "synced_crops": 0}
+                return {"synced_plots": 0, "synced_crops": 0}  # no crop_plots table
 
             for cp_id, crop, location, planted_at, lat, lon, notes in rows:
                 plot_name = (location or "").strip() or f"Farm-{cp_id}"
-
-                # Upsert into plots
-                existing_plot = c.execute(
-                    "SELECT id FROM plots WHERE lower(name)=lower(?)", (plot_name,)
-                ).fetchone()
-
-                if existing_plot:
-                    plot_id = existing_plot[0]
-                else:
-                    cur = c.execute(
-                        "INSERT INTO plots (name, lat, lon, notes, created_at) "
-                        "VALUES (?,?,?,?,?)",
-                        (plot_name, lat, lon, notes or "", now),
-                    )
-                    plot_id = cur.lastrowid
-                    synced_plots += 1
-                    log.info("sync: added plot '%s' from crop_plots id=%d", plot_name, cp_id)
-
-                # Upsert into crops (match on plot_id + crop_name + planted_date)
-                existing_crop = c.execute(
-                    "SELECT id FROM crops WHERE plot_id=? AND lower(crop_name)=lower(?) "
-                    "AND planted_date=?",
-                    (plot_id, crop, planted_at),
-                ).fetchone()
-
-                if not existing_crop:
-                    c.execute(
-                        "INSERT INTO crops (plot_id, crop_name, planted_date, status, created_at) "
-                        "VALUES (?,?,?,'active',?)",
-                        (plot_id, crop, planted_at, now),
-                    )
-                    synced_crops += 1
-                    log.info("sync: added crop '%s' on plot '%s'", crop, plot_name)
-
+                plot_id, added_plot = _upsert_plot(c, plot_name, lat, lon, notes, now)
+                synced_plots += added_plot
+                synced_crops += _upsert_crop(c, plot_id, crop, planted_at, now)
     except Exception as e:
         log.error("sync_crop_plots_to_pa failed: %s", e)
         return {"synced_plots": 0, "synced_crops": 0, "error": str(e)}
