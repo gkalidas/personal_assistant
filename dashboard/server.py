@@ -244,6 +244,10 @@ async def _request_logger(request: Request, call_next):
 graphql_app = GraphQLRouter(schema, graphql_ide="graphiql")
 app.include_router(graphql_app, prefix="/graphql")
 
+# Serve split frontend assets (css/, js/) from the static dir.
+from fastapi.staticfiles import StaticFiles
+app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
+
 
 # ── Mind-map branch data ───────────────────────────────────────────────────────
 
