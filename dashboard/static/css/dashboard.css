@@ -17,6 +17,13 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
 body{background:var(--bg);color:var(--cyan);font-family:'Courier New',Courier,monospace;font-size:13px;user-select:none}
+/* themed scrollbars everywhere (Firefox + WebKit) — no more white OS bars */
+*{scrollbar-width:thin;scrollbar-color:rgba(0,229,255,0.32) transparent}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:rgba(6,14,24,0.4);border-radius:4px}
+::-webkit-scrollbar-thumb{background:rgba(0,229,255,0.28);border-radius:4px;border:1px solid rgba(0,229,255,0.12)}
+::-webkit-scrollbar-thumb:hover{background:rgba(0,229,255,0.5)}
+::-webkit-scrollbar-corner{background:transparent}
 
 /* Scanline */
 body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent 0px,transparent 2px,rgba(0,229,255,0.01) 2px,rgba(0,229,255,0.01) 4px);pointer-events:none;z-index:9000}
@@ -92,9 +99,9 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 /* diary write button */
 .diary-write-btn{font-size:8px;letter-spacing:2px;padding:2px 6px;background:rgba(210,168,255,0.08);border:1px solid rgba(210,168,255,0.25);color:#d2a8ff;border-radius:2px;cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;line-height:1}
 .diary-write-btn:hover{background:rgba(210,168,255,0.15);border-color:#d2a8ff}
-.diary-photo-stat{font-size:8px;letter-spacing:1px;color:#5a3a7a;margin-top:2px}
+.diary-photo-stat{font-size:8px;letter-spacing:1px;color:#5a3a7a;margin-top:2px;flex-shrink:0}
 /* diary review questions */
-.diary-questions{margin-top:5px;border-top:1px solid var(--border);padding-top:5px;overflow-y:auto;max-height:80px}
+.diary-questions{margin-top:5px;border-top:1px solid var(--border);padding-top:5px;overflow-y:auto;max-height:80px;flex-shrink:0}
 .dq-item{display:flex;align-items:flex-start;gap:6px;padding:4px 6px;margin-bottom:3px;background:rgba(255,170,0,0.04);border:1px solid rgba(255,170,0,0.2);border-radius:2px}
 .dq-dot{width:5px;height:5px;border-radius:50%;background:var(--amber);flex-shrink:0;margin-top:4px;animation:blink-med 3s infinite}
 .dq-text{flex:1;font-size:9px;color:#c8a060;line-height:1.4;letter-spacing:0.3px}
@@ -271,14 +278,14 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .book-counter{font-size:9px;letter-spacing:3px;color:var(--dim)}
 
 /* ── Diary panel ──────────────────────────────────────────────────────────── */
-.diary-list{flex:1;overflow-y:auto;margin-bottom:5px}
+.diary-list{flex:1;min-height:0;overflow-y:auto;margin-bottom:5px}
 .diary-entry-row{display:flex;align-items:center;gap:10px;padding:5px 7px;margin-bottom:3px;border:1px solid var(--border);border-radius:2px;cursor:pointer;font-size:11px;transition:all 0.15s}
 .diary-entry-row:hover{border-color:var(--cyan);background:rgba(0,229,255,0.04)}
 .diary-entry-row .d-week{letter-spacing:2px;color:var(--dim);flex:1}
 .diary-footer{font-size:9px;letter-spacing:2px;color:var(--dim);flex-shrink:0}
 
 /* ── News panel ───────────────────────────────────────────────────────────── */
-.news-scroll-wrap{flex:1;overflow:hidden;position:relative}
+.news-scroll-wrap{flex:1;min-height:0;overflow:hidden;position:relative}
 .news-scroll-inner{display:flex;flex-direction:column;gap:5px}
 .news-scroll-inner.animating{animation:news-scroll linear infinite;animation-duration:var(--scroll-dur,60s)}
 .news-card{display:flex;align-items:flex-start;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:2px;background:rgba(0,0,0,0.2);cursor:pointer;transition:all 0.15s;flex-shrink:0}
@@ -303,7 +310,7 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .voice-level-bar{height:100%;background:var(--green);width:0%;transition:width 0.1s;border-radius:2px}
 .voice-status{font-size:9px;letter-spacing:2px;color:var(--dim);margin-bottom:7px;min-height:14px}
 .voice-transcript{font-size:10px;letter-spacing:1px;color:var(--amber);padding:5px 7px;border:1px solid rgba(255,170,0,0.2);border-radius:2px;background:rgba(255,170,0,0.04);margin-bottom:6px;display:none;line-height:1.5}
-.voice-response{flex:1;overflow-y:auto;font-size:11px;color:#9ab8c4;line-height:1.6;padding:6px 7px;border:1px solid var(--border);border-radius:2px;background:rgba(0,0,0,0.2);display:none}
+.voice-response{flex:1;min-height:0;overflow-y:auto;font-size:11px;color:#9ab8c4;line-height:1.6;padding:6px 7px;border:1px solid var(--border);border-radius:2px;background:rgba(0,0,0,0.2);display:none}
 
 /* ── Mini-todo panel ──────────────────────────────────────────────────────── */
 .todo-section-lbl{font-size:8px;letter-spacing:3px;margin:6px 0 3px}
