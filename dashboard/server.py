@@ -438,6 +438,12 @@ async def guide_page():
     return HTMLResponse((_STATIC / "guide.html").read_text(encoding="utf-8"))
 
 
+@app.get("/showcase")
+async def showcase_page():
+    """Serve the animated architecture-showcase page."""
+    return HTMLResponse((_STATIC / "showcase.html").read_text(encoding="utf-8"))
+
+
 @app.get("/api/data")
 async def api_data():
     """API: return the full dashboard data payload as JSON."""

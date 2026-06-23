@@ -1,0 +1,65 @@
+/* GK Personal Assistant — architecture showcase */
+:root{
+  --cyan:#00e5ff; --green:#00ff88; --amber:#ffaa00; --red:#ff2255;
+  --bg:#030b10; --panel:#060e18; --border:#0c2535; --dim:#1a4a5e;
+  --glow-c:rgba(0,229,255,0.18); --glow-g:rgba(0,255,136,0.25);
+  --glow-r:rgba(255,34,85,0.25); --glow-a:rgba(255,170,0,0.25);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:radial-gradient(circle at 50% 35%,#06131c 0%,var(--bg) 70%);
+  color:#cfe6ee;font-family:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;overflow-x:hidden}
+.sc-head{text-align:center;padding:18px 10px 6px}
+.sc-head h1{font-size:15px;letter-spacing:5px;color:var(--cyan);text-shadow:0 0 14px var(--glow-c);font-weight:600}
+.sc-head p{font-size:9px;letter-spacing:3px;color:var(--dim);margin-top:5px}
+.sc-stage{position:relative;width:min(940px,98vw)}
+svg.sc-svg{width:100%;height:auto;display:block}
+/* rings */
+.ring{fill:none;stroke-width:2}
+.ring-guardian{stroke:var(--green);filter:drop-shadow(0 0 8px var(--glow-g));opacity:.55}
+.ring-core{stroke:var(--cyan);filter:drop-shadow(0 0 6px var(--glow-c));opacity:.5}
+.ring.active{opacity:1;stroke-width:3}
+.ring-guardian.breach{stroke:var(--red);filter:drop-shadow(0 0 12px var(--glow-r));opacity:1}
+.ring-label{font-size:10px;letter-spacing:4px;font-weight:600}
+.lbl-guardian{fill:var(--green)}
+.lbl-core{fill:var(--cyan)}
+/* nodes */
+.node rect,.node circle{transition:all .25s}
+.node-box{fill:var(--panel);stroke:var(--border);stroke-width:1.4}
+.node.active .node-box{stroke:var(--cyan);filter:drop-shadow(0 0 10px var(--glow-c))}
+.node.api .node-box{stroke:#15405a}
+.node.ext .node-box{stroke:#2a5a44}
+.node.active.ext .node-box{stroke:var(--green);filter:drop-shadow(0 0 10px var(--glow-g))}
+.node-t{font-size:10px;letter-spacing:1px;fill:#bfe0ea;text-anchor:middle;dominant-baseline:middle}
+.node-sub{font-size:7px;letter-spacing:1px;fill:var(--dim);text-anchor:middle}
+.node.active .node-t{fill:#fff}
+.hub circle{fill:#071a26;stroke:var(--cyan);stroke-width:2;filter:drop-shadow(0 0 10px var(--glow-c))}
+.hub.routing circle{stroke:var(--amber);filter:drop-shadow(0 0 12px var(--glow-a))}
+.hub-t{font-size:10px;letter-spacing:2px;fill:var(--cyan);text-anchor:middle;dominant-baseline:middle;font-weight:600}
+/* packet */
+#packet{filter:drop-shadow(0 0 6px var(--glow-c))}
+#packet.block{filter:drop-shadow(0 0 10px var(--glow-r))}
+#packet.ext{filter:drop-shadow(0 0 8px var(--glow-g))}
+.trail{stroke-width:2;fill:none;opacity:.35;stroke-linecap:round}
+/* caption + controls */
+.sc-caption{min-height:46px;width:min(820px,96vw);margin:6px auto 0;text-align:center;
+  font-size:12px;line-height:1.7;color:#9fc7d4;letter-spacing:.5px}
+.sc-caption b{color:var(--cyan)}
+.sc-caption .blk{color:var(--red)}
+.sc-caption .ext{color:var(--green)}
+.sc-controls{display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0 6px;flex-wrap:wrap}
+.sc-btn{font:inherit;font-size:9px;letter-spacing:2px;padding:7px 14px;border:1px solid var(--border);
+  border-radius:3px;background:var(--panel);color:var(--dim);cursor:pointer;transition:all .15s}
+.sc-btn:hover{color:var(--cyan);border-color:var(--cyan)}
+.sc-btn.primary{color:var(--cyan);border-color:var(--cyan)}
+.sc-tabs{display:flex;gap:6px;justify-content:center;margin:4px 0 2px;flex-wrap:wrap}
+.sc-tab{font:inherit;font-size:8px;letter-spacing:2px;padding:5px 11px;border:1px solid var(--border);
+  border-radius:14px;background:transparent;color:var(--dim);cursor:pointer;transition:all .15s}
+.sc-tab:hover{color:#bfe0ea}
+.sc-tab.on{color:#031018;background:var(--cyan);border-color:var(--cyan);font-weight:600}
+.sc-tab.on.adv{background:var(--red);border-color:var(--red);color:#fff}
+.sc-step-dots{display:flex;gap:5px;justify-content:center;margin-top:8px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--border);transition:all .2s}
+.dot.on{background:var(--cyan);box-shadow:0 0 7px var(--glow-c)}
+.sc-foot{font-size:8px;letter-spacing:2px;color:var(--dim);margin:10px 0 24px}
+.sc-foot a{color:var(--cyan);text-decoration:none}

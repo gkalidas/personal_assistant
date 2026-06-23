@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GK · ARCHITECTURE SHOWCASE</title>
+<link rel="stylesheet" href="/static/css/showcase.css">
+</head>
+<body>
+
+<div class="sc-head">
+  <h1>GK PERSONAL ASSISTANT — LIVE ARCHITECTURE</h1>
+  <p>GUARDIAN PROTECTS · CORE ROUTES · MODULES ANSWER · 100% LOCAL</p>
+</div>
+
+<div class="sc-tabs" id="sc-tabs"></div>
+
+<div class="sc-stage">
+  <svg class="sc-svg" id="sc-svg" viewBox="0 0 900 620" aria-label="architecture diagram">
+    <!-- rings -->
+    <circle id="ring-guardian" class="ring ring-guardian" cx="450" cy="300" r="286"></circle>
+    <circle id="ring-core"     class="ring ring-core"     cx="450" cy="300" r="176"></circle>
+    <text class="ring-label lbl-guardian" x="450" y="32"  text-anchor="middle">◈ GUARDIAN — security shield</text>
+    <text class="ring-label lbl-core"     x="450" y="145" text-anchor="middle">CORE</text>
+
+    <!-- packet trail + packet (drawn above rings, below nodes added by JS) -->
+    <path id="trail" class="trail" d=""></path>
+    <g id="node-layer"></g>
+
+    <!-- router hub -->
+    <g id="hub" class="hub">
+      <circle cx="450" cy="300" r="46"></circle>
+      <text class="hub-t" x="450" y="294">ROUTER</text>
+      <text class="node-sub" x="450" y="312">qwen2.5:0.5b</text>
+    </g>
+
+    <!-- entry -->
+    <g id="node-user" class="node">
+      <rect class="node-box" x="18" y="278" width="86" height="44" rx="6"></rect>
+      <text class="node-t" x="61" y="300">USER</text>
+    </g>
+
+    <circle id="packet" r="7" fill="#00e5ff" cx="61" cy="300" style="opacity:0"></circle>
+  </svg>
+</div>
+
+<div class="sc-caption" id="sc-caption">Press <b>▶ PLAY</b> to watch a request flow through the system.</div>
+<div class="sc-step-dots" id="sc-dots"></div>
+
+<div class="sc-controls">
+  <button class="sc-btn" id="sc-prev">◀ PREV</button>
+  <button class="sc-btn primary" id="sc-play">▶ PLAY</button>
+  <button class="sc-btn" id="sc-next">NEXT ▶</button>
+  <button class="sc-btn" id="sc-replay">↻ REPLAY</button>
+</div>
+
+<div class="sc-foot">scripted scenarios · <a href="/">← back to dashboard</a></div>
+
+<script src="/static/js/showcase.js"></script>
+</body>
+</html>
