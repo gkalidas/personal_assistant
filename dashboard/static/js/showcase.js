@@ -216,3 +216,24 @@ function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+// ── Deterministic frame hook (for headless recording) ────────────────────────
+// __renderFrame(si, sti, p): place the packet p∈[0,1] of the way into step `sti`
+// of scenario `si`, with that step's visuals applied. No timers, no rAF — fully
+// reproducible so a screenshot loop can assemble a smooth GIF/MP4.
+window.__renderFrame = function (si, sti, p) {
+  playing = false;
+  clearTimeout(holdTimer);
+  scenarioIdx = si; stepIdx = sti;
+  const steps = SCENARIOS[si].steps;
+  const from = pos(sti > 0 ? steps[sti - 1].to : 'user');
+  const to   = pos(steps[sti].to);
+  const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+  packet.style.opacity = 1;
+  packet.setAttribute('class', steps[sti].packet || '');
+  packet.setAttribute('cx', from.x + (to.x - from.x) * e);
+  packet.setAttribute('cy', from.y + (to.y - from.y) * e);
+  applyStepVisuals(steps[sti]);
+  renderTabs(); renderDots();
+  return SCENARIOS.map((s) => s.steps.length); // lets the recorder learn the step counts
+};
