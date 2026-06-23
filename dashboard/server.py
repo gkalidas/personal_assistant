@@ -444,6 +444,12 @@ async def showcase_page():
     return HTMLResponse((_STATIC / "showcase.html").read_text(encoding="utf-8"))
 
 
+@app.get("/showcase3d")
+async def showcase3d_page():
+    """Serve the Three.js 3D system-model page."""
+    return HTMLResponse((_STATIC / "showcase3d.html").read_text(encoding="utf-8"))
+
+
 @app.get("/api/data")
 async def api_data():
     """API: return the full dashboard data payload as JSON."""
