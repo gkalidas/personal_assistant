@@ -278,7 +278,7 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .book-counter{font-size:9px;letter-spacing:3px;color:var(--dim)}
 
 /* ── Diary panel ──────────────────────────────────────────────────────────── */
-.diary-list{flex:1;min-height:0;overflow-y:auto;margin-bottom:5px}
+.diary-list{flex:0 1 auto;min-height:0;overflow-y:auto;margin-bottom:5px}
 .diary-entry-row{display:flex;align-items:center;gap:10px;padding:5px 7px;margin-bottom:3px;border:1px solid var(--border);border-radius:2px;cursor:pointer;font-size:11px;transition:all 0.15s}
 .diary-entry-row:hover{border-color:var(--cyan);background:rgba(0,229,255,0.04)}
 .diary-entry-row .d-week{letter-spacing:2px;color:var(--dim);flex:1}

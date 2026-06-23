@@ -7,6 +7,33 @@ Runs **100% on your machine** — no cloud, no telemetry, no data leaves the hou
 
 ---
 
+## Live Architecture Showcase
+
+A single glance at how the whole system fits together — the **Guardian** security
+shell wrapping the **Router** core and its modules, reaching the internet through
+the guardian and deflecting constant attacks at the perimeter.
+
+<p align="center">
+  <img src="docs/showcase3d.gif" alt="GK Personal Assistant — 3D system model" width="82%">
+</p>
+
+These are **live, interactive** pages served by the dashboard (drag to rotate the 3D one):
+
+| | URL |
+|---|---|
+| 2D animated request flow | `http://<host>:8765/showcase` |
+| 3D system model | `http://<host>:8765/showcase3d` |
+
+> The GIF above is generated from the live `/showcase3d` page. To (re)create it —
+> needs `google-chrome` + `ffmpeg` on PATH:
+> ```bash
+> python3 scripts/record_showcase3d.py   # -> docs/showcase3d.gif (+ .mp4)
+> python3 scripts/record_showcase.py     # -> docs/showcase.gif   (2D flow)
+> ```
+> Then commit the generated files so they render here on GitHub.
+
+---
+
 ## Mind Map
 
 ![Architecture Mind Map](docs/mindmap.png)
