@@ -245,8 +245,23 @@ graphql_app = GraphQLRouter(schema, graphql_ide="graphiql")
 app.include_router(graphql_app, prefix="/graphql")
 
 # Serve split frontend assets (css/, js/) from the static dir.
+# no-cache so the browser revalidates every load (via ETag) — edits show up on a
+# normal refresh instead of being stuck on a heuristically-cached old copy.
 from fastapi.staticfiles import StaticFiles
-app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
+from starlette.types import Scope
+
+
+class _NoCacheStatic(StaticFiles):
+    def is_not_modified(self, response_headers, request_headers) -> bool:
+        return super().is_not_modified(response_headers, request_headers)
+
+    async def get_response(self, path: str, scope: Scope):
+        resp = await super().get_response(path, scope)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
+app.mount("/static", _NoCacheStatic(directory=str(_STATIC)), name="static")
 
 
 # ── Mind-map branch data ───────────────────────────────────────────────────────
@@ -438,16 +453,19 @@ async def guide_page():
     return HTMLResponse((_STATIC / "guide.html").read_text(encoding="utf-8"))
 
 
+_NO_CACHE = {"Cache-Control": "no-cache"}
+
+
 @app.get("/showcase")
 async def showcase_page():
     """Serve the animated architecture-showcase page."""
-    return HTMLResponse((_STATIC / "showcase.html").read_text(encoding="utf-8"))
+    return HTMLResponse((_STATIC / "showcase.html").read_text(encoding="utf-8"), headers=_NO_CACHE)
 
 
 @app.get("/showcase3d")
 async def showcase3d_page():
     """Serve the Three.js 3D system-model page."""
-    return HTMLResponse((_STATIC / "showcase3d.html").read_text(encoding="utf-8"))
+    return HTMLResponse((_STATIC / "showcase3d.html").read_text(encoding="utf-8"), headers=_NO_CACHE)
 
 
 @app.get("/api/data")
