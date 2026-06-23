@@ -19,6 +19,16 @@
   #hint a{color:var(--cyan);text-decoration:none;pointer-events:auto}
   #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
     font-size:11px;letter-spacing:3px;color:var(--dim);z-index:10}
+  #shield{top:16px;right:18px;text-align:right;font-size:9px;letter-spacing:2px;color:#ff6680}
+  #shield b{color:#ff2255;font-size:13px;text-shadow:0 0 10px rgba(255,34,85,.5)}
+  #caption{bottom:54px;left:0;right:0;text-align:center;font-size:12px;letter-spacing:.5px;
+    color:#bfe0ea;line-height:1.6;padding:0 18px;transition:opacity .4s}
+  #caption b{color:var(--cyan)} #caption .g{color:var(--green)} #caption .r{color:#ff5570}
+  #examples{bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:6}
+  #examples button{pointer-events:auto;font:inherit;font-size:8px;letter-spacing:2px;padding:5px 11px;
+    border:1px solid #123;border-radius:14px;background:rgba(6,14,24,.7);color:var(--dim);cursor:pointer;transition:all .15s}
+  #examples button:hover{color:#bfe0ea} #examples button.on{color:#031018;background:var(--cyan);border-color:var(--cyan);font-weight:600}
+  #examples button.on.r{background:#ff2255;border-color:#ff2255;color:#fff}
 </style>
 </head>
 <body>
@@ -34,7 +44,11 @@
   <div><span class="k" style="background:#00e5ff"></span>ROUTER — core dispatcher</div>
   <div><span class="k" style="background:#3fb950"></span>FARMING &nbsp;<span class="k" style="background:#ffaa00"></span>FINANCE &nbsp;<span class="k" style="background:#ff2255"></span>HEALTH</div>
   <div><span class="k" style="background:#bc8cff"></span>DIARY &nbsp;<span class="k" style="background:#56d3ff"></span>DASHBOARD</div>
+  <div><span class="k" style="background:#9fd6ff"></span>INTERNET / APIs &nbsp;<span class="k" style="background:#ff2255"></span>incoming attack (blocked)</div>
 </div>
+<div class="ov" id="shield">🛡 ATTACKS BLOCKED<br><b id="atkn">0</b></div>
+<div class="ov" id="caption"></div>
+<div id="examples"></div>
 <div class="ov" id="hint">drag to rotate · scroll to zoom<br><a href="/showcase">← 2D showcase</a> · <a href="/">dashboard</a></div>
 
 <script type="importmap">
