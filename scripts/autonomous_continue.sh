@@ -8,6 +8,10 @@
 
 set -uo pipefail
 
+# systemd --user services start with a minimal PATH — make sure node (/usr/bin)
+# and the npm-global claude (/usr/local/bin) are both reachable.
+export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+
 REPO="/home/ganesh/projects/personal_assistant"
 PROMPT="$REPO/scripts/continuation_prompt.txt"
 LOGDIR="$REPO/logs/autonomous"
