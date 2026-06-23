@@ -12,10 +12,17 @@ page (showcase.html + css/showcase.css + js/showcase.js, 4 scripted scenarios); 
 (scripts/record_showcase.py + window.__renderFrame hook).
 
 REMAINING WORK (do in order, skip anything already committed):
-1. Three.js 3D layered system model: a rotating GUARDIAN outer shell (torus/sphere) enclosing
-   glowing module nodes (farming/finance/health/diary/dashboard) around a central ROUTER core,
-   with animated data-flow beams. Serve at a new route /showcase3d (mirror the /showcase route in
-   dashboard/server.py). Load Three.js from a CDN. Add orbit-drag to rotate. Keep the dark theme.
+1. Three.js 3D layered system model. A SCAFFOLD already exists and is committed:
+   dashboard/static/showcase3d.html (importmap pinning three@0.160.0 + addons, a #c3d canvas,
+   #loading overlay, title/legend/hint overlays, and <script type="module" src="/static/js/
+   showcase3d.js">). REMAINING: (a) write dashboard/static/js/showcase3d.js — the Three.js scene:
+   a rotating GUARDIAN outer wireframe shell enclosing 5 glowing module nodes (farming=green,
+   finance=amber, health=red, diary=purple, dashboard=cyan) arranged around a central ROUTER core,
+   core->module link lines with animated data-flow particles, OrbitControls (import from
+   'three/addons/controls/OrbitControls.js'), slow auto-rotate, canvas-sprite text labels, and
+   hide #loading once the scene renders; (b) add a /showcase3d route in dashboard/server.py mirroring
+   the /showcase route. Verify showcase3d.js parses as a module: `node --input-type=module --check`
+   (it uses ES `import`).
 2. If scripts/record_showcase.py has not yet produced docs/showcase.mp4 + docs/showcase.gif,
    run it (needs google-chrome + ffmpeg, both installed) and commit the outputs.
 

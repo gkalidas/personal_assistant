@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GK · 3D SYSTEM MODEL</title>
+<style>
+  :root{--cyan:#00e5ff;--green:#00ff88;--dim:#1a4a5e;--bg:#030b10}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#030b10;color:#cfe6ee;font-family:'JetBrains Mono',ui-monospace,monospace;overflow:hidden}
+  #c3d{position:fixed;inset:0;display:block}
+  .ov{position:fixed;pointer-events:none;z-index:5}
+  #title{top:16px;left:0;right:0;text-align:center}
+  #title h1{font-size:14px;letter-spacing:5px;color:var(--cyan);text-shadow:0 0 14px rgba(0,229,255,.4);font-weight:600}
+  #title p{font-size:9px;letter-spacing:3px;color:var(--dim);margin-top:5px}
+  #legend{bottom:18px;left:18px;font-size:9px;letter-spacing:1px;line-height:1.9}
+  #legend .k{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:7px;vertical-align:middle}
+  #hint{bottom:18px;right:18px;font-size:8px;letter-spacing:2px;color:var(--dim);text-align:right;line-height:1.8}
+  #hint a{color:var(--cyan);text-decoration:none;pointer-events:auto}
+  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:11px;letter-spacing:3px;color:var(--dim);z-index:10}
+</style>
+</head>
+<body>
+<canvas id="c3d"></canvas>
+<div id="loading">LOADING 3D MODEL…</div>
+
+<div class="ov" id="title">
+  <h1>GK PERSONAL ASSISTANT — 3D SYSTEM MODEL</h1>
+  <p>GUARDIAN SHELL · ROUTER CORE · MODULES · LIVE DATA FLOW</p>
+</div>
+<div class="ov" id="legend">
+  <div><span class="k" style="background:#00ff88"></span>GUARDIAN — security shell (outer)</div>
+  <div><span class="k" style="background:#00e5ff"></span>ROUTER — core dispatcher</div>
+  <div><span class="k" style="background:#3fb950"></span>FARMING &nbsp;<span class="k" style="background:#ffaa00"></span>FINANCE &nbsp;<span class="k" style="background:#ff2255"></span>HEALTH</div>
+  <div><span class="k" style="background:#bc8cff"></span>DIARY &nbsp;<span class="k" style="background:#56d3ff"></span>DASHBOARD</div>
+</div>
+<div class="ov" id="hint">drag to rotate · scroll to zoom<br><a href="/showcase">← 2D showcase</a> · <a href="/">dashboard</a></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module" src="/static/js/showcase3d.js"></script>
+</body>
+</html>
