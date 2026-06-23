@@ -1005,6 +1005,13 @@ async def api_guardian_fix_audit(payload: dict = Body(...)):
     return JSONResponse({"ok": True, "fixed": file_path, "line": line_no})
 
 
+@app.get("/api/news/channels")
+async def api_news_channels():
+    """Return the live TV news channel lineup with ready-to-embed YouTube URLs."""
+    from dashboard.news_channels import channels_payload
+    return JSONResponse(channels_payload())
+
+
 @app.get("/api/news/video")
 async def api_news_video(q: str = ""):
     """Return a YouTube video ID for a news article query via DDGS video search."""

@@ -215,6 +215,34 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .video-fullscreen-btn{margin-left:auto;font-size:8px;letter-spacing:2px;padding:2px 7px;border:1px solid var(--border);border-radius:2px;cursor:pointer;color:var(--dim);background:transparent;font-family:inherit;transition:all 0.15s}
 .video-fullscreen-btn:hover{color:var(--cyan);border-color:var(--cyan)}
 
+/* ── Live TV multi-channel grid ───────────────────────────────────────────── */
+#modal-livetv-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);backdrop-filter:blur(4px);z-index:600}
+#modal-livetv-overlay.open{display:flex;align-items:center;justify-content:center}
+#modal-livetv-box{background:var(--panel);border:1px solid var(--cyan);box-shadow:0 0 60px var(--glow-c);border-radius:4px;width:min(1280px,97vw);height:min(860px,94vh);display:flex;flex-direction:column;position:relative;overflow:hidden}
+#modal-livetv-box::before{content:'';position:absolute;top:6px;left:6px;width:14px;height:14px;border-top:1px solid var(--cyan);border-left:1px solid var(--cyan);pointer-events:none}
+#modal-livetv-box::after {content:'';position:absolute;bottom:6px;right:6px;width:14px;height:14px;border-bottom:1px solid var(--cyan);border-right:1px solid var(--cyan);pointer-events:none}
+.livetv-header{display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
+.livetv-title{font-size:12px;letter-spacing:3px;color:var(--cyan);text-shadow:0 0 8px var(--glow-c);white-space:nowrap}
+.livetv-title span{color:var(--dim);letter-spacing:1px}
+.livetv-controls{display:flex;align-items:center;gap:7px;flex:1;flex-wrap:wrap}
+.livetv-ctl{font-size:8px;letter-spacing:2px;padding:4px 9px;border:1px solid var(--border);border-radius:2px;cursor:pointer;color:var(--dim);background:transparent;font-family:inherit;transition:all 0.15s}
+.livetv-ctl:hover{color:var(--cyan);border-color:var(--cyan)}
+.livetv-ctl.live{color:var(--red);border-color:rgba(255,60,60,0.4)}
+.livetv-ctl.live:hover{color:#fff;border-color:var(--red);background:rgba(255,60,60,0.12)}
+.livetv-ctl-sep{width:1px;height:14px;background:var(--border)}
+.livetv-seek-lbl{font-size:8px;letter-spacing:2px;color:#0c2535}
+.livetv-offset{font-size:8px;letter-spacing:2px;color:var(--amber,#e8a020)}
+.livetv-grid{flex:1;display:grid;gap:8px;padding:12px;overflow:auto;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-content:start}
+.livetv-tile{position:relative;background:#000;border:1px solid var(--border);border-radius:3px;overflow:hidden;aspect-ratio:16/9;cursor:pointer;transition:border-color 0.15s,box-shadow 0.15s}
+.livetv-tile:hover{border-color:rgba(0,229,255,0.5)}
+.livetv-tile.focused{border-color:var(--cyan);box-shadow:0 0 18px var(--glow-c)}
+.livetv-tile iframe{width:100%;height:100%;border:none;display:block;pointer-events:none}
+.livetv-tile-bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:6px;padding:5px 9px;background:linear-gradient(transparent,rgba(0,0,0,0.85));font-size:9px;letter-spacing:1px;color:#cfe6ee}
+.livetv-tile-live{font-size:7px;letter-spacing:2px;color:var(--red);border:1px solid rgba(255,60,60,0.4);border-radius:1px;padding:1px 4px}
+.livetv-tile-mute{margin-left:auto;font-size:11px;opacity:0.8}
+.livetv-tile.focused .livetv-tile-live{color:#fff;background:var(--red);border-color:var(--red)}
+.livetv-footer{font-size:8px;letter-spacing:2px;color:var(--dim);padding:8px 20px;border-top:1px solid var(--border);flex-shrink:0}
+
 /* ── Book modal ───────────────────────────────────────────────────────────── */
 .book-modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(880px,96vw);height:min(600px,90vh);background:var(--panel);border:1px solid var(--cyan);box-shadow:0 0 50px rgba(0,229,255,0.14);border-radius:3px;z-index:300;flex-direction:column}
 .book-modal.open{display:flex}
@@ -570,7 +598,10 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
   <div class="panel" id="p-news" style="display:flex;flex-direction:column">
     <div class="panel-label" style="justify-content:space-between">
       NEWS · FARMING · INDIA
-      <button class="panel-btn" id="news-refresh-btn" onclick="refreshNews()">↻ REFRESH</button>
+      <span style="display:flex;gap:6px">
+        <button class="panel-btn" id="livetv-btn" onclick="openLiveTV()">📺 LIVE TV</button>
+        <button class="panel-btn" id="news-refresh-btn" onclick="refreshNews()">↻ REFRESH</button>
+      </span>
     </div>
     <div class="news-scroll-wrap" id="news-scroll-wrap">
       <div class="news-scroll-inner" id="news-list"><div style="font-size:10px;letter-spacing:2px;color:#0c2535;padding:8px">loading…</div></div>
@@ -681,6 +712,28 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- LIVE TV — multi-channel news grid -->
+<div id="modal-livetv-overlay" onclick="if(event.target===this)closeLiveTV()">
+  <div id="modal-livetv-box">
+    <div class="livetv-header">
+      <div class="livetv-title">📺 LIVE NEWS — GLOBAL <span id="livetv-focus-name"></span></div>
+      <div class="livetv-controls" id="livetv-controls" style="display:none">
+        <button class="livetv-ctl" id="livetv-playpause" onclick="liveTVPlayPause()">⏸ PAUSE</button>
+        <button class="livetv-ctl" id="livetv-mute" onclick="liveTVToggleMute()">🔊 MUTE</button>
+        <span class="livetv-ctl-sep"></span>
+        <span class="livetv-seek-lbl">REWIND</span>
+        <button class="livetv-ctl" onclick="liveTVSeek(600)">−10 min</button>
+        <button class="livetv-ctl" onclick="liveTVSeek(1200)">−20 min</button>
+        <button class="livetv-ctl live" id="livetv-golive" onclick="liveTVSeek(0)">● LIVE</button>
+        <span class="livetv-offset" id="livetv-offset"></span>
+      </div>
+      <span class="news-modal-close" onclick="closeLiveTV()">✕</span>
+    </div>
+    <div class="livetv-grid" id="livetv-grid"></div>
+    <div class="livetv-footer" id="livetv-footer">click a channel to unmute · rewind uses YouTube's live DVR buffer (depth varies by channel)</div>
   </div>
 </div>
 
@@ -1012,7 +1065,7 @@ function row(k,v){return `<div class="detail-row"><span class="detail-key">${k}<
 function sec(t){return `<div class="detail-section">${t}</div>`}
 
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){closeModal();if(el('modal-news-overlay').classList.contains('open'))closeNewsModal();else _startNewsScroll();}
+  if(e.key==='Escape'){closeModal();if(el('modal-livetv-overlay').classList.contains('open'))closeLiveTV();else if(el('modal-news-overlay').classList.contains('open'))closeNewsModal();else _startNewsScroll();}
   if(e.ctrlKey&&e.key==='d'){e.preventDefault();writeDiaryFromPhotos();}
 });
 
@@ -1611,6 +1664,116 @@ function closeNewsModal(){
   el('news-video-frame').style.display='none';
   el('news-img').src='';
   _startNewsScroll();
+}
+
+/* ── Live TV multi-channel news grid ─────────────────────────────────────── */
+let _ytApiReady=false, _ytApiLoading=false;
+const _liveTV={players:{}, channels:[], focus:null, paused:false, muted:true};
+
+// Load the YouTube IFrame API once; resolve when YT.Player is available.
+function _loadYTApi(){
+  return new Promise((resolve)=>{
+    if(_ytApiReady) return resolve();
+    window.onYouTubeIframeAPIReady=()=>{_ytApiReady=true;resolve();};
+    if(_ytApiLoading) return;
+    _ytApiLoading=true;
+    const s=document.createElement('script');
+    s.src='https://www.youtube.com/iframe_api';
+    document.head.appendChild(s);
+  });
+}
+
+async function openLiveTV(){
+  el('modal-livetv-overlay').classList.add('open');
+  _stopNewsScroll();
+  const grid=el('livetv-grid');
+  if(_liveTV.channels.length){return;}            // already built — keep streams alive
+  grid.innerHTML='<div style="grid-column:1/-1;font-size:10px;letter-spacing:2px;color:var(--dim);padding:20px">loading channels…</div>';
+  let data;
+  try{ data=await (await fetch('/api/news/channels')).json(); }
+  catch(e){ grid.innerHTML='<div style="grid-column:1/-1;color:var(--red);font-size:10px;padding:20px">failed to load channels</div>'; return; }
+  _liveTV.channels=data.channels||[];
+  grid.innerHTML='';
+  _liveTV.channels.forEach(ch=>{
+    const tile=document.createElement('div');
+    tile.className='livetv-tile'; tile.id='tv-tile-'+ch.id;
+    tile.onclick=()=>liveTVFocus(ch.id);
+    tile.innerHTML=
+      '<iframe id="tv-frame-'+ch.id+'" src="'+ch.embed_url+'" '+
+        'allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>'+
+      '<div class="livetv-tile-bar"><span class="livetv-tile-live">● LIVE</span>'+
+        '<span>'+ch.name+'</span><span class="livetv-tile-mute" id="tv-mute-'+ch.id+'">🔇</span></div>';
+    grid.appendChild(tile);
+  });
+  await _loadYTApi();
+  _liveTV.channels.forEach(ch=>{
+    _liveTV.players[ch.id]=new YT.Player('tv-frame-'+ch.id,{
+      events:{ onReady:(e)=>{ e.target.mute(); e.target.playVideo(); } }
+    });
+  });
+}
+
+// Focus a channel: unmute it, mute all others, reveal the control bar.
+function liveTVFocus(id){
+  _liveTV.focus=id; _liveTV.paused=false; _liveTV.muted=false;
+  _liveTV.channels.forEach(ch=>{
+    const p=_liveTV.players[ch.id], tile=el('tv-tile-'+ch.id), mi=el('tv-mute-'+ch.id);
+    const on=(ch.id===id);
+    tile.classList.toggle('focused',on);
+    if(p&&p.mute){ if(on){p.unMute();p.setVolume(100);} else {p.mute();} }
+    if(mi) mi.textContent=on?'🔊':'🔇';
+  });
+  const focused=_liveTV.channels.find(c=>c.id===id);
+  el('livetv-focus-name').textContent=focused?('· '+focused.name):'';
+  el('livetv-controls').style.display='flex';
+  el('livetv-offset').textContent='';
+  el('livetv-playpause').textContent='⏸ PAUSE';
+  el('livetv-mute').textContent='🔊 MUTE';
+}
+
+function _focusPlayer(){ return _liveTV.focus?_liveTV.players[_liveTV.focus]:null; }
+
+function liveTVPlayPause(){
+  const p=_focusPlayer(); if(!p) return;
+  _liveTV.paused=!_liveTV.paused;
+  if(_liveTV.paused){ p.pauseVideo(); el('livetv-playpause').textContent='▶ PLAY'; }
+  else { p.playVideo(); el('livetv-playpause').textContent='⏸ PAUSE'; }
+}
+
+function liveTVToggleMute(){
+  const p=_focusPlayer(); if(!p||!_liveTV.focus) return;
+  _liveTV.muted=!_liveTV.muted;
+  const mi=el('tv-mute-'+_liveTV.focus);
+  if(_liveTV.muted){ p.mute(); el('livetv-mute').textContent='🔇 UNMUTE'; if(mi)mi.textContent='🔇'; }
+  else { p.unMute(); p.setVolume(100); el('livetv-mute').textContent='🔊 MUTE'; if(mi)mi.textContent='🔊'; }
+}
+
+// Rewind `secs` into the live DVR buffer; secs=0 jumps back to the live edge.
+function liveTVSeek(secs){
+  const p=_focusPlayer();
+  if(!p){ alert('Click a channel first to control playback.'); return; }
+  let dur=0; try{ dur=p.getDuration()||0; }catch(e){}
+  if(secs===0){
+    if(dur>0) p.seekTo(dur,true);
+    el('livetv-offset').textContent='';
+    el('livetv-playpause').textContent='⏸ PAUSE'; _liveTV.paused=false;
+    return;
+  }
+  if(dur<=1){ el('livetv-offset').textContent='(no DVR buffer on this channel)'; return; }
+  const target=Math.max(0,dur-secs);
+  p.seekTo(target,true); p.playVideo();
+  _liveTV.paused=false; el('livetv-playpause').textContent='⏸ PAUSE';
+  const have=Math.round((dur-target)/60);
+  el('livetv-offset').textContent='−'+have+' min'+(have<Math.round(secs/60)?' (max DVR)':'');
+}
+
+function closeLiveTV(){
+  el('modal-livetv-overlay').classList.remove('open');
+  // Pause every stream so audio/CPU stops while hidden; keep players for fast reopen.
+  Object.values(_liveTV.players).forEach(p=>{ try{ p.pauseVideo(); p.mute(); }catch(e){} });
+  _liveTV.focus=null;
+  el('livetv-controls').style.display='none';
+  el('livetv-focus-name').textContent='';
 }
 
 function videoFullscreen(){
