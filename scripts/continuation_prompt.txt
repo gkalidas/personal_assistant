@@ -1,0 +1,32 @@
+Autonomous continuation — GK Personal Assistant, repo /home/ganesh/projects/personal_assistant (branch dev).
+
+This is a scheduled, headless resume. You have no prior chat context — reconstruct it from:
+  - git log --oneline -20
+  - the memory index at ~/.claude/projects/-home-ganesh-projects-personal-assistant/memory/MEMORY.md
+  - docs/ (especially docs/showcase.md, docs/crop_condition_forecast.md)
+
+ALREADY DONE (committed): quality pass across all buckets; live multi-channel news TV grid;
+crop_condition_forecast.md (draft); index.html split into css/dashboard.css + js/{core,guardian,
+farming,diary,news,livetv,voice,todo,panels,tour}.js; interactive /showcase animated architecture
+page (showcase.html + css/showcase.css + js/showcase.js, 4 scripted scenarios); GIF/MP4 recorder
+(scripts/record_showcase.py + window.__renderFrame hook).
+
+REMAINING WORK (do in order, skip anything already committed):
+1. Three.js 3D layered system model: a rotating GUARDIAN outer shell (torus/sphere) enclosing
+   glowing module nodes (farming/finance/health/diary/dashboard) around a central ROUTER core,
+   with animated data-flow beams. Serve at a new route /showcase3d (mirror the /showcase route in
+   dashboard/server.py). Load Three.js from a CDN. Add orbit-drag to rotate. Keep the dark theme.
+2. If scripts/record_showcase.py has not yet produced docs/showcase.mp4 + docs/showcase.gif,
+   run it (needs google-chrome + ffmpeg, both installed) and commit the outputs.
+
+RULES:
+  - Use venv ~/envs/evn_personal_assistant.
+  - After each file: node --check any JS; run `python3 scripts/full_test_suite.py` and keep it 234/234;
+    verify with a FastAPI TestClient that / and any new route return 200.
+  - Commit each step separately, trailer: Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+  - Do NOT push unless explicitly told.
+  - Dashboard must bind to the Tailscale IP, never 0.0.0.0.
+  - Never commit user_profile.json, *.db, .env, or ~/.config/gk/master.key.
+  - 3D and animation code cannot be visually verified headlessly — note in the commit that a
+    browser review pass is needed.
+  - When done, write a one-line status summary to logs/autonomous/STATUS.txt.
