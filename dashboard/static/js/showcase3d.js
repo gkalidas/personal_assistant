@@ -8,18 +8,18 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 const CYAN = 0x00e5ff, GREEN = 0x00ff88, RED = 0xff2255, NET = 0x9fd6ff;
 const R_MODULE = 7.0;     // module orbit radius
 const R_SHELL  = 13.0;    // guardian shell radius
-const ATTACK_N = 7;       // concurrent incoming attacks
+const ATTACK_N = 5;       // concurrent incoming attacks
 
-// name · colour · emoji icon · distinct accent shape
+// name · colour · drawn glyph · distinct accent shape
 const MODULES = [
-  { name: 'FARMING',   color: 0x3fb950, icon: '🌾', shape: 'ico'   },
-  { name: 'FINANCE',   color: 0xffaa00, icon: '💰', shape: 'octa'  },
-  { name: 'HEALTH',    color: 0xff2255, icon: '🩺', shape: 'torus' },
-  { name: 'DIARY',     color: 0xbc8cff, icon: '📔', shape: 'box'   },
-  { name: 'DASHBOARD', color: 0x56d3ff, icon: '📊', shape: 'tetra' },
+  { name: 'FARMING',   color: 0x3fb950, glyph: 'wheat', shape: 'ico'   },
+  { name: 'FINANCE',   color: 0xffaa00, glyph: 'coins', shape: 'octa'  },
+  { name: 'HEALTH',    color: 0xff2255, glyph: 'cross', shape: 'torus' },
+  { name: 'DIARY',     color: 0xbc8cff, glyph: 'book',  shape: 'box'   },
+  { name: 'DASHBOARD', color: 0x56d3ff, glyph: 'chart', shape: 'tetra' },
 ];
 
-let scene, camera, renderer, controls, clock, guardian, netNode;
+let scene, camera, renderer, controls, clock, guardian, netNode, shieldPulse;
 const moduleNodes = [];   // { group, sphere, basePos, color, pulse }
 const flows = [];         // legit data-flow particles { mesh, from, to, t, speed }
 const attacks = [];       // { line, head, origin, hit, dir, t, speed, delay }
@@ -45,12 +45,40 @@ function makeLabel(text, hex, scale = 5.2) {
   ctx.fillText(text, 128, 34);
   return spriteFromCanvas(cv, scale, scale / 4);
 }
-function makeIcon(emoji, scale = 2.2) {
+// Vector glyphs drawn with canvas paths — no emoji-font dependency, always render.
+function drawGlyph(ctx, g) {
+  if (g === 'wheat') {
+    ctx.beginPath(); ctx.moveTo(64, 106); ctx.lineTo(64, 44); ctx.stroke();
+    for (let i = 0; i < 3; i++) { const y = 52 + i * 16;
+      ctx.beginPath(); ctx.moveTo(64, y); ctx.lineTo(49, y - 11); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(64, y); ctx.lineTo(79, y - 11); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(64, 44); ctx.lineTo(55, 30); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(64, 44); ctx.lineTo(73, 30); ctx.stroke();
+  } else if (g === 'coins') {
+    ctx.lineWidth = 6;
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.ellipse(64, 82 - i * 17, 27, 10, 0, 0, Math.PI * 2); ctx.stroke(); }
+  } else if (g === 'cross') {            // medical plus
+    ctx.fillRect(53, 34, 22, 60); ctx.fillRect(34, 53, 60, 22);
+  } else if (g === 'book') {
+    ctx.strokeRect(40, 38, 48, 54);
+    ctx.beginPath(); ctx.moveTo(64, 38); ctx.lineTo(64, 92); ctx.stroke();
+    ctx.lineWidth = 4;
+    for (let i = 0; i < 3; i++) { const y = 52 + i * 13;
+      ctx.beginPath(); ctx.moveTo(48, y); ctx.lineTo(58, y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(70, y); ctx.lineTo(80, y); ctx.stroke(); }
+  } else if (g === 'chart') {
+    ctx.beginPath(); ctx.moveTo(36, 94); ctx.lineTo(92, 94); ctx.stroke();
+    for (const [x, top] of [[46, 70], [64, 46], [82, 60]]) ctx.fillRect(x - 8, top, 16, 94 - top);
+  }
+}
+function makeIcon(glyph, hex, scale = 2.4) {
   const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
   const ctx = cv.getContext('2d');
-  ctx.font = '92px "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(emoji, 64, 70);
+  const col = '#' + hex.toString(16).padStart(6, '0');
+  ctx.strokeStyle = col; ctx.fillStyle = col;
+  ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.shadowColor = col; ctx.shadowBlur = 9;
+  drawGlyph(ctx, glyph);
   return spriteFromCanvas(cv, scale, scale);
 }
 function makeCloud(scale = 4) {
@@ -100,14 +128,14 @@ function buildModules(positions) {
     const accent = new THREE.Mesh(accentGeometry(m.shape),
       new THREE.MeshBasicMaterial({ color: m.color, wireframe: true, transparent: true, opacity: 0.5 }));
     group.add(accent);
-    const icon = makeIcon(m.icon); icon.position.set(0, 0, 0.1); group.add(icon);
+    const icon = makeIcon(m.glyph, m.color); icon.position.set(0, 0, 0.1); group.add(icon);
     const label = makeLabel(m.name, m.color, 4.4); label.position.set(0, 2.4, 0); group.add(label);
 
     const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), pos]);
     scene.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: m.color, transparent: true, opacity: 0.32 })));
 
     const p = glowSphere(0.3, m.color); scene.add(p);
-    flows.push({ mesh: p, from: new THREE.Vector3(), to: pos.clone(), t: Math.random(), speed: 0.4 + Math.random() * 0.3 });
+    flows.push({ mesh: p, from: new THREE.Vector3(), to: pos.clone(), t: Math.random(), speed: 0.16 + Math.random() * 0.1 });
     moduleNodes.push({ group, sphere, accent, basePos: pos.clone(), color: m.color });
   });
 }
@@ -136,8 +164,33 @@ function buildInternet() {
   // legit packets riding the link, both directions
   for (let i = 0; i < 3; i++) {
     const p = glowSphere(0.26, NET); scene.add(p);
-    flows.push({ mesh: p, from: surf.clone(), to: at.clone(), t: i / 3, speed: 0.45, pingpong: true });
+    flows.push({ mesh: p, from: surf.clone(), to: at.clone(), t: i / 3, speed: 0.16, pingpong: true });
   }
+}
+
+// ── ROUTER ↔ GUARDIAN link (the core is wrapped & secured by the shell) ──────
+function fibonacciDirs(n) {
+  const out = [], phi = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < n; i++) {
+    const y = 1 - (i / (n - 1)) * 2, r = Math.sqrt(1 - y * y), th = phi * i;
+    out.push(new THREE.Vector3(Math.cos(th) * r, y, Math.sin(th) * r));
+  }
+  return out;
+}
+function buildShield() {
+  // struts from the ROUTER core out to the GUARDIAN shell, with packets riding
+  // outward — every router request is wrapped/checked by the guardian.
+  for (const d of fibonacciDirs(9)) {
+    const end = d.clone().multiplyScalar(R_SHELL);
+    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), end]),
+      new THREE.LineBasicMaterial({ color: 0x13b5a6, transparent: true, opacity: 0.22 })));
+    const p = glowSphere(0.2, 0x6affd6); scene.add(p);
+    flows.push({ mesh: p, from: new THREE.Vector3(), to: end, t: Math.random(), speed: 0.14 });
+  }
+  // protective pulse that swells from the core out to the shell, on repeat
+  shieldPulse = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 24),
+    new THREE.MeshBasicMaterial({ color: GREEN, transparent: true, opacity: 0.12, side: THREE.BackSide }));
+  shieldPulse.userData.t = 0; scene.add(shieldPulse);
 }
 
 // ── Attacks (always-on, always blocked) ──────────────────────────────────────
@@ -151,7 +204,7 @@ function armAttack(a) {
   a.origin = a.dir.clone().multiplyScalar(R_SHELL + 9 + Math.random() * 6);
   a.hit = a.dir.clone().multiplyScalar(R_SHELL);
   a.head.copy(a.origin);
-  a.t = 0; a.speed = 0.35 + Math.random() * 0.4; a.delay = Math.random() * 2.0;
+  a.t = 0; a.speed = 0.13 + Math.random() * 0.12; a.delay = 1.0 + Math.random() * 3.0;
 }
 function buildAttacks() {
   for (let i = 0; i < ATTACK_N; i++) {
@@ -258,6 +311,11 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
   guardian.rotation.y += dt * 0.12; guardian.rotation.x += dt * 0.04;
+  // protective pulse swelling from the router out to the guardian shell
+  shieldPulse.userData.t += dt * 0.3; if (shieldPulse.userData.t > 1) shieldPulse.userData.t -= 1;
+  const sp = shieldPulse.userData.t;
+  shieldPulse.scale.setScalar(2 + (R_SHELL - 2) * sp);
+  shieldPulse.material.opacity = 0.16 * (1 - sp);
   for (const n of moduleNodes) { n.accent.rotation.y += dt * 0.8; n.accent.rotation.x += dt * 0.5; }
   for (const f of flows) {
     f.t += dt * f.speed; if (f.t > 1) f.t -= 1;
@@ -289,7 +347,7 @@ function init() {
   clock = new THREE.Clock();
 
   buildGuardian(); buildCore(); buildModules(modulePositions());
-  buildInternet(); buildAttacks(); buildExampleButtons();
+  buildShield(); buildInternet(); buildAttacks(); buildExampleButtons();
 
   window.addEventListener('resize', onResize);
   const loading = document.getElementById('loading'); if (loading) loading.style.display = 'none';
