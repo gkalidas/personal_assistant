@@ -21,3 +21,8 @@ install.sh
 # Claude internal
 .claude/
 scripts/evaluate_assistant.py
+
+# Node (from a local `npm install` of the claude CLI into the repo)
+node_modules/
+package.json
+package-lock.json

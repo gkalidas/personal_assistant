@@ -25,6 +25,7 @@ echo "=== autonomous continue @ $STAMP ==="
 # Locate the claude CLI across the usual install locations.
 find_claude() {
   for c in claude \
+           "$REPO/node_modules/.bin/claude" \
            "$HOME/.local/bin/claude" \
            "$HOME/.npm-global/bin/claude" \
            "/usr/local/bin/claude" \
