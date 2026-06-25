@@ -91,7 +91,9 @@ def embed_url(channel: dict) -> str:
     auto-resolving live stream. All players start muted (browser autoplay rule).
     """
     base = "https://www.youtube.com/embed"
-    params = "enablejsapi=1&autoplay=1&mute=1&playsinline=1&rel=0"
+    # vq=tiny requests the lowest resolution (data saving); reinforced client-side
+    # with setPlaybackQuality('tiny') since YouTube treats vq as a hint only.
+    params = "enablejsapi=1&autoplay=1&mute=1&playsinline=1&rel=0&vq=tiny"
     if channel.get("video_id"):
         return f"{base}/{channel['video_id']}?{params}"
     return f"{base}/live_stream?channel={channel['channel_id']}&{params}"

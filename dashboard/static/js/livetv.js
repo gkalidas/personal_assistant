@@ -1,8 +1,8 @@
-/* ── Live TV news grid — lazy-loaded (one stream at a time), draggable box ──── */
+/* ── Live TV news grid — all channels at lowest resolution, draggable box ──── */
 let _ytApiReady=false, _ytApiLoading=false;
-// Only the *active* channel has a loaded iframe → only one channel ever streams,
-// so idle channels consume no data.
-const _liveTV={player:null, active:null, channels:[], paused:false, muted:false};
+// All channels play at once (muted) at the lowest resolution to bound data use;
+// closing the box destroys every player so nothing streams while hidden.
+const _liveTV={players:{}, channels:[], focus:null, paused:false, muted:true, built:false};
 
 // Load the YouTube IFrame API once; resolve when YT.Player is available.
 function _loadYTApi(){
@@ -17,93 +17,87 @@ function _loadYTApi(){
   });
 }
 
-function _placeholderHTML(ch){
-  return '<div class="livetv-ph">'+
-    '<span class="livetv-tile-live">● LIVE</span>'+
-    '<div class="livetv-ph-name">'+ch.name+'</div>'+
-    '<div class="livetv-ph-play">▶ PLAY</div></div>';
-}
+// Pin a player to the lowest resolution (fights YouTube's auto-upscaling).
+function _forceLow(p){ try{ p.setPlaybackQuality('tiny'); }catch(e){} }
 
-// Open the box and render channel placeholders — no iframes yet, no data used.
 async function openLiveTV(){
   el('modal-livetv-overlay').classList.add('open');
   if(typeof _stopNewsScroll==='function')_stopNewsScroll();
+  if(_liveTV.built) return;
   const grid=el('livetv-grid');
-  if(_liveTV.channels.length){return;}            // placeholders already built
-  grid.innerHTML='<div style="grid-column:1/-1;font-size:10px;letter-spacing:2px;color:var(--dim);padding:20px">loading channels…</div>';
-  let data;
-  try{ data=await (await fetch('/api/news/channels')).json(); }
-  catch(e){ grid.innerHTML='<div style="grid-column:1/-1;color:var(--red);font-size:10px;padding:20px">failed to load channels</div>'; return; }
-  _liveTV.channels=data.channels||[];
-  grid.innerHTML='';
-  _liveTV.channels.forEach(ch=>{
-    const tile=document.createElement('div');
-    tile.className='livetv-tile placeholder'; tile.id='tv-tile-'+ch.id;
-    tile.onclick=()=>liveTVPlay(ch.id);
-    tile.innerHTML=_placeholderHTML(ch);
-    grid.appendChild(tile);
-  });
+  if(!_liveTV.channels.length){
+    grid.innerHTML='<div style="grid-column:1/-1;font-size:10px;letter-spacing:2px;color:var(--dim);padding:20px">loading channels…</div>';
+    try{ _liveTV.channels=((await (await fetch('/api/news/channels')).json()).channels)||[]; }
+    catch(e){ grid.innerHTML='<div style="grid-column:1/-1;color:var(--red);font-size:10px;padding:20px">failed to load channels</div>'; return; }
+  }
+  _buildGrid();
 }
 
-// Load + play one channel, unloading whatever was playing (one stream at a time).
-async function liveTVPlay(id){
-  if(_liveTV.active===id) return;
-  _unloadActive();
-  const ch=_liveTV.channels.find(c=>c.id===id); if(!ch) return;
-  const tile=el('tv-tile-'+id); if(!tile) return;
-  tile.classList.remove('placeholder'); tile.classList.add('focused');
-  tile.innerHTML='<iframe id="tv-frame-'+id+'" src="'+ch.embed_url+'" '+
-    'allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>'+
-    '<div class="livetv-tile-bar"><span class="livetv-tile-live">● LIVE</span>'+
-    '<span>'+ch.name+'</span><span class="livetv-tile-mute" id="tv-mute-'+id+'">🔊</span></div>';
-  _liveTV.active=id; _liveTV.paused=false; _liveTV.muted=false;
-  await _loadYTApi();
-  _liveTV.player=new YT.Player('tv-frame-'+id,{
-    events:{ onReady:(e)=>{ e.target.unMute(); e.target.setVolume(100); e.target.playVideo(); } }
+// Build every tile + iframe and start all streams muted at lowest quality.
+function _buildGrid(){
+  const grid=el('livetv-grid'); grid.innerHTML='';
+  _liveTV.channels.forEach(ch=>{
+    const tile=document.createElement('div');
+    tile.className='livetv-tile'; tile.id='tv-tile-'+ch.id;
+    tile.onclick=()=>liveTVFocus(ch.id);
+    tile.innerHTML='<iframe id="tv-frame-'+ch.id+'" src="'+ch.embed_url+'" '+
+      'allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>'+
+      '<div class="livetv-tile-bar"><span class="livetv-tile-live">● LIVE</span>'+
+      '<span>'+ch.name+'</span><span class="livetv-tile-mute" id="tv-mute-'+ch.id+'">🔇</span></div>';
+    grid.appendChild(tile);
   });
-  el('livetv-focus-name').textContent='· '+ch.name;
+  _loadYTApi().then(()=>{
+    _liveTV.channels.forEach(ch=>{
+      _liveTV.players[ch.id]=new YT.Player('tv-frame-'+ch.id,{
+        events:{
+          onReady:(e)=>{ e.target.mute(); _forceLow(e.target); e.target.playVideo(); },
+          onPlaybackQualityChange:(e)=>_forceLow(e.target),
+        }
+      });
+    });
+  });
+  _liveTV.built=true;
+}
+
+// Click a channel → unmute it (mute the rest); resolution stays low for all.
+function liveTVFocus(id){
+  _liveTV.focus=id; _liveTV.paused=false; _liveTV.muted=false;
+  _liveTV.channels.forEach(ch=>{
+    const p=_liveTV.players[ch.id], tile=el('tv-tile-'+ch.id), mi=el('tv-mute-'+ch.id);
+    const on=(ch.id===id);
+    if(tile)tile.classList.toggle('focused',on);
+    if(p&&p.mute){ if(on){p.unMute();p.setVolume(100);} else {p.mute();} }
+    if(mi) mi.textContent=on?'🔊':'🔇';
+  });
+  const f=_liveTV.channels.find(c=>c.id===id);
+  el('livetv-focus-name').textContent=f?('· '+f.name):'';
   el('livetv-controls').style.display='flex';
   el('livetv-offset').textContent='';
   el('livetv-playpause').textContent='⏸ PAUSE';
-  el('livetv-mute').textContent='🔇 MUTE';
+  el('livetv-mute').textContent='🔊 MUTE';
 }
 
-// Destroy the active player + revert its tile to a placeholder → stops the stream.
-function _unloadActive(){
-  if(!_liveTV.active) return;
-  const id=_liveTV.active;
-  try{ if(_liveTV.player&&_liveTV.player.destroy) _liveTV.player.destroy(); }catch(e){}
-  const tile=el('tv-tile-'+id);
-  if(tile){
-    tile.classList.add('placeholder'); tile.classList.remove('focused');
-    const ch=_liveTV.channels.find(c=>c.id===id);
-    tile.innerHTML=_placeholderHTML(ch||{name:id});
-    tile.onclick=()=>liveTVPlay(id);
-  }
-  _liveTV.player=null; _liveTV.active=null;
-}
-
-function _activePlayer(){ return _liveTV.player; }
+function _focusPlayer(){ return _liveTV.focus?_liveTV.players[_liveTV.focus]:null; }
 
 function liveTVPlayPause(){
-  const p=_activePlayer(); if(!p) return;
+  const p=_focusPlayer(); if(!p) return;
   _liveTV.paused=!_liveTV.paused;
   if(_liveTV.paused){ p.pauseVideo(); el('livetv-playpause').textContent='▶ PLAY'; }
   else { p.playVideo(); el('livetv-playpause').textContent='⏸ PAUSE'; }
 }
 
 function liveTVToggleMute(){
-  const p=_activePlayer(); if(!p||!_liveTV.active) return;
+  const p=_focusPlayer(); if(!p||!_liveTV.focus) return;
   _liveTV.muted=!_liveTV.muted;
-  const mi=el('tv-mute-'+_liveTV.active);
+  const mi=el('tv-mute-'+_liveTV.focus);
   if(_liveTV.muted){ p.mute(); el('livetv-mute').textContent='🔊 UNMUTE'; if(mi)mi.textContent='🔇'; }
-  else { p.unMute(); p.setVolume(100); el('livetv-mute').textContent='🔇 MUTE'; if(mi)mi.textContent='🔊'; }
+  else { p.unMute(); p.setVolume(100); el('livetv-mute').textContent='🔊 MUTE'; if(mi)mi.textContent='🔊'; }
 }
 
-// Rewind `secs` into the live DVR buffer; secs=0 jumps back to the live edge.
+// Rewind `secs` into the focused channel's live DVR buffer; secs=0 → live edge.
 function liveTVSeek(secs){
-  const p=_activePlayer();
-  if(!p){ alert('Click a channel to play it first.'); return; }
+  const p=_focusPlayer();
+  if(!p){ alert('Click a channel first to control playback.'); return; }
   let dur=0; try{ dur=p.getDuration()||0; }catch(e){}
   if(secs===0){ if(dur>0)p.seekTo(dur,true); el('livetv-offset').textContent=''; el('livetv-playpause').textContent='⏸ PAUSE'; _liveTV.paused=false; return; }
   if(dur<=1){ el('livetv-offset').textContent='(no DVR buffer on this channel)'; return; }
@@ -113,9 +107,12 @@ function liveTVSeek(secs){
   el('livetv-offset').textContent='−'+have+' min'+(have<Math.round(secs/60)?' (max DVR)':'');
 }
 
+// Closing destroys every player → all streams stop, no data while hidden.
 function closeLiveTV(){
   el('modal-livetv-overlay').classList.remove('open');
-  _unloadActive();                       // stop the stream → no more data used
+  Object.values(_liveTV.players).forEach(p=>{ try{ if(p&&p.destroy)p.destroy(); }catch(e){} });
+  _liveTV.players={}; _liveTV.focus=null; _liveTV.built=false;
+  el('livetv-grid').innerHTML='';
   el('livetv-controls').style.display='none';
   el('livetv-focus-name').textContent='';
 }
