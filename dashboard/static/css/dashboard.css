@@ -242,6 +242,15 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .livetv-tile-live{font-size:7px;letter-spacing:2px;color:var(--red);border:1px solid rgba(255,60,60,0.4);border-radius:1px;padding:1px 4px}
 .livetv-tile-mute{margin-left:auto;font-size:11px;opacity:0.8}
 .livetv-tile.focused .livetv-tile-live{color:#fff;background:var(--red);border-color:var(--red)}
+/* lazy-load placeholder (no iframe = no data until clicked) */
+.livetv-tile.placeholder{display:flex;align-items:center;justify-content:center;background:rgba(6,14,24,0.65)}
+.livetv-ph{display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center;padding:10px}
+.livetv-ph .livetv-tile-live{position:static}
+.livetv-ph-name{font-size:11px;letter-spacing:1px;color:#9ab8c4}
+.livetv-ph-play{font-size:9px;letter-spacing:2px;color:var(--cyan);border:1px solid var(--cyan);border-radius:14px;padding:4px 14px;transition:all .15s}
+.livetv-tile.placeholder:hover{border-color:var(--cyan)}
+.livetv-tile.placeholder:hover .livetv-ph-play{background:var(--cyan);color:#031018}
+.livetv-header{cursor:move}
 .livetv-footer{font-size:8px;letter-spacing:2px;color:var(--dim);padding:8px 20px;border-top:1px solid var(--border);flex-shrink:0}
 
 /* ── Book modal ───────────────────────────────────────────────────────────── */

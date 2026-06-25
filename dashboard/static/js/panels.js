@@ -7,6 +7,7 @@ function _defaultLayout(){
   const W=window.innerWidth, H=window.innerHeight-44;
   const g=8, cw=Math.floor((W-g*5)/4);
   const r1=150, r2=145, r3=Math.max(100,H-r1-r2-g*4);
+  const r3a=Math.max(90,Math.floor((r3-g)/2));   // voice (top) / live-news (bottom)
   return{
     'p-network':  {x:g,        y:g,          w:cw,       h:r1,  z:10},
     'p-system':   {x:g*2+cw,   y:g,          w:cw,       h:r1,  z:10},
@@ -15,7 +16,8 @@ function _defaultLayout(){
     'p-diary':    {x:g,        y:g*2+r1,     w:cw*3+g*2, h:r2,  z:10},
     'p-todo-mini':{x:g*4+cw*3, y:g*2+r1,     w:cw,       h:r2,  z:10},
     'p-news':     {x:g,        y:g*3+r1+r2,  w:cw*3+g*2, h:r3,  z:10},
-    'p-voice':    {x:g*4+cw*3, y:g*3+r1+r2,  w:cw,       h:r3,  z:10},
+    'p-voice':    {x:g*4+cw*3, y:g*3+r1+r2,          w:cw, h:r3a,        z:10},
+    'p-livenews': {x:g*4+cw*3, y:g*3+r1+r2+r3a+g,    w:cw, h:r3-r3a-g,   z:10},
   };
 }
 
