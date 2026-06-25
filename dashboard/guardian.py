@@ -100,6 +100,21 @@ def _threat_items(threat: dict) -> list[dict]:
     ]
 
 
+def _vuln_items(vuln: dict) -> list[dict]:
+    """Flatten the CVE/advisory scan into compact display items for the modal."""
+    return [
+        {
+            "package":  v.get("package", ""),
+            "version":  v.get("version") or v.get("installed_version", ""),
+            "id":       v.get("vuln_id") or (v.get("aliases") or [""])[0] or "",
+            "severity": v.get("severity", "UNKNOWN"),
+            "fix":      v.get("fix_version") or v.get("fixed_version") or "",
+            "summary":  (v.get("summary") or "").replace("No summary", ""),
+        }
+        for v in vuln.get("vulnerabilities", [])
+    ]
+
+
 def get_guardian_status() -> dict[str, Any]:
     """Aggregate the latest guardian reports + schedule into one dashboard dict."""
     anomaly, vuln = _read("anomaly_detect"), _read("vuln_scan")
@@ -124,7 +139,8 @@ def get_guardian_status() -> dict[str, Any]:
                     "alerts": alert_count, "checked": anomaly.get("events_checked", 0)},
         "vuln": {"at": (vuln.get("scanned_at") or "")[:16], "total": vuln_count,
                  "packages": vuln.get("scanned_packages", "?"),
-                 "severity": vuln.get("severity_counts", {})},
+                 "severity": vuln.get("severity_counts", {}),
+                 "items": _vuln_items(vuln)},
         "threat": {"at": (threat.get("checked_at") or "")[:16],
                    "tested": threat.get("new_threats_tested", 0),
                    "vulns": threat_vulns, "items": _threat_items(threat)},

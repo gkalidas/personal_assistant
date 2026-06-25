@@ -180,6 +180,7 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .issue-row .sev{font-size:8px;letter-spacing:2px;margin-bottom:3px}
 .issue-row .sev.HIGH,.issue-row .sev.CRITICAL{color:var(--red)}
 .issue-row .sev.MEDIUM{color:var(--amber)}
+.issue-row .sev.UNKNOWN,.issue-row .sev.LOW{color:var(--dim)}
 .issue-row .loc{color:var(--dim);font-size:10px;margin-bottom:2px}
 .issue-row .msg{color:#8ab0b8}
 .threat-acc{margin-bottom:4px;border:1px solid rgba(255,34,85,0.2);border-radius:2px;background:rgba(255,34,85,0.03)}

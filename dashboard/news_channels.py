@@ -50,7 +50,38 @@ LIVE_NEWS_CHANNELS: list[dict] = [
         "lang":       "en",
         "category":   "global",
     },
+    {
+        "id":         "abcnews",
+        "name":       "ABC News (US)",
+        "channel_id": "UCBi2mrWuNuyYy4gbM6fU18Q",
+        "lang":       "en",
+        "category":   "global",
+    },
+    {
+        "id":         "nbcnews",
+        "name":       "NBC News",
+        "channel_id": "UCeY0bbntWzzVIaj2z3QigXg",
+        "lang":       "en",
+        "category":   "global",
+    },
+    {
+        "id":         "trtworld",
+        "name":       "TRT World",
+        "channel_id": "UC7fWeaHhqgM4Ry-RMpM2YYw",
+        "lang":       "en",
+        "category":   "global",
+    },
+    {
+        "id":         "cna",
+        "name":       "CNA (Channel NewsAsia)",
+        "channel_id": "UC4p_I9eiRewn2KoU-nawrDg",
+        "lang":       "en",
+        "category":   "global",
+    },
 ]
+# Adding a channel: grab its channel_id from the channel's YouTube page source
+# (search "channelId") and append an entry above. If a channel blocks live-stream
+# embedding, pin a specific "video_id" instead of channel_id.
 
 
 def embed_url(channel: dict) -> str:

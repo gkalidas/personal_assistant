@@ -249,6 +249,15 @@ function openModal(type){
     const vC2=g.vuln.total===0?'var(--green)':'var(--red)';
     html+=row('CVE',`<span style="color:${vC2}">${g.vuln.total===0?'CLEAN':g.vuln.total+' VULN(S)'}</span>`);
     html+=row('Last run',g.vuln.at||'--');
+    if(g.vuln.items&&g.vuln.items.length){
+      html+=sec('VULNERABILITIES');
+      g.vuln.items.forEach(v=>{
+        const sevCls=(v.severity||'UNKNOWN').toUpperCase();
+        const fix=v.fix?`fix: ${v.fix}`:'no fix yet';
+        const desc=v.summary?' — '+v.summary.substring(0,70):'';
+        html+=`<div class="issue-row"><div class="sev ${sevCls}">${sevCls}</div><div class="loc">${v.package} ${v.version}</div><div class="msg">${v.id}${desc} <span style="color:var(--dim)">· ${fix}</span></div></div>`;
+      });
+    }
     const tC2=g.threat.vulns===0?'var(--green)':'var(--red)';
     html+=row('Threat Intel',`<span style="color:${tC2}">${g.threat.vulns===0?'NOT VULNERABLE':g.threat.vulns+' VULNERABLE'}</span>`);
     if(g.threat.items&&g.threat.items.length){
