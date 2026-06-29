@@ -11,6 +11,12 @@ TEXT_MODEL     = os.getenv("TEXT_MODEL",      "qwen3:1.7b")
 ROUTER_MODEL   = os.getenv("ROUTER_MODEL",    "qwen2.5:0.5b")
 FALLBACK_MODEL = os.getenv("FALLBACK_MODEL",  "qwen2.5:3b")   # backup when TEXT_MODEL fails
 VISION_MODEL   = os.getenv("VISION_MODEL",    "moondream")
+# Vision captioning is slow to COLD-LOAD (~100s for moondream on CPU) but fast
+# once warm (~6s). The timeout must exceed a cold load or the request is
+# abandoned mid-load and the model never warms up (a timeout death-spiral).
+# keep_alive holds the model in memory so subsequent captions stay fast.
+VISION_TIMEOUT    = float(os.getenv("VISION_TIMEOUT",    "180"))   # seconds
+VISION_KEEP_ALIVE = os.getenv("VISION_KEEP_ALIVE", "30m")
 
 # Weekly digest email (Gmail SMTP with App Password)
 DIGEST_FROM        = os.getenv("DIGEST_FROM",        "")
@@ -19,3 +25,8 @@ DIGEST_EMAIL_PASS  = os.getenv("DIGEST_EMAIL_PASS",  "")
 
 # SearXNG self-hosted search (optional — empty = use DDGS)
 SEARXNG_URL        = os.getenv("SEARXNG_URL",        "").rstrip("/")
+
+# When a module's reply looks uncertain ("I don't know"), optionally run a web
+# search and append its result as a second block. Default OFF so one query →
+# one module's output. Set UNCERTAINTY_SEARCH_FALLBACK=1 to re-enable.
+UNCERTAINTY_SEARCH_FALLBACK = os.getenv("UNCERTAINTY_SEARCH_FALLBACK", "0") not in ("0", "", "false", "False")
