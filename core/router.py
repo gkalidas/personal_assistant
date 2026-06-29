@@ -23,11 +23,24 @@ _MODULE_KEYWORDS = {
     "diary":   "diary, photos, journal, write diary, photo diary, show diary, approve diary, draft, daily log, weekly summary, week review, this week",
     "search":  "search, news, latest, current events, what is, who is, government scheme, policy, regulation, internet, web, find out, look up",
     "code":    "analyze code, codebase, lines of code, LOC, complexity, security scan code, what does this directory do, explain module, file breakdown",
+    "todo":    "todo, to-do, task, tasks, to-do list, task list, my list, add todo, remind me to, mark done, complete task, finish task, delete todo, pending tasks, things to do",
+    "general": "greetings, hello, hi, thanks, small talk, chit-chat, everyday questions, general knowledge, how are you, who are you, anything not covered by the other modules",
 }
 
+# Safe fallback when the router can't confidently pick a domain module.
+# Routing to a single conversational handler avoids fanning a query out to
+# every module at once (which overloads Ollama and causes timeout storms).
+_FALLBACK_MODULE = "general"
+
+# Max seconds to wait for the LLM router before failing fast to the fallback.
+# The 0.5b router answers in well under a second when Ollama is warm; waiting
+# longer means Ollama is stuck, so we stop instead of hanging for minutes.
+_ROUTER_TIMEOUT = 30.0
 
 
-_SYSTEM_PROMPT = """Route the user message to the correct module. Reply ONLY with JSON.
+
+_SYSTEM_PROMPT = """Route the user message to the SINGLE most relevant module.
+Pick exactly ONE — the best fit. Reply ONLY with JSON.
 
 Modules:
 {module_list}
@@ -36,7 +49,8 @@ Examples:
 "spent 500 on seeds" -> {{"modules": ["finance"]}}
 "when to spray pomegranate" -> {{"modules": ["farming"]}}
 "weather today" -> {{"modules": ["farming"]}}
-"monsoon affecting my budget" -> {{"modules": ["finance", "farming"]}}
+"monsoon affecting my budget" -> {{"modules": ["finance"]}}
+"what can you do for me" -> {{"modules": ["general"]}}
 "BP was 130/85" -> {{"modules": ["health"]}}
 "walked 9000 steps" -> {{"modules": ["health"]}}
 "slept 6 hours" -> {{"modules": ["health"]}}
@@ -61,8 +75,14 @@ Examples:
 "search for pomegranate export prices" -> {{"modules": ["search"]}}
 "today's gold price in India" -> {{"modules": ["search"]}}
 "who is the agriculture minister?" -> {{"modules": ["search"]}}
+"show todo list" -> {{"modules": ["todo"]}}
+"what are my tasks" -> {{"modules": ["todo"]}}
+"add todo buy seeds" -> {{"modules": ["todo"]}}
+"remind me to call the vet" -> {{"modules": ["todo"]}}
+"mark the pump task done" -> {{"modules": ["todo"]}}
+"delete the searxng todo" -> {{"modules": ["todo"]}}
 
-Reply format: {{"modules": ["name"]}}"""
+Reply format: {{"modules": ["name"]}}  (exactly one name)"""
 
 
 def _build_system_prompt(modules: dict[str, BaseModule]) -> str:
@@ -114,17 +134,23 @@ def route(query: str, modules: dict[str, BaseModule]) -> list[str]:
 
     t0 = time.monotonic()
     try:
-        resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=300.0)
+        resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=_ROUTER_TIMEOUT)
         resp.raise_for_status()
         chosen = json.loads(resp.json()["message"]["content"]).get("modules", [])
         valid  = [m for m in chosen if m in modules]
-        routed = valid if valid else list(modules.keys())
+        # One query → one module: take the router's top pick, else the safe fallback.
+        routed = [valid[0]] if valid else [_fallback(modules)]
         log.info("route → %s  (%dms)  q=%r", routed, int((time.monotonic() - t0) * 1000), query[:80])
         _log_routing_mismatch(query, embed_choice, routed)
         return routed
     except Exception as e:
         log.error("router LLM failed (%dms): %s", int((time.monotonic() - t0) * 1000), e)
-        return list(modules.keys())
+        return [_fallback(modules)]
+
+
+def _fallback(modules: dict[str, BaseModule]) -> str:
+    """Single safe module to handle queries the router couldn't classify."""
+    return _FALLBACK_MODULE if _FALLBACK_MODULE in modules else next(iter(modules))
 
 
 def dispatch(
