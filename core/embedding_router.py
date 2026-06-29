@@ -8,7 +8,8 @@ warm-up vs 200-800 ms for the LLM router.
 Falls back to the LLM router when max cosine similarity < CONFIDENCE_THRESHOLD,
 ensuring the LLM handles ambiguous queries.
 
-Model auto-downloads to ~/.cache/fastembed/ on first use (~33 MB).
+Model auto-downloads to the HuggingFace cache (~/.cache/huggingface) on first
+use (~33 MB on the wire; ~75 MB unpacked).
 """
 
 import logging
@@ -28,6 +29,10 @@ _MODEL_NAME = "BAAI/bge-small-en-v1.5"   # 33 MB, 384-dim, fast CPU
 _MODULE_EXAMPLES: dict[str, list[str]] = {
     "farming": [
         "show my farm weather", "is it safe to spray tomorrow",
+        "what is the weather today", "weather today", "what's the weather",
+        "how is the weather", "will it rain tomorrow", "is it going to rain",
+        "is it raining now", "how hot is it today", "temperature today",
+        "is it sunny", "weather forecast", "tomorrow's weather",
         "mandi price pomegranate today", "rainfall last 30 days",
         "soil data for my farm", "crop disease pomegranate",
         "spray log this week", "7 day forecast barloni",
@@ -93,6 +98,13 @@ _MODULE_EXAMPLES: dict[str, list[str]] = {
         "how busy is the system", "RAM and CPU",
         "show security alerts", "when did guardian last run",
         "is the server idle", "load average",
+    ],
+    "general": [
+        "hello", "hi there", "good morning", "thanks", "thank you",
+        "who are you", "what can you do", "what can you do for me",
+        "what can you help me with", "how are you", "tell me a joke",
+        "what is your name", "help", "what are your features",
+        "how do you work", "nice to meet you",
     ],
     "code": [
         "analyze this project", "analyze the codebase",
@@ -180,7 +192,10 @@ class EmbeddingRouter:
 
             ids, dists = index.knn_query(vec.reshape(1, -1), k=3)
             best_id   = ids[0][0]
-            best_sim  = float(dists[0][0])  # inner product (cosine on unit vecs)
+            # hnswlib's "ip" space returns a DISTANCE of (1 - inner_product), not
+            # the similarity itself. On unit vectors that's (1 - cosine), so convert
+            # back before thresholding — otherwise good matches look far away.
+            best_sim  = 1.0 - float(dists[0][0])
 
             module = labels[best_id]
             log.debug("embed-route: q=%r → %s (%.3f)", query[:60], module, best_sim)
@@ -216,3 +231,21 @@ def fast_route(query: str) -> Optional[str]:
     """
     result = get_router().route(query)
     return result[0] if result else None
+
+
+def warmup(timeout: float = 300.0) -> bool:
+    """Build the embedding index now and BLOCK until it's ready.
+
+    The index normally builds in a background daemon thread — fine for a
+    long-running server, but useless in a one-shot script: the process exits and
+    kills the thread mid-download, so the model never finishes downloading. Call
+    this from setup/warm-up scripts so the ~33 MB download actually completes.
+
+    Returns True if the router became ready within ``timeout`` seconds.
+    """
+    import time
+    router = get_router()                       # kicks off the background build
+    deadline = time.monotonic() + timeout
+    while not router._ready and time.monotonic() < deadline:
+        time.sleep(0.5)
+    return router._ready
