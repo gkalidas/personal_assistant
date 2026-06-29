@@ -15,7 +15,8 @@ API:
   observe()                  → sample + store current load (call every 60s)
   is_idle()                  → bool: safe to run a background task right now
   pattern_by_hour(days=7)    → dict[int, float]: hour→avg load score 0-100
-  predicted_idle_hours()     → list[int]: upcoming hours likely to be idle
+  pattern_by_dow_hour(days)  → dict[(dow,hour), float]: day-of-week-aware load
+  predicted_idle_hours()     → list[int]: upcoming hours likely to be idle (dow-aware)
   report()                   → dict: current state + pattern summary
   print_pattern()            → human-readable usage heatmap to stdout
 """
@@ -295,27 +296,61 @@ def pattern_by_hour(days: int = 7) -> dict[int, float]:
         return {}
 
 
-def predicted_idle_hours(n: int = 6, days: int = 7) -> list[int]:
+def pattern_by_dow_hour(days: int = 14) -> dict[tuple[int, int], float]:
     """
-    Returns the next N calendar hours (0-23) that are typically idle,
-    based on historical pattern. Falls back to late-night hours if
-    not enough data.
-    """
-    pat   = pattern_by_hour(days=days)
-    now_h = datetime.now().hour
+    Returns {(dow, hour): avg_load_score} for the past `days` days, where
+    dow is 0=Monday … 6=Sunday. Only cells with >= 3 samples are included.
 
-    if len(pat) < 6:
-        # Not enough data — default to late-night window
+    This is the day-of-week-aware view: it distinguishes a quiet weekday
+    afternoon from a busy weekend evening, which a flat hourly average can't.
+    """
+    try:
+        since = (datetime.now() - timedelta(days=days)).isoformat()
+        con   = _conn()
+        rows  = con.execute(
+            """SELECT dow, hour, AVG(load_score) as avg_load, COUNT(*) as cnt
+               FROM observations
+               WHERE ts >= ?
+               GROUP BY dow, hour""",
+            (since,),
+        ).fetchall()
+        con.close()
+        return {(r["dow"], r["hour"]): round(r["avg_load"], 1)
+                for r in rows if r["cnt"] >= 3}
+    except Exception:
+        return {}
+
+
+def predicted_idle_hours(n: int = 6, days: int = 14) -> list[int]:
+    """
+    Returns the next N calendar hours (0-23) that are typically idle.
+
+    Day-of-week aware: ranks the upcoming hours using THIS weekday's learned
+    pattern first, falling back to the flat cross-day average for hours with
+    too little day-specific data, then to a late-night window if there is
+    barely any data at all.
+    """
+    now   = datetime.now()
+    now_h = now.hour
+    dow   = now.weekday()
+
+    dow_pat = pattern_by_dow_hour(days=days)   # (dow, hour) -> load
+    flat    = pattern_by_hour(days=days)       # hour -> load (all days)
+
+    # Not enough data anywhere — default to the late-night window.
+    if not dow_pat and len(flat) < 6:
         return [(now_h + i + 1) % 24 for i in range(6) if (now_h + i + 1) % 24 in range(1, 6)]
 
-    # Rank hours by load score, prefer future hours (next 12h window)
-    candidates = []
-    for offset in range(1, 25):
-        hour = (now_h + offset) % 24
-        score = pat.get(hour, 50.0)   # unknown hours → assume moderate
-        candidates.append((score, hour))
+    def _score(offset: int) -> float:
+        """Load score for the hour `offset` hours ahead, on its real weekday."""
+        future = now + timedelta(hours=offset)
+        key = (future.weekday(), future.hour)
+        if key in dow_pat:
+            return dow_pat[key]
+        return flat.get(future.hour, 50.0)   # unknown → assume moderate
 
-    candidates.sort()
+    # Rank the next 24h window by predicted load (lowest first).
+    candidates = sorted((_score(off), (now_h + off) % 24) for off in range(1, 25))
     return [h for _, h in candidates[:n]]
 
 

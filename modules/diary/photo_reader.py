@@ -116,7 +116,7 @@ def _apply_exif_fields(raw: dict, photo_path: Path, result: dict) -> None:
             result["gps"], result["has_gps"] = coords, True
 
 
-def scan_photos(directory: str | Path, max_per_day: int = 12) -> dict[str, list[dict]]:
+def scan_photos(directory: str | Path, max_per_day: int | None = 12) -> dict[str, list[dict]]:
     """
     Scan a directory for photos and group them by date.
 
@@ -126,7 +126,9 @@ def scan_photos(directory: str | Path, max_per_day: int = 12) -> dict[str, list[
         ...
     }
     Photos within each day are sorted by time. At most max_per_day per day
-    (keeps token usage bounded for captioning and diary writing).
+    (keeps token usage bounded for captioning and diary writing). Pass
+    max_per_day=None to disable the cap (callers that cap AFTER filtering out
+    already-processed photos use this so >cap/day photos aren't orphaned).
     """
     directory = Path(directory).expanduser()
     if not directory.exists():
@@ -149,18 +151,29 @@ def scan_photos(directory: str | Path, max_per_day: int = 12) -> dict[str, list[
     return by_date
 
 
-def _group_photos_by_date(photo_files: list[Path], max_per_day: int) -> dict[str, list[dict]]:
-    """Read each photo's EXIF, group by date, sort by time, and cap per day."""
+def _group_photos_by_date(photo_files: list[Path], max_per_day: int | None) -> dict[str, list[dict]]:
+    """Read each photo's EXIF, group by date, sort by time, and optionally cap per day."""
     by_date: dict[str, list[dict]] = {}
     for p in photo_files:
         meta = read_exif(p)
         by_date.setdefault(meta["date_str"] or "unknown", []).append(meta)
     for day, metas in by_date.items():
         metas.sort(key=lambda m: m["time_str"])
-        if len(metas) > max_per_day:
+        if max_per_day is not None and len(metas) > max_per_day:
             log.info("day %s has %d photos — keeping first %d", day, len(metas), max_per_day)
             by_date[day] = metas[:max_per_day]
     return by_date
+
+
+def cap_per_day(by_date: dict[str, list[dict]], max_per_day: int) -> dict[str, list[dict]]:
+    """Return by_date with at most max_per_day photos per day (chronological first N)."""
+    capped: dict[str, list[dict]] = {}
+    for day, metas in by_date.items():
+        if len(metas) > max_per_day:
+            log.info("day %s has %d unprocessed photos — captioning first %d this cycle",
+                     day, len(metas), max_per_day)
+        capped[day] = metas[:max_per_day]
+    return capped
 
 
 def default_photo_dir(profile: dict) -> Path:

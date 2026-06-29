@@ -64,6 +64,9 @@ MIN_INTERVAL = {
     "source_intel":    24 * 3600,   # daily — LLM-security feeds → safe auto-harden
     "vuln_scan":       24 * 3600,   # daily — OSV batch query
     "code_audit":       7 * 86400,  # weekly — bandit + regex scan
+    "diary_caption":    2 * 3600,   # every 2h check — HEAVY (moondream ~1min/photo);
+                                    # idle-gated, forced after 6h so a backlog isn't
+                                    # stuck forever. Cheap no-op when no new photos.
 }
 
 # Cool-down between back-to-back tasks (seconds).
@@ -355,6 +358,25 @@ def _save_report(task: str, data: dict) -> None:
 
 
 # Tasks run by a full scan, in order (lightest first).
+def task_diary_caption() -> dict:
+    """Caption any new photos and write diary drafts (HEAVY: moondream + qwen3).
+
+    Registered with the idle scheduler so the ~1-minute-per-photo vision work
+    never competes with the user. Cheap no-op when there are no new photos.
+    """
+    from modules.diary.module import caption_pending_photos
+
+    log.info("=== Diary captioning (new photos, idle-scheduled) ===")
+    result = caption_pending_photos()
+    if result["new_photos"]:
+        log.info("  captioned %d new photo(s) from %s; diary days written: %s",
+                 result["new_photos"], result["folders"] or "—",
+                 result["days_written"] or "none")
+    else:
+        log.info("  no new photos — nothing to caption.")
+    return result
+
+
 _FULL_SCAN_TASKS = [
     ("anomaly_detect",  task_anomaly_detect),
     ("pattern_update",  task_pattern_update),
@@ -477,6 +499,7 @@ def _run_one(name: str) -> None:
         "source_intel":    task_source_intel,
         "vuln_scan":       lambda: task_vuln_scan(auto_patch=True),
         "code_audit":      task_code_audit,
+        "diary_caption":   task_diary_caption,
     }
     fn = fn_map.get(name)
     if fn is None:
@@ -638,6 +661,7 @@ def _build_dispatch() -> dict:
         "autodefense": _cmd_autodefense,   # auto-fix bypasses from red team
         "posture":     _cmd_posture,       # show security score
         "load":        _cmd_load,
+        "diary":       task_diary_caption,  # caption new photos now (manual trigger)
     }
 
 

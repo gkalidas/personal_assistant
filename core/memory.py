@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import sqlite3
@@ -67,6 +68,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS processed_photos (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 path         TEXT NOT NULL UNIQUE,
+                sha256       TEXT,
                 size_bytes   INTEGER,
                 date_taken   TEXT,
                 week         TEXT,
@@ -84,6 +86,15 @@ def init_db() -> None:
             );
         """)
         _migrate_events(conn)
+        _migrate_processed_photos(conn)
+
+
+def _migrate_processed_photos(conn: sqlite3.Connection) -> None:
+    """Add the content-hash column to older processed_photos tables."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(processed_photos)")}
+    if "sha256" not in existing:
+        conn.execute("ALTER TABLE processed_photos ADD COLUMN sha256 TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_processed_sha ON processed_photos(sha256)")
 
 
 def _migrate_events(conn: sqlite3.Connection) -> None:
@@ -120,13 +131,19 @@ def log_query_done(event_id: int, module: str, response: str,
 
 
 def log_event(module: str, query: str, response: str,
-              latency_ms: int | None = None, metadata: dict | None = None) -> None:
-    """Single-call log for cases where start/done split isn't needed."""
+              latency_ms: int | None = None, metadata: dict | None = None,
+              status: str = "ok") -> None:
+    """Single-call log for cases where start/done split isn't needed.
+
+    Pass status='error' for background failures (e.g. a failed captioning run)
+    so the anomaly analyser, which counts status='error' rows, can see them.
+    """
     with _conn() as conn:
         conn.execute(
-            "INSERT INTO events (ts, module, query, response, latency_ms, metadata) VALUES (?,?,?,?,?,?)",
+            "INSERT INTO events (ts, module, query, response, latency_ms, metadata, status) "
+            "VALUES (?,?,?,?,?,?,?)",
             (datetime.now().isoformat(), module, query, response, latency_ms,
-             json.dumps(metadata) if metadata else None),
+             json.dumps(metadata) if metadata else None, status),
         )
 
 
@@ -199,8 +216,29 @@ def list_diary_drafts(approved: bool | None = None) -> list[dict]:
 
 # ── Photo processing tracker ───────────────────────────────────────────────────
 
+def file_content_hash(path: str) -> str | None:
+    """Return a hex content hash (blake2b) of a file, or None if unreadable.
+
+    Used to dedup photos by content so a moved/renamed/re-downloaded copy of an
+    already-captioned image is not captioned again.
+    """
+    try:
+        h = hashlib.blake2b(digest_size=16)
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):  # 1 MiB chunks
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return None
+
+
 def mark_photos_processed(photos: list, week: str) -> None:
-    """Record which photo files have been processed into diary entries."""
+    """Record which photo files have been processed into diary entries.
+
+    Stores a content hash (sha256 column, blake2b value) alongside the path so
+    future scans skip the same content even under a different filename. Reuses a
+    precomputed ``sha256`` from the photo meta dict when present (avoids re-hashing).
+    """
     now = datetime.now().isoformat()
     with _conn() as conn:
         for p in photos:
@@ -208,20 +246,38 @@ def mark_photos_processed(photos: list, week: str) -> None:
             if isinstance(p, dict):
                 path = p.get("path") or p.get("filename") or str(p)
                 date_taken = p.get("date")
+                sha = p.get("sha256")
             else:
                 path = str(getattr(p, "path", p))
                 date_taken = getattr(p, "date", None)
+                sha = None
+            if not sha:
+                sha = file_content_hash(path)
             size = None
             try:
-                import os
                 size = os.path.getsize(path)
             except Exception:
                 pass
             conn.execute(
                 """INSERT OR IGNORE INTO processed_photos
-                   (path, size_bytes, date_taken, week, processed_at) VALUES (?,?,?,?,?)""",
-                (path, size, str(date_taken) if date_taken else None, week, now),
+                   (path, sha256, size_bytes, date_taken, week, processed_at)
+                   VALUES (?,?,?,?,?,?)""",
+                (path, sha, size, str(date_taken) if date_taken else None, week, now),
             )
+
+
+def record_photo_alias(path: str, sha256: str, week: str = "alias") -> None:
+    """Record a new path for content already processed (a moved/renamed duplicate).
+
+    Lets future scans fast-path the file by path instead of re-hashing it each run.
+    """
+    now = datetime.now().isoformat()
+    with _conn() as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO processed_photos
+               (path, sha256, week, processed_at) VALUES (?,?,?,?)""",
+            (path, sha256, week, now),
+        )
 
 
 def get_processed_photo_paths() -> set[str]:
@@ -229,6 +285,15 @@ def get_processed_photo_paths() -> set[str]:
     with _conn() as conn:
         rows = conn.execute("SELECT path FROM processed_photos").fetchall()
     return {row["path"] for row in rows}
+
+
+def get_processed_photo_hashes() -> set[str]:
+    """Return the set of all photo content hashes already processed."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT sha256 FROM processed_photos WHERE sha256 IS NOT NULL"
+        ).fetchall()
+    return {row["sha256"] for row in rows}
 
 
 def get_photo_stats(photo_dir: str | None = None) -> dict:

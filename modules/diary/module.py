@@ -20,10 +20,11 @@ from typing import Any
 from core.base_module import BaseModule, ModuleResponse
 from core.memory import (save_diary_draft, get_diary_draft, approve_diary_draft,
                          list_diary_drafts, mark_photos_processed,
-                         get_processed_photo_paths, get_photo_stats,
-                         add_diary_question, get_pending_questions)
+                         get_processed_photo_paths, get_processed_photo_hashes,
+                         get_photo_stats, file_content_hash, record_photo_alias,
+                         add_diary_question, get_pending_questions, load_profile)
 from core.analysis import run_weekly_pipeline, analyse_week, current_iso_week
-from modules.diary.photo_reader import scan_photos, default_photo_dir
+from modules.diary.photo_reader import scan_photos, default_photo_dir, cap_per_day
 from modules.diary.vision import caption_batch
 from modules.diary.writer import write_diary_entry, format_draft
 
@@ -121,15 +122,34 @@ def _resolve_photo_dir(query: str, profile: dict) -> Path:
 
 
 def _filter_unprocessed(by_date: dict[str, list]) -> tuple[dict, int]:
-    """Drop already-processed photos by path. Returns (filtered_by_date, skipped_count)."""
+    """Drop already-processed photos, by path first then by content hash.
+
+    A photo whose content hash was already processed under a different path
+    (moved/renamed/re-downloaded copy) is recorded as an alias and skipped, so
+    the expensive captioning never re-runs on identical content. The freshly
+    computed hash is cached on each kept photo (``sha256``) so marking it later
+    doesn't re-read the file. Returns (filtered_by_date, skipped_count).
+    """
     already = get_processed_photo_paths()
+    hashes  = get_processed_photo_hashes()
     filtered: dict[str, list] = {}
     skipped = 0
     for day, photos in by_date.items():
-        new_photos = [p for p in photos if p.get("path") not in already]
+        new_photos = []
+        for p in photos:
+            path = p.get("path")
+            if path in already:
+                skipped += 1
+                continue
+            sha = file_content_hash(path)
+            p["sha256"] = sha          # cache so mark_photos_processed won't re-hash
+            if sha and sha in hashes:   # same content, different path → alias, don't recaption
+                record_photo_alias(path, sha)
+                skipped += 1
+                continue
+            new_photos.append(p)
         if new_photos:
             filtered[day] = new_photos
-        skipped += len(photos) - len(new_photos)
     return filtered, skipped
 
 
@@ -165,7 +185,9 @@ def _do_write(query: str, profile: dict) -> tuple[str, dict | None]:
     date_filter = date_match.group(1) if date_match else None
     log.info("diary write: dir=%s date_filter=%s", photo_dir, date_filter)
 
-    by_date = scan_photos(photo_dir)
+    # Scan WITHOUT the per-day cap so we can cap *after* dropping already-processed
+    # photos — otherwise days with >cap photos orphan the rest forever.
+    by_date = scan_photos(photo_dir, max_per_day=None)
     if not by_date:
         return f"No photos found in {photo_dir}.", None
     if date_filter:
@@ -184,6 +206,10 @@ def _do_write(query: str, profile: dict) -> tuple[str, dict | None]:
                 f"({stats['total_processed']} total across {len(stats['by_week'])} weeks).\n"
                 f"To reprocess a specific date, say: \"diary for YYYY-MM-DD\"", None)
 
+    # Cap AFTER filtering: this cycle captions the first N unprocessed per day;
+    # the remainder are picked up on the next idle cycle until the day is done.
+    by_date = cap_per_day(by_date, 12)
+
     written_days, output_lines = [], []
     for date_str in sorted(by_date.keys()):
         line, written = _process_diary_day(date_str, by_date[date_str], profile)
@@ -198,6 +224,38 @@ def _do_write(query: str, profile: dict) -> tuple[str, dict | None]:
                    "skipped — say \"diary for YYYY-MM-DD\" to reprocess a date)\n")
     header += "Draft saved. Say \"approve diary\" when you're happy with it.\n\n"
     return header + "\n\n".join(output_lines), {"days_written": written_days}
+
+
+_PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".heic", ".webp", ".heif"}
+
+
+def caption_pending_photos() -> dict:
+    """Scan ~/Uploads and ~/Pictures for unprocessed photos and write diary drafts.
+
+    Dashboard-independent entry point used by the guardian's idle scheduler so the
+    heavy vision work (moondream + qwen3, ~1 min/photo) runs only when the system
+    is idle. A cheap no-op (one directory scan) when there are no new photos.
+
+    Returns: {"new_photos": int, "folders": [..], "days_written": [..]}
+    """
+    profile = load_profile()
+    already = get_processed_photo_paths()
+    total_new, folders, days_written = 0, [], []
+    for folder in ("Uploads", "Pictures"):
+        d = Path.home() / folder
+        if not d.exists():
+            continue
+        new = [p for p in d.rglob("*")
+               if p.suffix.lower() in _PHOTO_EXTS and str(p) not in already]
+        if not new:
+            continue
+        total_new += len(new)
+        folders.append(folder)
+        log.info("diary: %d new photo(s) in ~/%s — captioning", len(new), folder)
+        _, data = _do_write(f"write diary from my photos {d}", profile)
+        if data and data.get("days_written"):
+            days_written += data["days_written"]
+    return {"new_photos": total_new, "folders": folders, "days_written": days_written}
 
 
 def _do_show(query: str) -> tuple[str, dict | None]:
