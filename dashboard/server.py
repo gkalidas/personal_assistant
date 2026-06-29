@@ -58,22 +58,8 @@ def _get_query_modules() -> dict:
     if _query_modules is None:
         with _query_modules_lck:
             if _query_modules is None:
-                from modules.finance.module import FinanceModule
-                from modules.farming.module import FarmingModule
-                from modules.health.module import HealthModule
-                from modules.system.module import SystemModule
-                from modules.diary.module import DiaryModule
-                from modules.search.module import SearchModule
-                from modules.code.module import CodeModule
-                _query_modules = {
-                    "finance": FinanceModule(),
-                    "farming": FarmingModule(),
-                    "health":  HealthModule(),
-                    "system":  SystemModule(),
-                    "diary":   DiaryModule(),
-                    "search":  SearchModule(),
-                    "code":    CodeModule(),
-                }
+                from core.registry import build_modules
+                _query_modules = build_modules()
     return _query_modules
 
 # ── API request tracking ───────────────────────────────────────────────────────
@@ -107,24 +93,27 @@ def _load_whisper():
 
 
 def _bg_check_new_photos():
-    """At startup: scan ~/Uploads and ~/Pictures for unprocessed photos; auto-write diary."""
+    """At startup: report unprocessed photos. Captioning itself is NOT run here —
+    it is a HEAVY job (moondream ~1 min/photo) owned by the guardian's idle-aware
+    scheduler (task 'diary_caption'), so it runs in an idle window instead of
+    competing with the user. The manual /api/diary/write-photos endpoint remains
+    for on-demand processing.
+    """
     try:
         from core.memory import get_processed_photo_paths
         from pathlib import Path
         photo_exts = {".jpg", ".jpeg", ".png", ".heic", ".webp", ".heif"}
         already = get_processed_photo_paths()
+        pending = 0
         for folder in ("Uploads", "Pictures"):
             d = Path.home() / folder
             if not d.exists():
                 continue
-            new = [str(p) for p in d.rglob("*")
-                   if p.suffix.lower() in photo_exts and str(p) not in already]
-            if new:
-                log.info("startup: %d new photo(s) in ~/%s — writing diary", len(new), folder)
-                mods = _get_query_modules()
-                diary = mods.get("diary")
-                if diary:
-                    diary.handle(f"write diary from my photos {d}", {})
+            pending += sum(1 for p in d.rglob("*")
+                           if p.suffix.lower() in photo_exts and str(p) not in already)
+        if pending:
+            log.info("startup: %d unprocessed photo(s) pending — guardian will caption "
+                     "them in the next idle window (or use /api/diary/write-photos now)", pending)
     except Exception as e:
         log.error("bg photo check failed: %s", e)
 
@@ -167,6 +156,110 @@ def _bg_digest_scheduler():
             log.error("digest scheduler: send failed: %s", e)
 
 
+def _bg_warmup():
+    """Pre-build the module registry and warm the router/text models at startup.
+
+    Without this, the first chatbox/voice query pays the full cold cost — lazy
+    module import + cold Ollama model load — which is what made an early query
+    take minutes. Runs once in the background so it never blocks startup.
+    """
+    try:
+        _get_query_modules()  # import + instantiate all modules once
+    except Exception as e:
+        log.warning("warmup: module pre-build failed: %s", e)
+    try:
+        from core.embedding_router import warmup as _embed_warmup
+        if _embed_warmup(timeout=180.0):
+            log.info("warmup: embedding router ready")
+        else:
+            log.warning("warmup: embedding router not ready (will use LLM router)")
+    except Exception as e:
+        log.warning("warmup: embedding router failed: %s", e)
+    from core.config import OLLAMA_URL, ROUTER_MODEL, TEXT_MODEL
+    import httpx
+    for model in dict.fromkeys([ROUTER_MODEL, TEXT_MODEL]):
+        try:
+            httpx.post(
+                f"{OLLAMA_URL}/api/chat",
+                json={"model": model, "messages": [{"role": "user", "content": "hi"}],
+                      "stream": False, "keep_alive": "10m"},
+                timeout=120.0,
+            )
+            log.info("warmup: %s ready", model)
+        except Exception as e:
+            log.warning("warmup: %s failed: %s", model, e)
+    # Pre-load the vision model so background photo captioning isn't a cold ~100s
+    # load (which, under the old 60s timeout, death-spiralled into endless timeouts).
+    try:
+        from modules.diary.vision import prewarm_vision
+        prewarm_vision()
+    except Exception as e:
+        log.warning("warmup: vision pre-warm failed: %s", e)
+
+
+def _bg_services():
+    """Probe external service health (Ollama, farming server, …) every 15s into a cache."""
+    from dashboard.services import refresh
+    while True:
+        try:
+            refresh()
+        except Exception as e:
+            log.debug("services probe error: %s", e)
+        time.sleep(15)
+
+
+def _bg_ensure_farming():
+    """Launch the external farming server when PA starts, if it isn't already up.
+
+    Ties the farming project's lifecycle to PA startup: on boot, if the farming
+    server (localhost:5002) isn't responding, launch its run.sh detached so it
+    keeps running alongside PA. Already-running servers are left untouched, so a
+    PA restart never double-starts it. Opt out with FARMING_AUTOSTART=0; point
+    elsewhere with FARMING_DIR.
+    """
+    import os
+    import subprocess
+    if os.getenv("FARMING_AUTOSTART", "1").lower() in ("0", "false", "no", ""):
+        return
+    try:
+        from modules.farming.farming_client import is_running, FARMING_SERVER
+    except Exception as e:
+        log.warning("farming-autostart: client import failed: %s", e)
+        return
+
+    if is_running():
+        log.info("farming-autostart: server already running at %s — skipping", FARMING_SERVER)
+        return
+
+    farming_dir = Path(os.getenv("FARMING_DIR", str(Path.home() / "projects" / "farming")))
+    run_sh = farming_dir / "run.sh"
+    if not run_sh.exists():
+        log.warning("farming-autostart: %s not found — skipping (set FARMING_DIR)", run_sh)
+        return
+
+    log_path = Path(__file__).resolve().parent.parent / "logs" / "farming.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(log_path, "ab") as lf:
+            subprocess.Popen(["bash", str(run_sh)], stdout=lf, stderr=lf,
+                             cwd=str(farming_dir), start_new_session=True)
+        log.info("farming-autostart: launched %s (logs → %s)", run_sh, log_path)
+    except Exception as e:
+        log.error("farming-autostart: launch failed: %s", e)
+        return
+
+    # Poll briefly so the dashboard's services panel flips to 'up' and we can log it.
+    for _ in range(20):
+        time.sleep(2)
+        try:
+            if is_running():
+                log.info("farming-autostart: server is up at %s", FARMING_SERVER)
+                return
+        except Exception:
+            pass
+    log.warning("farming-autostart: launched but not responding yet — check %s", log_path)
+
+
 def _bg_farming_sync():
     """Every 30 minutes, sync farming project's crop_plots → PA plots/crops tables."""
     time.sleep(5)  # let db.init() complete before first sync
@@ -205,8 +298,14 @@ async def _lifespan(app: FastAPI):
     threading.Thread(target=_bg_digest_scheduler, daemon=True, name="digest-sched").start()
     # Periodic todo verifier sweep — re-checks all verifiable tasks every 10 minutes
     threading.Thread(target=_bg_todo_verifier, daemon=True, name="todo-verify").start()
+    # Auto-start the external farming server alongside PA (if not already up)
+    threading.Thread(target=_bg_ensure_farming, daemon=True, name="farming-autostart").start()
     # Farming sync: mirror crop_plots → PA plots/crops every 30 min
     threading.Thread(target=_bg_farming_sync, daemon=True, name="farming-sync").start()
+    # Service health probes (Ollama, farming server, …) — cached, refreshed every 15s
+    threading.Thread(target=_bg_services, daemon=True, name="services").start()
+    # Pre-build modules + warm router/text models so the first chat isn't cold
+    threading.Thread(target=_bg_warmup, daemon=True, name="warmup").start()
     yield
 
 
@@ -403,8 +502,11 @@ def _build_payload() -> dict[str, Any]:
     sys = get_system_stats()
     wx  = _wx.get()
 
+    from dashboard.services import get_services_status
+
     return {
         "guardian": get_guardian_status(),
+        "services": get_services_status(),
         "network": {
             "interfaces": [
                 {
@@ -481,6 +583,13 @@ async def api_data():
         _payload_cache.clear()
         _payload_cache.update(data)
     return JSONResponse(data)
+
+
+@app.get("/api/services")
+async def api_services():
+    """API: current service-health snapshot (Ollama, farming server, modules…)."""
+    from dashboard.services import get_services_status
+    return JSONResponse(get_services_status())
 
 
 @app.get("/api/mindmap")
@@ -1358,10 +1467,11 @@ def _transcribe_and_route(tmp_path: str) -> dict:
         from core.router import route
         mods = _get_query_modules()
         chosen = route(transcript, mods)
+        ctx = {"stream_to_stdout": False}
         responses = []
         for name in chosen:
             if name in mods:
-                r = mods[name].handle(transcript, {})
+                r = mods[name].handle(transcript, ctx)
                 responses.append(r.text if hasattr(r, "text") else str(r))
         return {
             "transcript": transcript,
@@ -1395,6 +1505,40 @@ async def api_voice_query(audio: UploadFile = File(...)):
     finally:
         if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)
+    return JSONResponse(result)
+
+
+def _dispatch_text(text: str) -> dict:
+    """Route a typed message through the same router/modules as voice. Runs in a worker thread."""
+    text = (text or "").strip()
+    if not text:
+        return {"error": "empty message"}
+    try:
+        from core.router import route
+        mods = _get_query_modules()
+        chosen = route(text, mods)                 # router now returns a single module
+        ctx = {"stream_to_stdout": False}          # API path: don't dump replies to stdout
+        responses = []
+        for name in chosen:
+            if name in mods:
+                r = mods[name].handle(text, ctx)
+                responses.append(r.text if hasattr(r, "text") else str(r))
+        return {
+            "module":   chosen[0] if chosen else "unknown",
+            "response": "\n\n".join(responses) if responses else "No response",
+        }
+    except Exception as e:
+        log.error("text query dispatch failed: %s", e)
+        return {"error": f"dispatch failed: {e}"}
+
+
+@app.post("/api/query")
+async def api_query(payload: dict = Body(...)):
+    """Route a typed chat message through the assistant modules and return the reply."""
+    text = (payload.get("text") or "").strip()
+    if not text:
+        return JSONResponse({"error": "text required"}, status_code=400)
+    result = await asyncio.get_event_loop().run_in_executor(None, _dispatch_text, text)
     return JSONResponse(result)
 
 
