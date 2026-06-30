@@ -37,7 +37,49 @@ def _health_context(date_str: str) -> str:
         "mood":   lambda r: f"mood: {r['unit'] or r['value1']}",
     }
     lines = [fmt[r["type"]](r) for r in rows if r["type"] in fmt]
-    return "Health: " + ", ".join(lines) if lines else ""
+    if not lines:
+        return ""
+    out = "Health: " + ", ".join(lines)
+    trend = _health_trend(date_str)
+    return out + ("\n" + trend if trend else "")
+
+
+def _health_trend(date_str: str) -> str:
+    """Return a 'Health trend (7d): …' line of ↑/↓/→ arrows for bp/steps/sleep.
+
+    Anchored at the diary date (not today): compares the 7-day window's earlier
+    half against its later half per metric, so the diary reflects the trend *as
+    of that entry*. Skips a metric with fewer than 2 days of data. Returns '' if
+    nothing has enough history.
+    """
+    metrics = (("bp", "BP"), ("steps", "steps"), ("sleep", "sleep"))
+    try:
+        from modules.health.db import conn as _hconn
+        parts = []
+        with _hconn() as c:
+            for type_, label in metrics:
+                rows = c.execute(
+                    "SELECT date, AVG(value1) AS v FROM health_readings "
+                    "WHERE type=? AND date BETWEEN date(?, '-6 days') AND ? "
+                    "GROUP BY date ORDER BY date", (type_, date_str, date_str)
+                ).fetchall()
+                if len(rows) < 2:
+                    continue
+                vals = [r["v"] for r in rows]
+                mid = len(vals) // 2
+                earlier = sum(vals[:mid]) / mid if mid else vals[0]
+                later = sum(vals[mid:]) / (len(vals) - mid)
+                # 3% band counts as flat, so noise doesn't read as a trend.
+                if later > earlier * 1.03:
+                    arrow = "↑"
+                elif later < earlier * 0.97:
+                    arrow = "↓"
+                else:
+                    arrow = "→"
+                parts.append(f"{label} {arrow}")
+    except Exception:
+        return ""
+    return "Health trend (7d): " + ", ".join(parts) if parts else ""
 
 
 def _farm_context(date_str: str) -> str:
@@ -178,10 +220,11 @@ def write_diary_entry(
         ],
         "stream": False,
         "think":  False,
+        "keep_alive": "10m",   # keep qwen3 warm across the run's per-day entries
         "options": {"num_predict": 400},
     }
     try:
-        resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=120.0)
+        resp = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=180.0)
         resp.raise_for_status()
         entry = resp.json()["message"]["content"].strip()
         log.info("diary entry written for %s (%d chars)", date_str, len(entry))
