@@ -7,6 +7,13 @@
 #   2. Farming server   — http://localhost:5002  (disease diagnosis, crop data)
 #   3. Model warmup     — loads qwen2.5:3b into RAM so first query is fast
 #   4. Dashboard        — http://localhost:8080  (web UI)
+#   5. Tailscale serve  — HTTPS proxy → localhost:8080 for phone/voice access
+#
+# The dashboard binds to 127.0.0.1 only (never 0.0.0.0 — that would expose it on
+# LAN/WiFi too). Remote/phone access goes through `tailscale serve`, which fronts
+# localhost:8080 with a real HTTPS cert on the tailnet name. HTTPS is required so
+# iOS Safari grants microphone access (getUserMedia needs a secure context), which
+# is what makes "Voice from mobile" work. Phone URL: https://<node>.<tailnet>.ts.net
 
 set -euo pipefail
 
@@ -92,6 +99,21 @@ if ! curl -sf http://localhost:8080/ &>/dev/null; then
     log "Dashboard started — http://localhost:8080"
 else
     log "Dashboard already running — skipping"
+fi
+
+# ── 6. Tailscale serve — HTTPS proxy for phone / voice-from-mobile ─────────────
+# Fronts localhost:8080 with a tailnet HTTPS cert so iOS Safari allows the mic.
+# Idempotent: re-running just refreshes the existing serve config.
+if command -v tailscale &>/dev/null; then
+    if tailscale serve --bg 8080 >> "$PA_DIR/logs/startup.log" 2>&1; then
+        ts_host=$(tailscale status --json 2>/dev/null \
+            | "$VENV_PA" -c 'import sys,json;d=json.load(sys.stdin);s=d.get("Self",{});print((s.get("DNSName") or "").rstrip("."))' 2>/dev/null)
+        log "Tailscale serve up — phone URL: https://${ts_host:-<node>.<tailnet>.ts.net}"
+    else
+        log "Tailscale serve failed — run scripts/enable_phone_voice.sh once (needs sudo: sets operator + HTTPS cert). Phone voice unavailable until then."
+    fi
+else
+    log "tailscale not installed — skipping phone HTTPS proxy"
 fi
 
 log "GK startup complete."
