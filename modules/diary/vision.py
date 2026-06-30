@@ -12,6 +12,7 @@ from pathlib import Path
 import httpx
 
 from core.config import OLLAMA_URL, VISION_MODEL, VISION_TIMEOUT, VISION_KEEP_ALIVE
+from modules.diary.photo_reader import MAX_PHOTOS_PER_DAY
 
 log = logging.getLogger(__name__)
 
@@ -190,7 +191,7 @@ def caption_photo(photo_path: str | Path, prompt: str = _CAPTION_PROMPT) -> str:
     return caption
 
 
-def caption_batch(photos: list[dict], max_photos: int = 10) -> dict[str, str]:
+def caption_batch(photos: list[dict], max_photos: int = MAX_PHOTOS_PER_DAY) -> dict[str, str]:
     """
     Caption a batch of photo metadata dicts (each must have 'path' and 'filename').
     Returns {filename: caption_text}.

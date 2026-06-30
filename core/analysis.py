@@ -14,10 +14,21 @@ from core.memory import events_for_week, save_diary_draft, get_diary_draft
 
 
 
+def iso_week(d: date) -> str:
+    """Return the ISO week label 'YYYY-Www' for a date.
+
+    Uses the ISO year (isocalendar()[0]), NOT the calendar year — they differ in
+    late December / early January, so mixing them splits a single week across two
+    keys. This is the one place week labels are formatted, so the photo diary and
+    the weekly analyser can't disagree on which week a date belongs to.
+    """
+    y, w, _ = d.isocalendar()
+    return f"{y}-W{w:02d}"
+
+
 def current_iso_week() -> str:
     """Return the current ISO week as 'YYYY-Www' (e.g. '2026-W25')."""
-    today = date.today()
-    return f"{today.isocalendar()[0]}-W{today.isocalendar()[1]:02d}"
+    return iso_week(date.today())
 
 
 def _time_of_day_buckets(events: list[dict]) -> dict[str, int]:
@@ -113,6 +124,7 @@ Write only the diary entry. No preamble."""
                 "model": TEXT_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
                 "stream": False,
+                "think": False,  # disable qwen3 extended thinking — prose task, keeps it under the timeout
             },
             timeout=120.0,
         )
@@ -122,26 +134,54 @@ Write only the diary entry. No preamble."""
         return f"[Diary draft failed: {e}]\n\nRaw summary: {json.dumps(summary, indent=2)}"
 
 
+# Header that delimits the query-history "week in review" summary from the
+# photo-based diary entries within a single week's draft. The photo diary is
+# canonical: it always sits first; this summary is appended as one labeled
+# section, pinned last, and is the only part run_weekly_pipeline rewrites.
+WEEKLY_HEADER = "═══ Week in review ═══"
+
+
+def split_weekly_section(text: str) -> tuple[str, str]:
+    """Split a week's draft into (photo_part, weekly_section).
+
+    weekly_section includes the WEEKLY_HEADER, or '' if there isn't one yet.
+    """
+    idx = text.find(WEEKLY_HEADER)
+    if idx == -1:
+        return text.rstrip(), ""
+    return text[:idx].rstrip(), text[idx:].rstrip()
+
+
 def run_weekly_pipeline(week: str | None = None, force: bool = False) -> dict[str, Any]:
-    """Full pipeline: analyse week → draft diary entry → save.
-    Skips if draft already exists for the week (unless force=True).
+    """Analyse the week's query history and add/refresh its 'week in review'
+    summary, without touching the photo diary entries in the same week.
+
+    The summary is one labeled section appended after the photo entries. Skips if
+    that section already exists, unless force=True (which regenerates only the
+    summary — the photo entries are always preserved).
     """
     week = week or current_iso_week()
 
     existing = get_diary_draft(week)
-    if existing and not force:
-        return {"week": week, "skipped": True, "reason": "Draft already exists. Pass force=True to regenerate."}
+    existing_text = (existing or {}).get("draft") or ""
+    photo_part, weekly_part = split_weekly_section(existing_text)
+
+    if weekly_part and not force:
+        return {"week": week, "skipped": True,
+                "reason": "Weekly summary already added. Pass force=True to regenerate it."}
 
     analysis = analyse_week(week)
     if analysis["total_queries"] == 0:
         return {"week": week, "skipped": True, "reason": "No activity this week."}
 
-    draft = _llm_diary_draft(analysis)
-    save_diary_draft(week, draft)
+    summary = _llm_diary_draft(analysis)
+    section = f"{WEEKLY_HEADER}\n\n{summary}"
+    merged  = f"{photo_part}\n\n{section}" if photo_part else section
+    save_diary_draft(week, merged)
 
     return {
         "week": week,
         "analysis": analysis,
-        "diary_draft": draft,
+        "diary_draft": summary,
         "saved": True,
     }

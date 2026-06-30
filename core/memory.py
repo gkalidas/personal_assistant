@@ -2,7 +2,7 @@ import hashlib
 import json
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -163,12 +163,20 @@ def recent_events(module: str | None = None, limit: int = 10) -> list[dict]:
 
 
 def events_for_week(week: str) -> list[dict]:
-    """week format: YYYY-WNN (ISO week, e.g. 2026-W23)"""
+    """Return all events in an ISO week. week format: YYYY-WNN (e.g. 2026-W23).
+
+    Filters by the Mon..Mon date range of the ISO week so it matches the same
+    weeks that core.analysis.current_iso_week() produces. SQLite's
+    strftime('%W') numbers weeks differently (Monday-of-year based, off by one
+    from ISO and wrong across year boundaries), so it cannot be used here.
+    """
     year, w = week.split("-W")
+    start = date.fromisocalendar(int(year), int(w), 1)   # Monday of the ISO week
+    end   = start + timedelta(days=7)                     # exclusive (next Monday)
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM events WHERE strftime('%Y-W%W', ts) = ? ORDER BY ts",
-            (f"{year}-W{w.zfill(2)}",),
+            "SELECT * FROM events WHERE ts >= ? AND ts < ? ORDER BY ts",
+            (start.isoformat(), end.isoformat()),
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -176,12 +184,24 @@ def events_for_week(week: str) -> list[dict]:
 # ── Diary drafts ──────────────────────────────────────────────────────────────
 
 def save_diary_draft(week: str, draft: str) -> None:
-    """Insert or replace the diary draft for a week."""
+    """Insert or replace the diary draft for a week.
+
+    If the draft content actually changes, the week's approval is reset
+    (approved=0, approved_at cleared) — so content added after approval (e.g. a
+    new photo day appended to an already-approved week) re-opens it for review
+    instead of silently shipping unreviewed text in the digest.
+    """
     now = datetime.now().isoformat()
     with _conn() as conn:
         conn.execute(
             """INSERT INTO diary_drafts (week, draft, created_at) VALUES (?,?,?)
-               ON CONFLICT(week) DO UPDATE SET draft=excluded.draft, created_at=excluded.created_at""",
+               ON CONFLICT(week) DO UPDATE SET
+                   draft=excluded.draft,
+                   created_at=excluded.created_at,
+                   approved=CASE WHEN diary_drafts.draft <> excluded.draft
+                                 THEN 0 ELSE diary_drafts.approved END,
+                   approved_at=CASE WHEN diary_drafts.draft <> excluded.draft
+                                    THEN NULL ELSE diary_drafts.approved_at END""",
             (week, draft, now),
         )
 

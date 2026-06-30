@@ -28,6 +28,12 @@ _TAG_HEIGHT            = 40963
 _PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".tiff", ".webp"}
 _EXIF_DATE_FMT    = "%Y:%m:%d %H:%M:%S"
 
+# Max photos captioned + written per day. Single source of truth shared by the
+# scanner cap (cap_per_day) and the captioner (vision.caption_batch) so the two
+# can't drift — if they do, photos past the captioner's limit get marked
+# processed but never captioned, and never retried.
+MAX_PHOTOS_PER_DAY = 12
+
 
 def _rational_to_float(r) -> float:
     """Convert a Pillow IFDRational (or (num, den) tuple) to a float."""
@@ -116,7 +122,7 @@ def _apply_exif_fields(raw: dict, photo_path: Path, result: dict) -> None:
             result["gps"], result["has_gps"] = coords, True
 
 
-def scan_photos(directory: str | Path, max_per_day: int | None = 12) -> dict[str, list[dict]]:
+def scan_photos(directory: str | Path, max_per_day: int | None = MAX_PHOTOS_PER_DAY) -> dict[str, list[dict]]:
     """
     Scan a directory for photos and group them by date.
 

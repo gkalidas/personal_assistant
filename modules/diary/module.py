@@ -23,8 +23,9 @@ from core.memory import (save_diary_draft, get_diary_draft, approve_diary_draft,
                          get_processed_photo_paths, get_processed_photo_hashes,
                          get_photo_stats, file_content_hash, record_photo_alias,
                          add_diary_question, get_pending_questions, load_profile)
-from core.analysis import run_weekly_pipeline, analyse_week, current_iso_week
-from modules.diary.photo_reader import scan_photos, default_photo_dir, cap_per_day
+from core.analysis import (run_weekly_pipeline, analyse_week, current_iso_week,
+                           iso_week, split_weekly_section)
+from modules.diary.photo_reader import scan_photos, default_photo_dir, cap_per_day, MAX_PHOTOS_PER_DAY
 from modules.diary.vision import caption_batch
 from modules.diary.writer import write_diary_entry, format_draft
 
@@ -65,15 +66,13 @@ def _intent(query: str) -> str:
 
 
 def _current_week() -> str:
-    """ISO week string for today: YYYY-WNN"""
-    today = datetime.now()
-    return f"{today.year}-W{today.isocalendar()[1]:02d}"
+    """ISO week string for today: YYYY-WNN (shared formatter — see core.analysis.iso_week)."""
+    return current_iso_week()
 
 
 def _date_to_week(date_str: str) -> str:
-    """Convert YYYY-MM-DD to YYYY-WNN"""
-    d = datetime.strptime(date_str, "%Y-%m-%d")
-    return f"{d.year}-W{d.isocalendar()[1]:02d}"
+    """Convert YYYY-MM-DD to its ISO week label YYYY-WNN."""
+    return iso_week(datetime.strptime(date_str, "%Y-%m-%d").date())
 
 
 # ── Action handlers ───────────────────────────────────────────────────────────
@@ -156,7 +155,7 @@ def _filter_unprocessed(by_date: dict[str, list]) -> tuple[dict, int]:
 def _process_diary_day(date_str: str, photos: list, profile: dict) -> tuple[str, bool]:
     """Caption + write + save a diary draft for one day. Returns (output_line, written)."""
     log.info("processing %d photos for %s", len(photos), date_str)
-    captions = caption_batch(photos)
+    captions = caption_batch(photos, max_photos=MAX_PHOTOS_PER_DAY)
     entry = write_diary_entry(date_str, photos, captions, profile)
     if entry.startswith("[Could not generate"):
         log.warning("diary LLM failed for %s — photos NOT marked processed, will retry", date_str)
@@ -164,9 +163,13 @@ def _process_diary_day(date_str: str, photos: list, profile: dict) -> tuple[str,
 
     week_key = _date_to_week(date_str)
     draft = format_draft(date_str, entry, len(photos))
+    # Append this day to the photo entries, keeping any "week in review" summary
+    # section pinned at the end (photo diary is canonical and stays first).
     existing = get_diary_draft(week_key)
-    save_diary_draft(week_key, (existing["draft"] + "\n\n" + draft)
-                     if existing and existing.get("draft") else draft)
+    photo_part, weekly_part = split_weekly_section((existing or {}).get("draft") or "")
+    new_photo_part = f"{photo_part}\n\n{draft}" if photo_part else draft
+    merged = f"{new_photo_part}\n\n{weekly_part}" if weekly_part else new_photo_part
+    save_diary_draft(week_key, merged)
     mark_photos_processed(photos, week_key)
     _ask_photo_questions(photos, captions, week_key)
     log.info("diary draft saved for week %s (%d captioned)", week_key, len(captions))
@@ -208,7 +211,7 @@ def _do_write(query: str, profile: dict) -> tuple[str, dict | None]:
 
     # Cap AFTER filtering: this cycle captions the first N unprocessed per day;
     # the remainder are picked up on the next idle cycle until the day is done.
-    by_date = cap_per_day(by_date, 12)
+    by_date = cap_per_day(by_date, MAX_PHOTOS_PER_DAY)
 
     written_days, output_lines = [], []
     for date_str in sorted(by_date.keys()):
@@ -245,8 +248,11 @@ def caption_pending_photos() -> dict:
         d = Path.home() / folder
         if not d.exists():
             continue
-        new = [p for p in d.rglob("*")
-               if p.suffix.lower() in _PHOTO_EXTS and str(p) not in already]
+        # Top-level only — matches scan_photos (which uses iterdir, not rglob).
+        # Recursing would count subfolder images (e.g. ~/Pictures/Screenshots/)
+        # that the scanner never reaches, leaving them "pending" forever.
+        new = [p for p in d.iterdir()
+               if p.is_file() and p.suffix.lower() in _PHOTO_EXTS and str(p) not in already]
         if not new:
             continue
         total_new += len(new)
@@ -320,7 +326,7 @@ def _do_weekly(query: str) -> tuple[str, dict | None]:
         f"Weekly diary for {week} auto-drafted from {total} queries"
         + (f" ({mod_summary})" if mod_summary else "")
         + ".\n\n"
-        + result.get("draft", "")
+        + result.get("diary_draft", "")
     )
     return text, {"week": week, "total_queries": total, "by_module": by_mod}
 
