@@ -41,10 +41,14 @@ def _finance_section() -> tuple[str, str]:
         budgets = budget_status()
 
         month     = summary.get("month", str(date.today())[:7])
-        income    = summary.get("total_income", 0.0)
-        expenses  = summary.get("total_expenses", 0.0)
+        income    = summary.get("income", 0.0)
+        expenses  = summary.get("expenses", 0.0)
         net       = summary.get("net", income - expenses)
-        by_cat    = summary.get("by_category", {})
+        # monthly_summary returns breakdown as {category: {type: total}}; flatten
+        # to a signed per-category amount (income positive, expense negative).
+        breakdown = summary.get("breakdown", {})
+        by_cat    = {cat: t.get("income", 0.0) - t.get("expense", 0.0)
+                     for cat, t in breakdown.items()}
 
         lines = [f"Month: {month}", f"Income: ₹{income:,.0f}", f"Expenses: ₹{expenses:,.0f}",
                  f"Net: ₹{net:,.0f}"]
