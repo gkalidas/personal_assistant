@@ -6,7 +6,8 @@
 #   1. Ollama           — model server (required by everything)
 #   2. Farming server   — http://localhost:5002  (disease diagnosis, crop data)
 #   3. Model warmup     — loads qwen2.5:3b into RAM so first query is fast
-#   4. Dashboard        — http://localhost:8080  (web UI)
+#   4. SearXNG          — http://localhost:8888  (search backend; DDGS fallback)
+#   5. Dashboard        — http://localhost:8080  (web UI)
 #   5. Tailscale serve  — HTTPS proxy → localhost:8080 for phone/voice access
 #
 # The dashboard binds to 127.0.0.1 only (never 0.0.0.0 — that would expose it on
@@ -86,6 +87,18 @@ curl -s -X POST "$OLLAMA_URL/api/chat" \
     -d '{"model":"qwen2.5:3b","messages":[{"role":"user","content":"hi"}],"stream":false,"keep_alive":"30m"}' \
     >> "$PA_DIR/logs/startup.log" 2>&1 &
 log "Model warmup queued in background"
+
+# ── 4b. SearXNG (local, from source) — search backend; DDGS is the fallback ───
+# Started before the dashboard so SEARXNG_URL is serving when the dashboard
+# reads .env. Best-effort: if it fails, search silently falls back to DDGS.
+if ! curl -sf http://localhost:8888/ &>/dev/null; then
+    log "Starting SearXNG…"
+    "$PA_DIR/scripts/searxng.sh" start >> "$PA_DIR/logs/startup.log" 2>&1 \
+        && log "SearXNG up — http://localhost:8888" \
+        || log "SearXNG failed to start — search falls back to DDGS"
+else
+    log "SearXNG already running — skipping"
+fi
 
 # ── 5. Dashboard server ────────────────────────────────────────────────────────
 if ! curl -sf http://localhost:8080/ &>/dev/null; then
