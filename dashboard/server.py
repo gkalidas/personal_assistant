@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()  # must run before any module reads os.getenv() at import time
 
 import asyncio
+import hashlib
 import logging
 import tempfile
 import threading
@@ -1632,15 +1633,21 @@ async def api_voice_query(audio: UploadFile = File(...)):
 
 # Conversation-context guards for the dashboard chat: keep the model's prompt
 # bounded no matter what the browser sends.
-_CTX_MAX_TURNS = 12          # most recent messages threaded back into the prompt
-_CTX_MAX_CHARS = 2000        # per-message content cap
+_CTX_RECENT_TURNS = 8        # most recent messages threaded back verbatim
+_CTX_MAX_TURNS    = 40       # absolute ceiling we ever look at / summarise
+_CTX_MAX_CHARS    = 2000     # per-message content cap
+
+# Cache: hash(older-turns) → compacted summary, so we don't re-summarise the same
+# overflow on every request. Bounded to avoid unbounded growth across sessions.
+_summary_cache: dict[str, str] = {}
+_SUMMARY_CACHE_MAX = 128
 
 
 def _sanitise_history(history) -> list[dict]:
     """Coerce browser-sent chat history into a clean [{role, content}] list.
 
     Drops anything that isn't a user/assistant turn, trims over-long messages,
-    and keeps only the most recent _CTX_MAX_TURNS so the LLM prompt stays bounded.
+    and keeps only the most recent _CTX_MAX_TURNS so the prompt stays bounded.
     """
     if not isinstance(history, list):
         return []
@@ -1658,6 +1665,41 @@ def _sanitise_history(history) -> list[dict]:
     return clean[-_CTX_MAX_TURNS:]
 
 
+def _compact_history(history) -> list[dict]:
+    """Bound the prompt while preserving what the conversation is *about*.
+
+    Keeps the last _CTX_RECENT_TURNS turns verbatim. Anything older is compressed
+    into a single leading summary note (cached by content hash) so that even when
+    early turns fall out of the window, the model still knows the goal and key
+    facts established earlier — instead of silently forgetting them.
+    """
+    clean = _sanitise_history(history)
+    if len(clean) <= _CTX_RECENT_TURNS:
+        return clean
+
+    older  = clean[:-_CTX_RECENT_TURNS]
+    recent = clean[-_CTX_RECENT_TURNS:]
+
+    key = hashlib.sha1(
+        "\n".join(f"{t['role']}:{t['content']}" for t in older).encode()
+    ).hexdigest()
+    summary = _summary_cache.get(key)
+    if summary is None:
+        from core.llm import summarize_history
+        summary = summarize_history(older)
+        if len(_summary_cache) >= _SUMMARY_CACHE_MAX:
+            _summary_cache.clear()          # simple bounded cache
+        _summary_cache[key] = summary
+
+    if not summary:
+        return recent                       # compaction failed — degrade gracefully
+    note = {
+        "role": "system",
+        "content": "Summary of earlier conversation (older turns compacted):\n" + summary,
+    }
+    return [note, *recent]
+
+
 def _dispatch_text(text: str, history=None) -> dict:
     """Route a typed message through the same router/modules as voice. Runs in a worker thread."""
     text = (text or "").strip()
@@ -1667,9 +1709,11 @@ def _dispatch_text(text: str, history=None) -> dict:
         from core.router import route
         mods = _get_query_modules()
         chosen = route(text, mods)                 # router now returns a single module
+        from core.memory import load_profile
         ctx = {
             "stream_to_stdout": False,             # API path: don't dump replies to stdout
-            "history": _sanitise_history(history), # prior chat turns for conversational context
+            "history": _compact_history(history),  # recent turns verbatim + summary of older ones
+            "profile": load_profile(),             # personal info store (learned prefs, name, …)
         }
         responses = []
         for name in chosen:
@@ -1716,7 +1760,9 @@ def _stream_query_events(text: str, history=None):
             yield f"data: {_json.dumps({'error': f'no handler for {name}'})}\n\n"
             return
         yield f"data: {_json.dumps({'module': name})}\n\n"
-        ctx = {"stream_to_stdout": False, "history": _sanitise_history(history)}
+        from core.memory import load_profile
+        ctx = {"stream_to_stdout": False, "history": _compact_history(history),
+               "profile": load_profile()}
         streamer = getattr(mod, "handle_stream", None)
         if streamer is not None:
             for tok in streamer(text, ctx):
