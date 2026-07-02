@@ -2,8 +2,8 @@
 
 > "Welcome to the future, GK."
 
-A local, private, router-based personal assistant for farming, finance, and health.
-Runs **100% on your machine** — no cloud, no telemetry, no data leaves the house.
+A local, private, router-based personal assistant for farming, finance, health, and
+daily life. Runs **100% on your machine** — no cloud, no telemetry, no data leaves the house.
 
 ---
 
@@ -53,7 +53,7 @@ flowchart TD
     You([You]) -->|natural language| SAN
 
     subgraph Input Layer
-        SAN["Sanitizer\n45 injection patterns\nPII redactor"]
+        SAN["Sanitizer\n71 injection patterns\nPII redactor"]
     end
 
     SAN --> RTR
@@ -65,14 +65,24 @@ flowchart TD
     RTR -->|farming| FM
     RTR -->|finance| FN
     RTR -->|health| HL
+    RTR -->|diary| DY
+    RTR -->|todo| TD
+    RTR -->|search| SR
+    RTR -->|code| CD
     RTR -->|system| SY
+    RTR -->|fallback| GEN
     RTR -->|multi-module| FM & FN
 
     subgraph Modules
         FM["Farming Module\nqwen3:1.7b"]
         FN["Finance Module\nqwen3:1.7b"]
         HL["Health Module\nqwen3:1.7b"]
+        DY["Diary Module\nmoondream + qwen3:1.7b"]
+        TD["Todo Module\nno LLM - keyword CRUD"]
+        SR["Search Module\nSearXNG / DuckDuckGo"]
+        CD["Code Module\nanalysis + bandit"]
         SY["System Module\nno LLM - structured data"]
+        GEN["General Module\nqwen3:1.7b fallback"]
     end
 
     FM --> FT & FDB & WAPI & SAPI & KB
@@ -110,7 +120,7 @@ flowchart TD
         SCH["Idle Scheduler\none task at a time\n3 min cooldown"]
         SCH --> CVE & AUD & TI & PAT & ANO
         CVE["CVE Scanner\nOSV.dev batch API\ndaily"]
-        AUD["Code Auditor\nbandit + 15 patterns\nweekly"]
+        AUD["Code Auditor\nbandit + 16 patterns\nweekly"]
         TI["Threat Intel\nNVD - GitHub - CISA - Arxiv\nevery 12h"]
         PAT["Pattern Watcher\nNVD to patterns.json\nevery 6h"]
         ANO["Anomaly Detector\nevents log scan\nhourly"]
@@ -173,6 +183,35 @@ flowchart TD
 | "security guardian status" | Latest CVE scan, anomaly, threat intel results |
 | "when does the guardian run next?" | Task schedule with last-run times and overdue status |
 
+### Diary
+| What you say | What GK does |
+|---|---|
+| "write diary from today's photos" | EXIF + moondream vision captions → LLM diary entry (qwen3:1.7b) |
+| "weekly summary" | Auto-drafts the week from your query history |
+| "show this week's diary" | Retrieves stored entries from SQLite |
+| "approve diary" | Draft → review → approve workflow |
+
+### Todo
+| What you say | What GK does |
+|---|---|
+| "show todo list" | Lists pending todos (also on the `/todo` quadrant board) |
+| "add todo buy seeds" | Stores a todo (deterministic keyword CRUD, no LLM) |
+| "mark buy seeds done" | Completes it and runs the completion verifier |
+
+### Search
+| What you say | What GK does |
+|---|---|
+| "search drone subsidy 2026" | Web search via self-hosted SearXNG (DuckDuckGo fallback) |
+| "look up pomegranate export price" | Fetches + summarises results, with injection guardrails |
+
+### Code
+| What you say | What GK does |
+|---|---|
+| "analyze this project" | Scans a directory + LLM explanation of the codebase |
+| "show complex functions" | Complexity report |
+| "how many lines of code" | LOC summary |
+| "security scan /path" | Bandit security scan |
+
 ---
 
 ## Security Guardian
@@ -185,15 +224,15 @@ Monitors when you are NOT working (load score < 25), then runs one task at a tim
 | Anomaly detector | 1 hour | Scans events log for injection attempts, error spikes, module failures |
 | Pattern watcher | 6 hours | Fetches NVD AI/LLM CVEs, updates security/patterns.json |
 | Threat intelligence | 12 hours | Fetches NVD + GitHub Advisory + CISA KEV + Arxiv, replicates each attack against our system, alerts with fix if vulnerable |
-| CVE scanner | 24 hours | Checks all 29 packages against OSV.dev (NVD + GitHub + PyPI + 20 DBs) |
-| Code auditor | 7 days | Runs bandit + 15 custom patterns on core/, modules/, scripts/ |
+| CVE scanner | 24 hours | Checks every installed package against OSV.dev (NVD + GitHub + PyPI + 20 DBs) |
+| Code auditor | 7 days | Runs bandit + 16 custom patterns on core/, modules/, scripts/ |
 
 **Rules:**
 - One task at a time, 3-minute cool-down between tasks
 - If a task is 3x overdue, runs regardless of load (prevents indefinite skipping)
 - Auto-patches only safe upgrades (same major version, HIGH+ CVE)
 - Threat intel vulnerabilities: alert with manual fix only, never auto-fix
-- 45 injection patterns hot-reloaded into sanitizer without restart
+- 71 injection patterns hot-reloaded into sanitizer without restart
 
 ---
 
@@ -204,7 +243,7 @@ Monitors when you are NOT working (load score < 25), then runs one task at a tim
 | Text LLM | qwen3:1.7b | Best quality at ~2GB RAM, 4-12s/query |
 | Router LLM | qwen2.5:0.5b | <1s routing, good JSON adherence |
 | Inference | Ollama (local) | No cloud, no API key |
-| Storage | SQLite (3 DBs) | Zero-dependency, fast, per-module isolation |
+| Storage | SQLite (per-module DBs) | Zero-dependency, fast, per-module isolation |
 | Profile | JSON | Human-readable, git-ignored |
 | Security | OSV.dev + NVD + GitHub Advisory + CISA KEV | All free, no auth |
 
@@ -213,22 +252,38 @@ Monitors when you are NOT working (load score < 25), then runs one task at a tim
 ## Setup
 
 ```bash
-# 1. Activate virtualenv
-source ~/envs/evn_personal_assistant/bin/activate
+# 1. Install Ollama (stock upstream installer) and start it
+./install.sh
+ollama serve &          # leave running; the API listens on :11434
 
-# 2. Install dependencies
-pip install -r requirements.txt
-
-# 3. Copy and fill your profile
+# 2. Copy and fill your profile
 cp user_profile.template.json user_profile.json
 
-# 4. Pull models
-ollama pull qwen2.5:0.5b
-ollama pull qwen3:1.7b
-
-# 5. Run
-python main.py
+# 3. Install deps + pre-download every model (router, text, fallback,
+#    diary vision, embedding router, face recognition).
+#    Idempotent — safe to re-run. Avoids surprise downloads mid-query.
+./scripts/setup.sh
 ```
+
+`scripts/setup.sh` creates/uses the virtualenv at `~/envs/evn_personal_assistant`,
+installs `requirements.txt`, runs `ollama pull` for `qwen2.5:0.5b`, `qwen3:1.7b`,
+`qwen2.5:3b`, and `moondream`, and warms the lazily-downloaded FastEmbed +
+InsightFace models.
+
+## Running
+
+```bash
+source ~/envs/evn_personal_assistant/bin/activate
+
+# Terminal chat (interactive REPL)
+python main.py
+
+# Web dashboard → http://localhost:8080
+python -m uvicorn dashboard.server:app --host 127.0.0.1 --port 8080
+```
+
+To launch everything (Ollama, farming server, model warm-up, dashboard) at boot,
+idle-aware, use `scripts/startup.sh`.
 
 ### Auto-start security guardian on boot
 ```bash
@@ -257,11 +312,19 @@ personal_assistant/
 │   ├── sanitizer.py               # Injection filter + PII redactor
 │   ├── memory.py                  # Events DB + profile loader
 │   ├── guardrails.py              # Web content injection defense
+│   ├── api_stats.py               # Per-call API profiling (api_call_log)
 │   └── base_module.py             # BaseModule + ModuleResponse contract
 ├── modules/
-│   ├── farming/                   # Weather, soil, plots, crops, disease KB
+│   ├── farming/                   # Weather, soil, NDVI, plots, crops, disease KB
 │   ├── finance/                   # Transactions, budgets, goals
 │   ├── health/                    # BP, steps, weight, sleep, sugar
+│   ├── diary/                     # EXIF + vision captions → LLM diary
+│   ├── todo/                      # Natural-language todo CRUD
+│   ├── search/                    # SearXNG / DuckDuckGo web search
+│   ├── code/                      # Codebase analysis + bandit scan
+│   ├── digest/                    # Weekly email digest (Gmail SMTP)
+│   ├── faces/                     # Face detection + DBSCAN clustering
+│   ├── general/                   # Small-talk / router fallback
 │   └── system/                    # Load monitor, guardian status
 ├── security/
 │   ├── guardian.py                # Daemon + idle-aware scheduler
@@ -271,7 +334,7 @@ personal_assistant/
 │   ├── auditor.py                 # Code audit (bandit + custom)
 │   ├── patcher.py                 # Safe auto-patcher
 │   ├── watcher.py                 # Pattern updater + anomaly detector
-│   └── patterns.json              # 45 injection patterns (auto-updated)
+│   └── patterns.json              # 71 injection patterns (auto-updated)
 ├── crops/
 │   ├── pomegranate.json           # Disease + pest + fertilizer KB
 │   ├── sugarcane.json
@@ -279,6 +342,7 @@ personal_assistant/
 ├── inputs/                        # Benchmark test cases (10K cases)
 ├── scripts/
 │   ├── evaluate_assistant_v2.py   # 10K-case LLM evaluator with judge
+│   ├── full_test_suite.py         # End-to-end suite (234 live-API tests)
 │   └── generate_mindmap.py        # Generates docs/mindmap.png
 └── docs/
     ├── design.md                  # Full system design

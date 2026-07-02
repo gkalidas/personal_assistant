@@ -50,6 +50,7 @@ _GK_DB      = os.path.join(_TMP, "test_gk.db")
 os.environ["HEALTH_DB"]  = _HEALTH_DB
 os.environ["FINANCE_DB"] = _FINANCE_DB
 os.environ["FARMING_DB"] = _FARMING_DB
+os.environ["GK_DB"]      = _GK_DB   # core.memory reads this — keep test writes out of the real DB
 
 # ── Imports (after env vars set) ──────────────────────────────────────────────
 import modules.health.db   as hdb
@@ -74,6 +75,10 @@ facesdb.init()
 
 # Knowledge graph uses personal_assistant.db — patch it
 kg._DB = Path(_GK_DB)
+
+# core.memory reads GK_DB at import time — patch it too if already imported
+import core.memory as _mem
+_mem.GK_DB = _GK_DB
 kg.init_graph_tables()
 
 # ── Test record infrastructure ────────────────────────────────────────────────

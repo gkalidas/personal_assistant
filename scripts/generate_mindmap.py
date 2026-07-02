@@ -23,6 +23,9 @@ C = {
     "farming":   "#3fb950",
     "finance":   "#f78166",
     "health":    "#ff7b72",
+    "todo":      "#e3b341",
+    "search":    "#a5d6ff",
+    "code":      "#ffab70",
     "security":  "#ffa657",
     "core":      "#bc8cff",
     "llm":       "#79c0ff",
@@ -35,9 +38,9 @@ C = {
 }
 
 # ── Mind map data ──────────────────────────────────────────────────────────────
-# (angle_deg, label, color_key, [(sublabel, ...)])
+# (label, color_key, [sublabel, ...]).  Angles are distributed evenly at draw time.
 BRANCHES = [
-    (  0, "Farming Module",   "farming", [
+    ("Farming Module",   "farming", [
         "Current weather & 7-day forecast",
         "Spray safety check (wind/rain/humidity)",
         "Rainfall history (ERA5 archive)",
@@ -45,19 +48,20 @@ BRANCHES = [
         "Crop tracking (plant → harvest → yield)",
         "Spray log & observation diary",
         "Soil data (pH, N, clay via SoilGrids)",
+        "NDVI crop health (NASA MODIS)",
         "Disease KB: Pomegranate · Sugarcane · Banana",
         "Fuzzy symptom → disease matching",
         "Mandi prices (APMC · data.gov.in · daily)",
         "Photo diagnosis (farming vision server)",
     ]),
-    ( 45, "Finance Module",   "finance", [
+    ("Finance Module",   "finance", [
         "Log income & expenses (category-tagged)",
         "Monthly summary (income vs spend vs net)",
         "Budget tracker (cap per category)",
         "Spending breakdown by category",
         "Financial goals (target + deadline)",
     ]),
-    ( 90, "Health Module",    "health", [
+    ("Health Module",    "health", [
         "Blood pressure (6 risk levels incl. crisis → call 108)",
         "Step count vs daily goal",
         "Weight tracking",
@@ -66,24 +70,50 @@ BRANCHES = [
         "7–14 day trends for any metric",
         "Goal setting (steps, weight, sleep)",
     ]),
-    (135, "Diary Module",     "eval", [
+    ("Diary Module",     "eval", [
         "Photo EXIF extraction (timestamp · GPS · device)",
         "Vision captions via moondream (local, no cloud)",
         "LLM diary entry writer (qwen3:1.7b)",
         "Weekly auto-draft from query history",
+        "Guided photo-question prompts",
         "Draft → review → approve workflow",
         "Stored in SQLite (queryable + markdown)",
     ]),
-    (180, "Dashboard",        "llm", [
+    ("Todo Module",      "todo", [
+        "Natural-language CRUD (no LLM)",
+        "Eisenhower quadrant board (/todo)",
+        "Completion verifier on 'done'",
+        "SQLite-backed, served via /api/todos",
+    ]),
+    ("Search Module",    "search", [
+        "SearXNG self-hosted backend",
+        "DuckDuckGo (DDGS) fallback",
+        "Web content injection guardrails",
+        "Result summarisation via LLM",
+    ]),
+    ("Code Module",      "code", [
+        "Directory / project analysis",
+        "LLM codebase explanation",
+        "Complexity report",
+        "Bandit security scan",
+        "Lines-of-code summary",
+    ]),
+    ("Dashboard",        "llm", [
         "Live system: CPU · RAM · Disk I/O",
         "Network interfaces: LAN · WiFi · Tethering",
         "Internet speed (download / upload Mbps)",
         "Multi-connection failover alerting",
+        "Text chat + voice query (→ router)",
+        "Service-health monitor",
+        "System-load / idle analytics",
+        "Live agri-news + YouTube feed",
+        "Knowledge graph (nodes · edges · graphify)",
+        "Face clustering (InsightFace + DBSCAN)",
         "Live weather widget (Barloni, Solapur)",
         "WebSocket push every 2s",
         "Phone access via Tailscale (fixed IP)",
     ]),
-    (225, "Security Guardian","security", [
+    ("Security Guardian","security", [
         "CVE scan — OSV.dev (daily)",
         "Code audit — bandit + custom patterns",
         "Threat intel — NVD · GitHub Advisory · CISA KEV · Arxiv",
@@ -92,21 +122,28 @@ BRANCHES = [
         "Idle-aware scheduler (one task at a time)",
         "Auto-starts on boot (systemd + linger)",
     ]),
-    (270, "Core Layer",       "core", [
+    ("Core Layer",       "core", [
         "Router — qwen2.5:0.5b (intent → module)",
         "Config — single source (OLLAMA_URL · models)",
-        "Sanitizer — 45 injection patterns + PII redact",
+        "Sanitizer — injection patterns + PII redact",
         "Memory — SQLite events log + user_profile.json",
         "Guardrails — web content injection defense",
         "Action schema validation (type-safe JSON)",
         "Follow-up suggestion engine",
-        "System module — load · pattern · guardian",
+        "General fallback module (small talk)",
+        "API call profiling (api_call_log)",
+        "GraphQL API (Strawberry · /graphql)",
+        "Weekly email digest (Gmail SMTP)",
     ]),
-    (315, "External APIs",    "apis", [
+    ("External APIs",    "apis", [
         "Open-Meteo (weather · forecast · ERA5 archive)",
         "Open-Meteo Geocoding (location → lat/lon)",
         "SoilGrids / ISRIC (soil pH · N · clay · sand)",
+        "NASA MODIS (NDVI crop health)",
         "data.gov.in APMC (live mandi prices)",
+        "SearXNG · DuckDuckGo (web search)",
+        "YouTube / RSS (agri-news feed)",
+        "Gmail SMTP (weekly digest)",
         "OSV.dev (Google — 20+ CVE databases)",
         "NVD / NIST (CVE search + LLM attacks)",
         "GitHub Advisory API (pip ecosystem)",
@@ -178,13 +215,15 @@ def _draw_branch(ax, angle, label, ckey, subs) -> None:
     draw_rounded_box(ax, bx, by, label, color, fontsize=10, text_color=C["text_dark"])
 
     n = len(subs)
-    spread  = min(50, n * 9)             # wedge width around the branch angle
+    spread  = min(58, n * 6)             # wedge width around the branch angle
     start_a = angle - spread / 2
     step_a  = spread / max(n - 1, 1) if n > 1 else 0
     for i, sub in enumerate(subs):
-        sx, sy = polar(start_a + i * step_a, 7.8)
+        # Stagger the radius so adjacent labels in a dense fan don't stack.
+        r = 7.4 if i % 2 == 0 else 8.7
+        sx, sy = polar(start_a + i * step_a, r)
         draw_line(ax, bx, by, sx, sy, color, lw=0.9, alpha=0.45)
-        ax.text(sx, sy, sub, ha="center", va="center", fontsize=6.6,
+        ax.text(sx, sy, sub, ha="center", va="center", fontsize=6.4,
                 color=C["text_light"], zorder=5,
                 bbox=dict(boxstyle="round,pad=0.25", facecolor="#161b22",
                           edgecolor=color, linewidth=0.8, alpha=0.88))
@@ -192,22 +231,22 @@ def _draw_branch(ax, angle, label, ckey, subs) -> None:
 
 def _draw_badges(ax) -> None:
     """Draw the LLM-stack line, the stat badges, and the title/subtitle."""
-    ax.text(0, -10.5,
+    ax.text(0, -11.6,
             "LLM Stack (fully local):  qwen3:1.7b  ·  qwen2.5:0.5b  |  "
             "Ollama  ·  SQLite  ·  Python 3.10",
             ha="center", va="center", fontsize=8, color=C["sub_text"])
     stats = [
-        ("5 Modules", -6.5, 10.2, C["farming"]), ("10 Core files", -3.2, 10.2, C["llm"]),
-        ("9 Free APIs", 0.0, 10.2, C["apis"]), ("45 Sec patterns", 3.2, 10.2, C["security"]),
-        ("384 Tests", 6.5, 10.2, C["eval"]),
+        ("9 Modules", -6.5, 11.4, C["farming"]), ("19 Core files", -3.2, 11.4, C["llm"]),
+        ("13 Free APIs", 0.0, 11.4, C["apis"]), ("71 Sec patterns", 3.2, 11.4, C["security"]),
+        ("234 Tests", 6.5, 11.4, C["eval"]),
     ]
     for label, sx, sy, sc in stats:
         ax.text(sx, sy, label, ha="center", va="center", fontsize=8,
                 fontweight="bold", color=C["text_dark"],
                 bbox=dict(boxstyle="round,pad=0.3", facecolor=sc, edgecolor="none", alpha=0.9))
-    ax.text(0, 10.8, "GK Personal Assistant — Architecture Mind Map",
+    ax.text(0, 12.0, "GK Personal Assistant — Architecture Mind Map",
             ha="center", va="center", fontsize=13, fontweight="bold", color=C["text_light"])
-    ax.text(0, 10.45, "June 2026  ·  v0.1  ·  github.com/gkalidas",
+    ax.text(0, 11.65, "July 2026  ·  v0.1  ·  github.com/gkalidas",
             ha="center", va="center", fontsize=8, color=C["sub_text"])
 
 
@@ -215,12 +254,14 @@ def build(fig, ax):
     """Render the full architecture mind map onto the figure/axes."""
     ax.set_facecolor(C["bg"])
     fig.patch.set_facecolor(C["bg"])
-    ax.set_xlim(-11, 11)
-    ax.set_ylim(-11, 11)
+    ax.set_xlim(-12.5, 12.5)
+    ax.set_ylim(-12.5, 12.5)
     ax.set_aspect("equal")
     ax.axis("off")
     _draw_center(ax)
-    for angle, label, ckey, subs in BRANCHES:
+    n = len(BRANCHES)
+    for i, (label, ckey, subs) in enumerate(BRANCHES):
+        angle = i * (360 / n)
         _draw_branch(ax, angle, label, ckey, subs)
     _draw_badges(ax)
 
