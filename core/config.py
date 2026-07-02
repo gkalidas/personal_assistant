@@ -7,7 +7,7 @@ Override any value by setting the corresponding environment variable.
 import os
 
 OLLAMA_URL     = os.getenv("OLLAMA_URL",      "http://localhost:11434")
-TEXT_MODEL     = os.getenv("TEXT_MODEL",      "qwen3:1.7b")
+TEXT_MODEL     = os.getenv("TEXT_MODEL",      "qwen2.5:1.5b")  # faster + better persona/multilingual than qwen3:1.7b (benchmarked)
 ROUTER_MODEL   = os.getenv("ROUTER_MODEL",    "qwen2.5:0.5b")
 FALLBACK_MODEL = os.getenv("FALLBACK_MODEL",  "qwen2.5:3b")   # backup when TEXT_MODEL fails
 VISION_MODEL   = os.getenv("VISION_MODEL",    "moondream")
