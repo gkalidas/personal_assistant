@@ -4,6 +4,7 @@ __pycache__/
 .env
 user_profile.json
 *.db
+*.db.bak.*
 *.enc
 *.log
 logs/
@@ -26,3 +27,11 @@ scripts/evaluate_assistant.py
 node_modules/
 package.json
 package-lock.json
+
+# TLS cert + private key (Tailscale serve) — never commit secrets
+*.crt
+*.key
+
+# Local runtime junk
+error_logs.txt
+scripts/dashboard.out
