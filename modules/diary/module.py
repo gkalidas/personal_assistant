@@ -92,7 +92,13 @@ def _ask_photo_questions(photos: list, captions: dict, week: str) -> None:
     from modules.diary.vision import _known_faces_in_photo
     asked = set()
     for photo in photos[:5]:  # limit to 5 questions per diary write to avoid spam
-        path = photo.get("path", str(photo)) if isinstance(photo, dict) else str(getattr(photo, "path", photo))
+        if isinstance(photo, dict):
+            path = photo.get("path") or photo.get("filename")
+        else:
+            path = getattr(photo, "path", None) or (photo if isinstance(photo, str) else None)
+        if not path:  # no usable path — don't queue a question with a junk identifier
+            continue
+        path = str(path)
         caption = captions.get(photo.get("filename", "") if isinstance(photo, dict) else path, "") if captions else ""
         has_gps = (photo.get("has_gps") if isinstance(photo, dict) else bool(getattr(photo, "gps", None)))
 

@@ -336,9 +336,21 @@ def get_photo_stats(photo_dir: str | None = None) -> dict:
 # ── Diary questions (photo review) ────────────────────────────────────────────
 
 def add_diary_question(week: str, question: str, photo_path: str | None = None) -> int:
-    """Queue a question about a photo/week for the user to answer."""
+    """Queue a question about a photo/week for the user to answer.
+
+    Skips insertion if an identical unanswered question already exists for the
+    same week+photo, so repeated diary writes don't pile up duplicate prompts.
+    """
     now = datetime.now().isoformat()
     with _conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM diary_questions "
+            "WHERE answer IS NULL AND week=? AND question=? "
+            "AND ((photo_path IS NULL AND ? IS NULL) OR photo_path=?)",
+            (week, question, photo_path, photo_path),
+        ).fetchone()
+        if existing:
+            return existing["id"]
         cur = conn.execute(
             "INSERT INTO diary_questions (week, photo_path, question, asked_at) VALUES (?,?,?,?)",
             (week, photo_path, question, now),
