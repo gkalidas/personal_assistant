@@ -73,6 +73,8 @@ def _ddg_search(query: str, max_results: int = 5) -> list[dict]:
             return list(ddgs.text(query, max_results=max_results))
     except Exception as e:
         log.error("DDGS text search failed: %s", e)
+        from core.mistake_log import log_service_failure
+        log_service_failure("ddgs_search", f"text search failed: {e}")
         return []
 
 
@@ -84,6 +86,8 @@ def _ddg_news(query: str, max_results: int = 5) -> list[dict]:
             return list(ddgs.news(query, max_results=max_results))
     except Exception as e:
         log.error("DDGS news search failed: %s", e)
+        from core.mistake_log import log_service_failure
+        log_service_failure("ddgs_search", f"news search failed: {e}")
         return []
 
 

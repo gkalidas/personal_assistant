@@ -98,6 +98,20 @@ def log_mistake(
              error_type, severity, module, query[:60])
 
 
+def log_service_failure(service: str, detail: str = "", severity: str = "medium") -> None:
+    """Record an external-service / dependency failure (Ollama, farming server,
+    search, external APIs, email, …).
+
+    Convenience wrapper around log_mistake with a uniform ``service_failure``
+    type, so the analyser can group failures by ``module`` (the service name).
+    Never raises — safe to call from swallowed except branches.
+    """
+    try:
+        log_mistake("service_failure", module=service, details=detail, severity=severity)
+    except Exception:
+        log.debug("could not record service failure for %s", service)
+
+
 def _write_sqlite(row: dict) -> None:
     """Insert one mistake row into the mistake_log table (best-effort)."""
     try:

@@ -463,6 +463,8 @@ class HealthModule(BaseModule):
             action = _call_llm(query, context)
         except Exception as e:
             log.error("LLM call failed: %s", e, exc_info=True)
+            from core.mistake_log import log_service_failure
+            log_service_failure("ollama", f"health LLM call failed: {e}")
             return ModuleResponse(
                 text="I couldn't process that — please try again.",
                 module=self.name,

@@ -86,6 +86,8 @@ def scan_photo(photo_path: str) -> list[dict]:
         faces = _get_app().get(img_np)
     except Exception as e:
         log.error("InsightFace detection failed for %s: %s", photo_path, e)
+        from core.mistake_log import log_service_failure
+        log_service_failure("insightface", f"detection failed: {e}")
         return []
 
     if not faces:

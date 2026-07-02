@@ -46,6 +46,8 @@ def _fetch_soil(lat: float, lon: float) -> dict | None:
         return resp.json()
     except Exception as e:
         log.warning("SoilGrids API error: %s", e)
+        from core.mistake_log import log_service_failure
+        log_service_failure("soilgrids", f"API error: {e}", severity="low")
         return None
 
 

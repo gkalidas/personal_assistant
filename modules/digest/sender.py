@@ -52,7 +52,11 @@ def send_digest() -> dict:
         return {"ok": True, "subject": subject, "to": DIGEST_TO}
     except smtplib.SMTPAuthenticationError:
         log.error("digest: Gmail authentication failed — check DIGEST_EMAIL_PASS App Password")
+        from core.mistake_log import log_service_failure
+        log_service_failure("email_smtp", "Gmail authentication failed — check App Password", severity="high")
         return {"ok": False, "reason": "auth failed"}
     except Exception as e:
         log.error("digest: SMTP error: %s", e, exc_info=True)
+        from core.mistake_log import log_service_failure
+        log_service_failure("email_smtp", f"SMTP error: {e}", severity="high")
         return {"ok": False, "reason": str(e)}

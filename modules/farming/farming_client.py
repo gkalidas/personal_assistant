@@ -16,6 +16,20 @@ FARMING_SERVER = os.getenv("FARMING_SERVER_URL", "http://localhost:5002")
 _TIMEOUT = 120.0  # vision model inference is slow
 
 
+def _flag(detail: str) -> None:
+    """Flag a farming-server failure to the structured mistake log (best-effort).
+
+    Only called after is_running() already passed, so this is an *unexpected*
+    failure — the server was up but the call errored — worth surfacing to the
+    analyser, unlike the normal 'server not running' fallback.
+    """
+    try:
+        from core.mistake_log import log_service_failure
+        log_service_failure("farming_server", detail)
+    except Exception:
+        pass
+
+
 def is_running() -> bool:
     """Check if the farming server is up."""
     try:
@@ -61,8 +75,10 @@ def analyse_photo(
             r.raise_for_status()
             return r.json()
     except httpx.HTTPStatusError as e:
+        _flag(f"analyse_photo HTTP {e.response.status_code}")
         return {"error": f"Farming server error: {e.response.status_code}"}
     except Exception as e:
+        _flag(f"analyse_photo unreachable: {e}")
         return {"error": f"Could not reach farming server: {e}"}
 
 
@@ -83,8 +99,10 @@ def ask(query: str, crop: str = "", location: str = "") -> dict:
         r.raise_for_status()
         return r.json()
     except httpx.HTTPStatusError as e:
+        _flag(f"ask HTTP {e.response.status_code}")
         return {"error": f"Farming server error: {e.response.status_code}"}
     except Exception as e:
+        _flag(f"ask unreachable: {e}")
         return {"error": f"Could not reach farming server: {e}"}
 
 

@@ -149,9 +149,13 @@ def get_ndvi(lat: float = _DEFAULT_LAT, lon: float = _DEFAULT_LON,
         return result
 
     except httpx.TimeoutException:
+        from core.mistake_log import log_service_failure
+        log_service_failure("nasa_ndvi", "MODIS API timeout", severity="low")
         return {"error": "NASA MODIS API timeout — try again"}
     except Exception as e:
         log.error("NDVI fetch failed: %s", e)
+        from core.mistake_log import log_service_failure
+        log_service_failure("nasa_ndvi", f"fetch failed: {e}", severity="low")
         return {"error": str(e)}
 
 

@@ -124,4 +124,6 @@ def _transcribe(path: str, lang: str | None) -> str:
         return text
     except Exception as e:
         log.error("transcription failed: %s", e)
+        from core.mistake_log import log_service_failure
+        log_service_failure("whisper", f"transcription failed: {e}")
         return ""
