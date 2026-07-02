@@ -18,7 +18,6 @@ import logging
 import tempfile
 import threading
 import time
-from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -26,7 +25,7 @@ from typing import Any
 
 from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from strawberry.fastapi import GraphQLRouter
 
 from fastapi import Body
@@ -63,11 +62,8 @@ def _get_query_modules() -> dict:
     return _query_modules
 
 # ── API request tracking ───────────────────────────────────────────────────────
-# Keyed by "METHOD /path". WebSocket upgrades (101) are excluded.
-_api_stats: dict[str, dict] = defaultdict(lambda: {
-    "calls": 0, "total_ms": 0.0, "max_ms": 0.0,
-    "errors": 0, "recent": deque(maxlen=20),
-})
+# Inbound endpoint hits + outbound external-API calls live in core.api_stats
+# (in-memory live counters + periodic count persistence to the DB).
 
 
 # ── Whisper model singleton ────────────────────────────────────────────────────
@@ -109,8 +105,11 @@ def _bg_check_new_photos():
             d = Path.home() / folder
             if not d.exists():
                 continue
-            pending += sum(1 for p in d.rglob("*")
-                           if p.suffix.lower() in photo_exts and str(p) not in already)
+            # Top-level only — matches scan_photos/caption_pending_photos so the
+            # count reflects what will actually be captioned (no phantom pending
+            # from subfolders like ~/Pictures/Screenshots/ that scan never reads).
+            pending += sum(1 for p in d.iterdir()
+                           if p.is_file() and p.suffix.lower() in photo_exts and str(p) not in already)
         if pending:
             log.info("startup: %d unprocessed photo(s) pending — guardian will caption "
                      "them in the next idle window (or use /api/diary/write-photos now)", pending)
@@ -175,14 +174,14 @@ def _bg_warmup():
             log.warning("warmup: embedding router not ready (will use LLM router)")
     except Exception as e:
         log.warning("warmup: embedding router failed: %s", e)
-    from core.config import OLLAMA_URL, ROUTER_MODEL, TEXT_MODEL
+    from core.config import OLLAMA_URL, ROUTER_MODEL, TEXT_MODEL, CHAT_KEEP_ALIVE
     import httpx
     for model in dict.fromkeys([ROUTER_MODEL, TEXT_MODEL]):
         try:
             httpx.post(
                 f"{OLLAMA_URL}/api/chat",
                 json={"model": model, "messages": [{"role": "user", "content": "hi"}],
-                      "stream": False, "keep_alive": "10m"},
+                      "stream": False, "keep_alive": CHAT_KEEP_ALIVE},
                 timeout=120.0,
             )
             log.info("warmup: %s ready", model)
@@ -277,6 +276,12 @@ def _bg_farming_sync():
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     """FastAPI lifespan: start background services on boot, clean up on shutdown."""
+    # API call tracking: log every inbound request + outbound external-API call
+    # (httpx) to the DB (api_call_log) for later analysis. Events are buffered
+    # and batch-flushed every 15s so per-call DB writes don't add request latency.
+    from core import api_stats
+    api_stats.install_httpx_tracking()
+    api_stats.start_persistence(interval=15.0)
     # Initialise persistent stores
     _ensure_todos()
     _ensure_graph()
@@ -307,6 +312,8 @@ async def _lifespan(app: FastAPI):
     # Pre-build modules + warm router/text models so the first chat isn't cold
     threading.Thread(target=_bg_warmup, daemon=True, name="warmup").start()
     yield
+    # Shutdown: flush any pending API call counts to the DB
+    api_stats.stop_persistence()
 
 
 app = FastAPI(title="GK Dashboard", docs_url=None, redoc_url=None, lifespan=_lifespan)
@@ -321,19 +328,8 @@ async def _request_logger(request: Request, call_next):
     if response.status_code == 101:
         return response
     elapsed = (time.monotonic() - t0) * 1000
-    key = f"{request.method} {request.url.path}"
-    s = _api_stats[key]
-    s["calls"] += 1
-    s["total_ms"] += elapsed
-    if elapsed > s["max_ms"]:
-        s["max_ms"] = elapsed
-    if response.status_code >= 400:
-        s["errors"] += 1
-    s["recent"].append({
-        "ts": datetime.now().strftime("%H:%M:%S"),
-        "ms": round(elapsed, 1),
-        "status": response.status_code,
-    })
+    from core.api_stats import record_inbound
+    record_inbound(request.method, request.url.path, elapsed, response.status_code)
     log.info("API %-6s %-30s → %d  %.1f ms", request.method, request.url.path,
              response.status_code, elapsed)
     return response
@@ -380,6 +376,8 @@ _MINDMAP_BRANCHES = [
             "Disease KB + fuzzy symptom matching",
             "Photo diagnosis (vision server)",
             "Soil data (pH · N via SoilGrids)",
+            "NDVI crop health (NASA MODIS)",
+            "Soil trend charts",
         ],
     },
     {
@@ -420,8 +418,46 @@ _MINDMAP_BRANCHES = [
             "Vision captions via moondream (local)",
             "LLM diary entry writer (qwen3:1.7b)",
             "Weekly auto-draft from query history",
+            "Guided photo-question prompts",
             "Draft → review → approve workflow",
             "Stored in SQLite (queryable)",
+        ],
+    },
+    {
+        "id": "todo", "label": "Todo Module", "color": "#e3b341",
+        "graphql": None,
+        "examples": ["show todo list", "add todo buy seeds",
+                     "remind me to call vet", "mark buy seeds done"],
+        "children": [
+            "Natural-language CRUD (no LLM)",
+            "Eisenhower quadrant board (/todo)",
+            "Completion verifier on done",
+            "SQLite-backed, served via /api/todos",
+        ],
+    },
+    {
+        "id": "search", "label": "Search Module", "color": "#a5d6ff",
+        "graphql": None,
+        "examples": ["search drone subsidy 2026", "look up pomegranate export price",
+                     "what is integrated pest management"],
+        "children": [
+            "SearXNG self-hosted backend",
+            "DuckDuckGo (DDGS) fallback",
+            "Web content injection guardrails",
+            "Result summarisation via LLM",
+        ],
+    },
+    {
+        "id": "code", "label": "Code Module", "color": "#ffab70",
+        "graphql": None,
+        "examples": ["analyze this project", "show complex functions",
+                     "how many lines of code", "security scan /path"],
+        "children": [
+            "Directory / project analysis",
+            "LLM codebase explanation",
+            "Complexity report",
+            "Bandit security scan",
+            "LOC summary",
         ],
     },
     {
@@ -434,6 +470,13 @@ _MINDMAP_BRANCHES = [
             "Network interfaces (LAN · WiFi · Tailscale)",
             "Internet speed (download / upload)",
             "Multi-connection failover alerting",
+            "Text chat with the assistant",
+            "Voice query (mic → router)",
+            "Service-health monitor (/api/services)",
+            "System-load / idle analytics",
+            "Live agri-news + YouTube feed",
+            "Knowledge graph (nodes · edges · graphify)",
+            "Face clustering (InsightFace + DBSCAN)",
             "Live weather widget (Barloni)",
             "Security Guardian panel",
             "WebSocket push every 2s",
@@ -462,10 +505,14 @@ _MINDMAP_BRANCHES = [
                      "guardian schedule"],
         "children": [
             "Router — qwen2.5:0.5b (intent → module)",
-            "Sanitizer — 45 injection patterns",
+            "Sanitizer — injection patterns + PII redact",
             "Memory — SQLite events log",
             "Action schema validation",
             "Follow-up suggestion engine",
+            "General fallback module (small talk)",
+            "API call profiling (api_call_log)",
+            "GraphQL API (Strawberry, /graphql)",
+            "Weekly email digest (Gmail SMTP)",
             "Config — single source of truth",
         ],
     },
@@ -478,7 +525,11 @@ _MINDMAP_BRANCHES = [
             "Open-Meteo (weather · forecast · ERA5)",
             "Open-Meteo Geocoding (lat/lon)",
             "SoilGrids / ISRIC (soil data)",
+            "NASA MODIS (NDVI crop health)",
             "data.gov.in APMC (mandi prices)",
+            "SearXNG · DuckDuckGo (web search)",
+            "YouTube / RSS (agri-news feed)",
+            "Gmail SMTP (weekly digest)",
             "OSV.dev (CVE databases)",
             "NVD / NIST (CVE + LLM attacks)",
             "CISA KEV (exploited CVEs)",
@@ -592,6 +643,16 @@ async def api_services():
     return JSONResponse(get_services_status())
 
 
+@app.get("/api/system/load")
+async def api_system_load(start: str | None = None, end: str | None = None):
+    """System-load analytics for the idle-detection dashboard.
+
+    Optional `start`/`end` (YYYY-MM-DD) filter the historical window.
+    """
+    from security import load_monitor
+    return JSONResponse(load_monitor.analytics(start, end))
+
+
 @app.get("/api/mindmap")
 async def api_mindmap():
     """API: return the mind-map graph data."""
@@ -617,21 +678,37 @@ async def guardian_scan():
 
 @app.post("/api/guardian/patch")
 async def guardian_patch():
-    """Trigger on-demand CVE scan with auto-patching (HIGH+ severity, same major version)."""
+    """On-demand CVE scan + auto-patch of every available safe (same-major) fix.
+
+    Runs synchronously and returns the real patch summary so the dashboard can
+    report what actually happened. Unlike the scheduled scan (HIGH+ only), the
+    manual button applies fixes at any severity that has a safe upgrade.
+    """
     def _run():
         """Background worker thread for this request."""
-        try:
-            import sys
-            sys.path.insert(0, str(Path(__file__).parent.parent))
-            from security.guardian import task_vuln_scan
-            result = task_vuln_scan(auto_patch=True)
-            p = result.get("patch_result", {}).get("summary", {}).get("patched", 0)
-            log.info("on-demand patch: %d package(s) patched", p)
-        except Exception as e:
-            log.error("on-demand patch failed: %s", e)
-    import threading
-    threading.Thread(target=_run, daemon=True, name="on-demand-patch").start()
-    return JSONResponse({"status": "patching"})
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from security.guardian import task_vuln_scan
+        return task_vuln_scan(auto_patch=True, severity_threshold="LOW")
+
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(None, _run)
+    except Exception as e:
+        log.error("on-demand patch failed: %s", e)
+        return JSONResponse({"status": "error", "error": str(e)}, status_code=500)
+
+    pr = result.get("patch_result", {}) or {}
+    summary = pr.get("summary", {}) or {}
+    patched = [p.get("package") for p in pr.get("patched", []) if p.get("package")]
+    manual = [m.get("package") for m in pr.get("manual_review", []) if m.get("package")]
+    log.info("on-demand patch: %d package(s) patched", summary.get("patched", 0))
+    return JSONResponse({
+        "status": "ok",
+        "patched": patched,
+        "manual": manual,
+        "summary": summary,
+        "vuln_total": result.get("total_vulns", 0),
+    })
 
 
 @app.get("/api/code/scan")
@@ -664,11 +741,13 @@ async def api_backup_dbs():
 
 @app.get("/api/stats")
 async def api_stats():
-    """API call analytics — hit counts, latency, caching recommendations."""
+    """API call analytics — inbound endpoint hits + outbound external-API calls."""
+    from core.api_stats import inbound_snapshot, outbound_snapshot
     result = {}
-    for key, s in sorted(_api_stats.items(), key=lambda x: -x[1]["calls"]):
+    inbound = inbound_snapshot()
+    for key, s in sorted(inbound.items(), key=lambda x: -x[1]["calls"]):
         calls = s["calls"]
-        avg_ms = s["total_ms"] / calls if calls else 0.0
+        avg_ms = s["avg_ms"]
         path = key.split(" ", 1)[1] if " " in key else key
 
         # Caching recommendation heuristics
@@ -691,13 +770,44 @@ async def api_stats():
 
         result[key] = {
             "calls": calls,
-            "avg_ms": round(avg_ms, 1),
-            "max_ms": round(s["max_ms"], 1),
+            "avg_ms": avg_ms,
+            "max_ms": s["max_ms"],
             "errors": s["errors"],
-            "recent": list(s["recent"])[-5:],
+            "recent": s["recent"],
             "recommendation": rec,
         }
-    return JSONResponse({"endpoints": result, "snapshot_at": datetime.now().isoformat()})
+    return JSONResponse({
+        "endpoints": result,
+        "external": outbound_snapshot(),
+        "snapshot_at": datetime.now().isoformat(),
+    })
+
+
+@app.get("/api/stats/log")
+async def api_stats_log(before: str | None = None, after: str | None = None,
+                       name: str | None = None, direction: str | None = None,
+                       source: str | None = None, group: bool = False, limit: int = 1000):
+    """Read logged API calls from the DB (filter by date range / api / source)."""
+    from core.api_stats import flush_to_db, query_calls
+    flush_to_db()  # include buffered events before reading
+    rows = query_calls(before=before, after=after, name=name, direction=direction,
+                       source=source, group=group, limit=limit)
+    return JSONResponse({"rows": rows, "count": len(rows)})
+
+
+@app.delete("/api/stats/log")
+async def api_stats_log_delete(before: str | None = None, after: str | None = None,
+                              name: str | None = None, direction: str | None = None,
+                              source: str | None = None):
+    """Delete logged API calls by date range / api / source (filters ANDed)."""
+    from core.api_stats import delete_calls
+    if before is None and after is None and name is None and direction is None and source is None:
+        return JSONResponse(
+            {"error": "refusing to delete all rows; pass a filter (before/after/name/direction/source)"},
+            status_code=400)
+    deleted = delete_calls(before=before, after=after, name=name,
+                          direction=direction, source=source)
+    return JSONResponse({"deleted": deleted})
 
 
 @app.get("/api/diary/questions")
@@ -1110,10 +1220,22 @@ async def api_news_dismiss(url: str = Body(..., embed=True)):
 
 @app.post("/api/guardian/fix-audit")
 async def api_guardian_fix_audit(payload: dict = Body(...)):
-    """Add # nosec suppression to a bandit-flagged line, then re-run the audit."""
+    """Mute a bandit finding by adding # nosec to the flagged line, then re-audit.
+
+    This only *suppresses* the linter warning — it does not remediate the code.
+    CRITICAL/HIGH findings are therefore refused: a real vulnerability must be
+    fixed in code, not hidden.
+    """
     issue     = payload.get("issue", {})
     file_path = issue.get("file", "")
     line_no   = issue.get("line", 0)
+    severity  = (issue.get("severity") or "").upper()
+
+    if severity in ("CRITICAL", "HIGH"):
+        return JSONResponse({
+            "ok": False, "blocked": True,
+            "error": f"{severity} findings must be fixed in code, not muted",
+        }, status_code=403)
 
     if not file_path or not line_no:
         return JSONResponse({"ok": False, "error": "missing file or line"}, status_code=400)
@@ -1508,7 +1630,35 @@ async def api_voice_query(audio: UploadFile = File(...)):
     return JSONResponse(result)
 
 
-def _dispatch_text(text: str) -> dict:
+# Conversation-context guards for the dashboard chat: keep the model's prompt
+# bounded no matter what the browser sends.
+_CTX_MAX_TURNS = 12          # most recent messages threaded back into the prompt
+_CTX_MAX_CHARS = 2000        # per-message content cap
+
+
+def _sanitise_history(history) -> list[dict]:
+    """Coerce browser-sent chat history into a clean [{role, content}] list.
+
+    Drops anything that isn't a user/assistant turn, trims over-long messages,
+    and keeps only the most recent _CTX_MAX_TURNS so the LLM prompt stays bounded.
+    """
+    if not isinstance(history, list):
+        return []
+    clean: list[dict] = []
+    for item in history:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        content = item.get("content")
+        if role not in ("user", "assistant") or not isinstance(content, str):
+            continue
+        content = content.strip()
+        if content:
+            clean.append({"role": role, "content": content[:_CTX_MAX_CHARS]})
+    return clean[-_CTX_MAX_TURNS:]
+
+
+def _dispatch_text(text: str, history=None) -> dict:
     """Route a typed message through the same router/modules as voice. Runs in a worker thread."""
     text = (text or "").strip()
     if not text:
@@ -1517,7 +1667,10 @@ def _dispatch_text(text: str) -> dict:
         from core.router import route
         mods = _get_query_modules()
         chosen = route(text, mods)                 # router now returns a single module
-        ctx = {"stream_to_stdout": False}          # API path: don't dump replies to stdout
+        ctx = {
+            "stream_to_stdout": False,             # API path: don't dump replies to stdout
+            "history": _sanitise_history(history), # prior chat turns for conversational context
+        }
         responses = []
         for name in chosen:
             if name in mods:
@@ -1538,8 +1691,58 @@ async def api_query(payload: dict = Body(...)):
     text = (payload.get("text") or "").strip()
     if not text:
         return JSONResponse({"error": "text required"}, status_code=400)
-    result = await asyncio.get_event_loop().run_in_executor(None, _dispatch_text, text)
+    history = payload.get("history")
+    result = await asyncio.get_event_loop().run_in_executor(
+        None, _dispatch_text, text, history
+    )
     return JSONResponse(result)
+
+
+def _stream_query_events(text: str, history=None):
+    """Yield Server-Sent Events for a chat reply: a module event, then tokens, then done.
+
+    The conversational `general` module streams token-by-token (low perceived
+    latency); any other route falls back to a single buffered token event with
+    the full reply, so the frontend consumes both the same way.
+    """
+    import json as _json
+    try:
+        from core.router import route
+        mods = _get_query_modules()
+        chosen = route(text, mods)
+        name = chosen[0] if chosen else "general"
+        mod = mods.get(name)
+        if mod is None:
+            yield f"data: {_json.dumps({'error': f'no handler for {name}'})}\n\n"
+            return
+        yield f"data: {_json.dumps({'module': name})}\n\n"
+        ctx = {"stream_to_stdout": False, "history": _sanitise_history(history)}
+        streamer = getattr(mod, "handle_stream", None)
+        if streamer is not None:
+            for tok in streamer(text, ctx):
+                yield f"data: {_json.dumps({'token': tok})}\n\n"
+        else:
+            # Non-streaming module: run it normally and emit the whole reply once.
+            r = mod.handle(text, ctx)
+            full = r.text if hasattr(r, "text") else str(r)
+            yield f"data: {_json.dumps({'token': full})}\n\n"
+        yield f"data: {_json.dumps({'done': True})}\n\n"
+    except Exception as e:
+        log.error("stream query dispatch failed: %s", e)
+        yield f"data: {_json.dumps({'error': f'dispatch failed: {e}'})}\n\n"
+
+
+@app.post("/api/query/stream")
+async def api_query_stream(payload: dict = Body(...)):
+    """Stream a chat reply token-by-token over SSE for lower perceived latency."""
+    text = (payload.get("text") or "").strip()
+    if not text:
+        return JSONResponse({"error": "text required"}, status_code=400)
+    return StreamingResponse(
+        _stream_query_events(text, payload.get("history")),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.websocket("/ws")
