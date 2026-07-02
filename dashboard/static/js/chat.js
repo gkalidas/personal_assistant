@@ -127,7 +127,54 @@ function chatMakeRow(cls,who,text){
   const w=document.createElement('div');w.className='chat-who';w.textContent=who;
   const t=document.createElement('div');t.className='chat-text';t.textContent=text;
   row.appendChild(w);row.appendChild(t);
+  // Assistant replies get a small "copy to clipboard" icon after the text.
+  if(cls==='gk'){
+    const btn=document.createElement('button');
+    btn.className='chat-copy';
+    btn.type='button';
+    btn.title='Copy to clipboard';
+    btn.setAttribute('aria-label','Copy to clipboard');
+    btn.textContent='⧉';
+    btn.addEventListener('click',()=>chatCopy(btn,t.textContent));
+    row.appendChild(btn);
+    chatCopyToggle(row,text);
+  }
   return row;
+}
+
+// Copy an assistant reply's text to the clipboard, with a brief "copied" cue.
+function chatCopy(btn,text){
+  const done=()=>{
+    btn.classList.add('copied');
+    const prev=btn.textContent;
+    btn.textContent='✓';
+    setTimeout(()=>{btn.textContent=prev;btn.classList.remove('copied');},1200);
+  };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>chatCopyFallback(text,done));
+  }else{
+    chatCopyFallback(text,done);
+  }
+}
+
+// Fallback for non-secure contexts where navigator.clipboard is unavailable.
+function chatCopyFallback(text,done){
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    done();
+  }catch(e){/* clipboard unavailable — ignore */}
+}
+
+// Hide the copy icon while a reply is empty or still the "…" placeholder.
+function chatCopyToggle(row,text){
+  const btn=row.querySelector('.chat-copy');
+  if(!btn)return;
+  const show=!!text&&text!=='…'&&!row.classList.contains('err');
+  btn.style.display=show?'':'none';
 }
 
 // Append a DOM row to the visible log. Persistence is handled separately so the
@@ -235,6 +282,7 @@ async function chatSend(){
           reply+=evt.token;
           if(!gotToken){txt.textContent='';gotToken=true;} // clear the "…" placeholder
           txt.textContent=reply;
+          chatCopyToggle(pending,reply);
           el('chat-log').scrollTop=el('chat-log').scrollHeight;
         }
       }
@@ -245,6 +293,7 @@ async function chatSend(){
     }else if(!gotToken){
       txt.textContent='(no response)';
     }
+    chatCopyToggle(pending,txt.textContent);
     chatSave();
   }catch(e){
     pending.classList.add('err');

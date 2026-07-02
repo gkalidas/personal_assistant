@@ -405,6 +405,9 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .chat-msg.you .chat-text{color:var(--amber)}
 .chat-msg.gk .chat-text{color:#9ab8c4}
 .chat-msg.err .chat-text{color:var(--red)}
+.chat-copy{margin-top:3px;background:none;border:none;color:var(--dim);cursor:pointer;font-size:12px;line-height:1;padding:1px 3px;opacity:0.5;transition:all 0.15s}
+.chat-copy:hover{color:var(--cyan);opacity:1;text-shadow:0 0 8px var(--glow-c)}
+.chat-copy.copied{color:var(--cyan);opacity:1}
 
 /* ── Mini-todo panel ──────────────────────────────────────────────────────── */
 .todo-section-lbl{font-size:8px;letter-spacing:3px;margin:6px 0 3px}
