@@ -35,8 +35,9 @@ SENSITIVE_FILES = [
 
 # Patterns to flag in Python source code
 _CODE_ISSUES = [
-    (re.compile(r'eval\s*\(', re.I),               "CRITICAL", "Use of eval() — potential code injection"),
-    (re.compile(r'exec\s*\(', re.I),               "CRITICAL", "Use of exec() — potential code injection"),
+    # \b avoids matching helper names like fin_exec(), safe_eval(), prime_evaluate()
+    (re.compile(r'\beval\s*\(', re.I),             "CRITICAL", "Use of eval() — potential code injection"),
+    (re.compile(r'\bexec\s*\(', re.I),             "CRITICAL", "Use of exec() — potential code injection"),
     (re.compile(r'__import__\s*\(', re.I),         "HIGH",     "Dynamic import via __import__()"),
     (re.compile(r'os\.system\s*\(', re.I),         "HIGH",     "os.system() — prefer subprocess with args list"),
     (re.compile(r'shell\s*=\s*True', re.I),        "HIGH",     "subprocess shell=True — command injection risk"),
@@ -239,6 +240,8 @@ def run_audit(auto_fix_permissions: bool = True) -> dict:
             "severity": b.get("issue_severity", "LOW").upper(),
             "issue":    b.get("issue_text", ""),
             "snippet":  b.get("code", "")[:80],
+            "test_id":  b.get("test_id", ""),
+            "more_info": b.get("more_info", ""),
             "source":   "bandit",
         })
 

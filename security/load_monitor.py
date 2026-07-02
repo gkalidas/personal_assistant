@@ -403,6 +403,126 @@ def report() -> dict:
     }
 
 
+def _date_bounds() -> tuple[str, str]:
+    """Return (earliest_date, latest_date) of stored observations as YYYY-MM-DD."""
+    try:
+        con  = _conn()
+        rows = con.execute(
+            "SELECT MIN(ts) AS lo, MAX(ts) AS hi FROM observations"
+        ).fetchone()
+        con.close()
+        lo = rows["lo"][:10] if rows and rows["lo"] else ""
+        hi = rows["hi"][:10] if rows and rows["hi"] else ""
+        return lo, hi
+    except Exception:
+        return "", ""
+
+
+def analytics(start: str | None = None, end: str | None = None) -> dict:
+    """Load-monitor stats for an optional [start, end] date window (YYYY-MM-DD).
+
+    Powers the System Load Analytics dashboard. Returns:
+      current           → live snapshot (cpu/ram/io/queries/score/is_idle)
+      range             → {start, end, total, avg_load, idle_pct, min, max}
+      hourly            → [{hour, avg_load, samples, idle}] 0-23 within window
+      daily             → [{date, avg_load, samples, idle_pct}] one row per day
+      predicted_idle    → upcoming hours likely to be idle (dow-aware)
+      bounds            → {earliest, latest} dates with data (for the date picker)
+      data_quality      → human string describing confidence
+    """
+    lo, hi = _date_bounds()
+    # Default window: everything we have (fall back to today if empty).
+    start = start or lo or datetime.now().strftime("%Y-%m-%d")
+    end   = end   or hi or datetime.now().strftime("%Y-%m-%d")
+    # Inclusive of the whole `end` day.
+    ts_lo = f"{start}T00:00:00"
+    ts_hi = f"{end}T23:59:59.999999"
+
+    try:
+        cpu, ram, io, qrys, busy, score = _sample_now()
+    except Exception:
+        cpu = ram = io = score = 0.0
+        qrys = 0
+        busy = False
+
+    hourly: list[dict] = []
+    daily: list[dict]  = []
+    rng = {"start": start, "end": end, "total": 0,
+           "avg_load": None, "idle_pct": None, "min": None, "max": None}
+
+    try:
+        con = _conn()
+        # Whole-window summary.
+        summ = con.execute(
+            """SELECT COUNT(*) AS n, AVG(load_score) AS avg,
+                      MIN(load_score) AS mn, MAX(load_score) AS mx,
+                      SUM(CASE WHEN load_score < ? AND recent_queries = 0
+                               AND ollama_busy = 0 THEN 1 ELSE 0 END) AS idle
+               FROM observations WHERE ts >= ? AND ts <= ?""",
+            (IDLE_SCORE_MAX, ts_lo, ts_hi),
+        ).fetchone()
+        n = summ["n"] or 0
+        rng["total"] = n
+        if n:
+            rng["avg_load"] = round(summ["avg"], 1)
+            rng["min"]      = round(summ["mn"], 1)
+            rng["max"]      = round(summ["mx"], 1)
+            rng["idle_pct"] = round(100.0 * (summ["idle"] or 0) / n, 1)
+
+        # Hourly histogram (averaged across the window).
+        for r in con.execute(
+            """SELECT hour, AVG(load_score) AS avg, COUNT(*) AS cnt
+               FROM observations WHERE ts >= ? AND ts <= ?
+               GROUP BY hour ORDER BY hour""",
+            (ts_lo, ts_hi),
+        ).fetchall():
+            avg = round(r["avg"], 1)
+            hourly.append({"hour": r["hour"], "avg_load": avg,
+                           "samples": r["cnt"], "idle": avg < IDLE_SCORE_MAX})
+
+        # Daily bar chart.
+        for r in con.execute(
+            """SELECT substr(ts,1,10) AS day, AVG(load_score) AS avg,
+                      COUNT(*) AS cnt,
+                      SUM(CASE WHEN load_score < ? AND recent_queries = 0
+                               AND ollama_busy = 0 THEN 1 ELSE 0 END) AS idle
+               FROM observations WHERE ts >= ? AND ts <= ?
+               GROUP BY day ORDER BY day""",
+            (IDLE_SCORE_MAX, ts_lo, ts_hi),
+        ).fetchall():
+            cnt = r["cnt"] or 1
+            daily.append({"date": r["day"], "avg_load": round(r["avg"], 1),
+                          "samples": r["cnt"],
+                          "idle_pct": round(100.0 * (r["idle"] or 0) / cnt, 1)})
+        con.close()
+    except Exception as e:
+        log.debug(f"load_monitor: analytics() query failed: {e}")
+
+    total_all, _ = _observation_stats()
+    return {
+        "current": {
+            "cpu_pct":        round(cpu, 1),
+            "ram_pct":        round(ram, 1),
+            "io_busy_pct":    round(io, 1),
+            "recent_queries": qrys,
+            "ollama_busy":    busy,
+            "load_score":     round(score, 1),
+            "is_idle":        score < IDLE_SCORE_MAX and qrys == 0 and not busy,
+        },
+        "range":          rng,
+        "hourly":         hourly,
+        "daily":          daily,
+        "predicted_idle": predicted_idle_hours(),
+        "bounds":         {"earliest": lo, "latest": hi},
+        "idle_score_max": IDLE_SCORE_MAX,
+        "data_quality": (
+            "good (7+ days)" if total_all > 1000
+            else "building up" if total_all > 100
+            else "too early — need more observations"
+        ),
+    }
+
+
 def print_pattern(days: int = 7) -> None:
     """Print a compact heatmap of your usage pattern to stdout."""
     pat = pattern_by_hour(days=days)

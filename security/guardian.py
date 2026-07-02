@@ -124,9 +124,14 @@ def _save_state() -> None:
 
 # ── Task implementations ──────────────────────────────────────────────────────
 
-def task_vuln_scan(auto_patch: bool = True) -> dict:
+def task_vuln_scan(auto_patch: bool = True, severity_threshold: str = "HIGH") -> dict:
 
-    """Scan dependencies for CVEs (OSV.dev), optionally auto-patch, and save the report."""
+    """Scan dependencies for CVEs (OSV.dev), optionally auto-patch, and save the report.
+
+    ``severity_threshold`` controls which CVEs get auto-patched. Scheduled scans
+    stay conservative ("HIGH"); the on-demand dashboard UPDATE button passes a
+    lower threshold so every available safe (same-major) fix is applied.
+    """
     from security.scanner import scan_packages, scan_report
     from security.patcher import auto_patch_all
 
@@ -147,8 +152,8 @@ def task_vuln_scan(auto_patch: bool = True) -> dict:
 
     patch_result = {}
     if auto_patch and vulns:
-        log.info("Auto-patching safe upgrades (HIGH+ CVEs, same-major version)...")
-        patch_result = auto_patch_all(vulns, severity_threshold="HIGH")
+        log.info(f"Auto-patching safe upgrades ({severity_threshold}+ CVEs, same-major version)...")
+        patch_result = auto_patch_all(vulns, severity_threshold=severity_threshold)
         if patch_result["summary"]["patched"] > 0:
             log.info(f"  Patched {patch_result['summary']['patched']} package(s)")
         if patch_result["summary"]["manual_needed"] > 0:
@@ -546,6 +551,25 @@ def run_daemon() -> None:
     cooldown has elapsed.
     """
     from security.load_monitor import observe, is_idle, predicted_idle_hours
+
+    # Log this process's outbound API calls into the shared api_call_log too
+    # (the daemon makes its own httpx calls: threat-intel, Ollama, sources, …).
+    import signal
+    from core import api_stats
+    api_stats.set_source("guardian")
+    api_stats.install_httpx_tracking()
+    api_stats.start_persistence(interval=15.0)
+    _prev_term = signal.getsignal(signal.SIGTERM)
+
+    def _flush_on_term(signum, frame):
+        # systemd sends SIGTERM on stop/restart — flush buffered events first.
+        api_stats.stop_persistence()
+        if callable(_prev_term):
+            _prev_term(signum, frame)
+        else:
+            raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _flush_on_term)
 
     _load_state()   # restore last-run times from previous daemon run
     _log_startup_banner()

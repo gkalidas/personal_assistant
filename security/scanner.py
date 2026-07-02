@@ -8,12 +8,14 @@ No API key required.
 import importlib.metadata
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 
 import httpx
 
 OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
+OSV_VULN_URL  = "https://api.osv.dev/v1/vulns/"   # per-id detail lookup
 NVD_URL       = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
 log = logging.getLogger("security.scanner")
@@ -55,36 +57,88 @@ def _installed_packages() -> list[tuple[str, str]]:
     return sorted(set(pkgs))
 
 
-def _cvss_to_severity(score_str: str) -> str | None:
-    """Map a numeric CVSS score string to a severity band, or None if unparseable."""
-    if not score_str:
-        return None
-    try:
-        score = float(score_str)
-    except ValueError:
-        return None
+def _score_to_band(score: float) -> str:
+    """Map a numeric CVSS base score to a severity band."""
     if score >= 9.0: return "CRITICAL"
     if score >= 7.0: return "HIGH"
     if score >= 4.0: return "MEDIUM"
+    if score > 0.0:  return "LOW"
     return "LOW"
 
 
-def _severity_from_osv(vuln: dict) -> str:
-    """Extract the highest severity band from an OSV vuln object.
+# CVSS v3.x base-score metric weights (per the spec).
+_CVSS_W = {
+    "AV": {"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.20},
+    "AC": {"L": 0.77, "H": 0.44},
+    "UI": {"N": 0.85, "R": 0.62},
+    "PR": {"U": {"N": 0.85, "L": 0.62, "H": 0.27},   # scope Unchanged
+           "C": {"N": 0.85, "L": 0.68, "H": 0.50}},  # scope Changed
+    "CIA": {"N": 0.0, "L": 0.22, "H": 0.56},
+}
 
-    Checks the top-level ``severity`` list first, then the per-affected CVSS
-    scores as a fallback. Returns "UNKNOWN" when no score is present.
+
+def _cvss_score_from_vector(vector: str) -> float | None:
+    """Compute a CVSS v3.x base score from a vector string, or None if not one."""
+    if "CVSS:3" not in vector:
+        return None
+    try:
+        m = dict(part.split(":") for part in vector.split("/") if ":" in part)
+        scope = m.get("S", "U")
+        iss = 1 - ((1 - _CVSS_W["CIA"][m["C"]]) *
+                   (1 - _CVSS_W["CIA"][m["I"]]) *
+                   (1 - _CVSS_W["CIA"][m["A"]]))
+        if scope == "U":
+            impact = 6.42 * iss
+        else:
+            impact = 7.52 * (iss - 0.029) - 3.25 * (iss - 0.02) ** 15
+        expl = (8.22 * _CVSS_W["AV"][m["AV"]] * _CVSS_W["AC"][m["AC"]] *
+                _CVSS_W["PR"][scope][m["PR"]] * _CVSS_W["UI"][m["UI"]])
+        if impact <= 0:
+            return 0.0
+        raw = (impact + expl) if scope == "U" else 1.08 * (impact + expl)
+        import math
+        return math.ceil(min(raw, 10.0) * 10) / 10  # roundup to 1 decimal
+    except (KeyError, ValueError, ZeroDivisionError):
+        return None
+
+
+def _band_from_score_str(score_str: str) -> str | None:
+    """Map a CVSS score string — numeric *or* vector — to a severity band."""
+    if not score_str:
+        return None
+    try:
+        return _score_to_band(float(score_str))
+    except ValueError:
+        pass
+    score = _cvss_score_from_vector(score_str)
+    return _score_to_band(score) if score is not None else None
+
+
+# GitHub/OSV database_specific severity bands → our bands.
+_DB_SEVERITY_MAP = {"CRITICAL": "CRITICAL", "HIGH": "HIGH",
+                    "MODERATE": "MEDIUM", "MEDIUM": "MEDIUM", "LOW": "LOW"}
+
+
+def _severity_from_osv(vuln: dict) -> str:
+    """Extract the highest severity band from an OSV vuln detail object.
+
+    Tries CVSS scores/vectors (top-level then per-affected), then the
+    ``database_specific.severity`` band GitHub advisories carry. Returns
+    "UNKNOWN" only when no severity signal is present anywhere.
     """
     for sev in vuln.get("severity", []):
-        band = _cvss_to_severity(sev.get("score", ""))
+        band = _band_from_score_str(sev.get("score", ""))
         if band:
             return band
     for aff in vuln.get("affected", []):
         for sev in aff.get("severity", []):
-            if "CVSS" in sev.get("type", ""):
-                band = _cvss_to_severity(sev.get("score", ""))
-                if band:
-                    return band
+            band = _band_from_score_str(sev.get("score", ""))
+            if band:
+                return band
+    # GHSA records often omit CVSS but carry a plain severity band here.
+    db = (vuln.get("database_specific") or {}).get("severity", "")
+    if band := _DB_SEVERITY_MAP.get(str(db).upper()):
+        return band
     return "UNKNOWN"
 
 
@@ -103,6 +157,33 @@ def _fix_version_from_osv(vuln: dict, pkg_name: str) -> str | None:
 
 
 _SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
+
+
+_detail_cache: dict[str, dict] = {}
+
+
+def _fetch_vuln_detail(vuln_id: str) -> dict:
+    """Fetch the full OSV record for a vuln id.
+
+    The querybatch endpoint returns only ``{id, modified}`` per vuln — no
+    severity, summary, or affected/fixed ranges — so each id must be hydrated
+    here to recover that data. Cached per-process; returns {} on failure so the
+    caller degrades gracefully instead of crashing.
+    """
+    if vuln_id in _detail_cache:
+        return _detail_cache[vuln_id]
+    try:
+        resp = httpx.get(
+            f"{OSV_VULN_URL}{vuln_id}", timeout=15.0,
+            headers={"User-Agent": "GK-Security-Guardian/1.0"},
+        )
+        resp.raise_for_status()
+        detail = resp.json()
+    except Exception as e:
+        log.warning(f"OSV detail fetch failed for {vuln_id}: {e}")
+        detail = {}
+    _detail_cache[vuln_id] = detail
+    return detail
 
 
 def _query_osv(packages: list[tuple[str, str]]) -> list[dict]:
@@ -128,18 +209,38 @@ def _query_osv(packages: list[tuple[str, str]]) -> list[dict]:
 def _parse_osv_results(
     packages: list[tuple[str, str]], results: list[dict]
 ) -> list[Vulnerability]:
-    """Turn OSV batch results into Vulnerability objects, sorted by severity."""
-    vulns: list[Vulnerability] = []
+    """Turn OSV batch results into Vulnerability objects, sorted by severity.
+
+    querybatch only returns vuln IDs, so each hit is hydrated with a detail
+    lookup (fetched concurrently, bounded) to recover severity, summary, and
+    the fixed version that auto-patching depends on.
+    """
+    # Collect every (package, version, vuln_id) hit from the batch response.
+    hits: list[tuple[str, str, str]] = []
     for (name, version), result in zip(packages, results):
         for vuln in result.get("vulns", []):
-            vulns.append(Vulnerability(
-                package=name, version=version,
-                vuln_id=vuln.get("id", "UNKNOWN"),
-                severity=_severity_from_osv(vuln),
-                summary=vuln.get("summary", vuln.get("details", "No summary"))[:200],
-                fix_version=_fix_version_from_osv(vuln, name),
-                aliases=vuln.get("aliases", []),
-            ))
+            vid = vuln.get("id")
+            if vid:
+                hits.append((name, version, vid))
+
+    # Hydrate all unique ids concurrently (results land in _detail_cache).
+    unique_ids = {vid for _, _, vid in hits}
+    if unique_ids:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(_fetch_vuln_detail, unique_ids))
+
+    vulns: list[Vulnerability] = []
+    for name, version, vid in hits:
+        detail = _fetch_vuln_detail(vid)   # cached from the concurrent pass above
+        summary = (detail.get("summary") or detail.get("details") or "No summary")[:200]
+        vulns.append(Vulnerability(
+            package=name, version=version,
+            vuln_id=vid,
+            severity=_severity_from_osv(detail),
+            summary=summary,
+            fix_version=_fix_version_from_osv(detail, name),
+            aliases=detail.get("aliases", []),
+        ))
     vulns.sort(key=lambda v: _SEVERITY_ORDER.get(v.severity, 99))
     return vulns
 
