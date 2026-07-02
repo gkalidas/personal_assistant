@@ -6,6 +6,7 @@ setInterval(tick,1000);tick();
 
 let last={};
 let _openModal=null;
+let _wxSig='';   // signature of last-rendered weather modal — gates needless rebuilds
 
 // ── WebSocket ──────────────────────────────────────────────────────────────────
 let ws;
@@ -20,9 +21,29 @@ connect();
 
 function render(d){
   if(d.network)  renderNetwork(d.network);
+  if(d.services) renderServices(d.services);
   if(d.system)   renderSystem(d.system);
   if(d.weather)  renderWeather(d.weather);
   if(d.guardian) renderGuardian(d.guardian);
+}
+
+// ── Services (inside the network box) ─────────────────────────────────────────
+function _svcDot(status){return status==='up'?'online':status==='off'?'noinet':'err'}
+function renderServices(s){
+  if(!s)return;
+  const rows=[];
+  for(const svc of (s.services||[])){
+    rows.push(`<div class="svc-row"><div class="dot ${_svcDot(svc.status)}"></div>`+
+              `<span class="svc-name">${svc.name}</span>`+
+              `<span class="svc-detail">${svc.detail||''}</span></div>`);
+  }
+  if(s.modules&&s.modules.count){
+    rows.push(`<div class="svc-row"><div class="dot online"></div>`+
+              `<span class="svc-name">Modules</span>`+
+              `<span class="svc-detail">${s.modules.count} loaded</span></div>`);
+  }
+  el('svc-sep').style.display=rows.length?'':'none';
+  el('svc-list').innerHTML=rows.join('');
 }
 
 // ── Network ───────────────────────────────────────────────────────────────────
@@ -85,13 +106,11 @@ function renderNetwork(n){
   // Build interface rows (stable layout — fixed-width cells)
   let html='';
   for(const i of n.interfaces){
-    const isVpn=i.type==='vpn'||i.type==='tun';
-    const dc=i.is_connected?'online':i.is_up?(isVpn?'online':'noinet'):'down';
     const icon=_typeIcon(i.type);
     const cls=_typeCls(i.type);
     const nameText=_showIfaceNames?i.name:(i.ip||'—');
     const nameCls=_showIfaceNames?'iface-name-cell showing-iface':'iface-name-cell';
-    html+=`<div class="iface-row"><div class="dot ${dc}"></div><span class="iface-type-cell ${cls}">${icon}</span><span class="${nameCls}">${nameText}</span></div>`;
+    html+=`<div class="iface-row"><span class="iface-type-cell ${cls}">${icon}</span><span class="${nameCls}">${nameText}</span></div>`;
   }
   el('iface-list').innerHTML=html;
   el('failover-alert').style.display=n.failover_alert?'':'none';
@@ -131,9 +150,52 @@ function renderWeather(w){
   el('wx-wind').textContent=w.wind_kmh+' km/h';
   el('wx-feel').textContent=w.feels_like_c+'°C';
   el('wx-vis').textContent=w.visibility_km+' km';
+  const today=new Date().toISOString().slice(0,10);
+  const fcToday=(w.forecast||[]).find(f=>f.date===today)||(w.forecast||[])[0];
+  el('wx-rain').textContent=fcToday&&fcToday.precip_mm!=null?fcToday.precip_mm+' mm':'-- mm';
+  el('wx-rainpct').textContent=fcToday&&fcToday.rain_pct!=null?fcToday.rain_pct+'%':'--%';
+  el('wx-hilo').textContent=fcToday&&fcToday.t_max!=null?`↑${Math.round(fcToday.t_max)}° ↓${Math.round(fcToday.t_min)}°`:'--° / --°';
 }
 
 // ── Guardian — blink speed by severity ───────────────────────────────────────
+// Escape a string for safe use inside an HTML attribute (title="…").
+function _attr(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// One-line remediation hint per audit finding, keyed by bandit test_id with a
+// keyword fallback for custom (non-bandit) checks. Shown in the button tooltip.
+const _AUDIT_REMEDY={
+  B102:'Remove exec() of dynamic code — use an explicit dispatch dict {name:fn}, or ast.literal_eval for data.',
+  B307:'Avoid eval() — use ast.literal_eval for literals or an explicit dispatch table.',
+  B608:'Use parameterised SQL: cursor.execute(sql, (val,)). Never f-string/format user input into a query.',
+  B104:'Bind to 127.0.0.1 instead of 0.0.0.0, or restrict the port via firewall / reverse proxy if it must be public.',
+  B105:'Move the secret to a gitignored .env / secrets store, load it at runtime, and rotate the exposed value.',
+  B106:'Stop passing the password as a default/arg — read it from env or a secrets store.',
+  B107:'Remove the hardcoded password default; require it from config/env.',
+  B303:'Use hashlib.sha256. If the hash is not security-relevant, pass usedforsecurity=False.',
+  B324:'Replace weak hash (md5/sha1) with sha256, or set usedforsecurity=False for non-security use.',
+  B301:'Do not unpickle untrusted data — use json, or sign/verify the payload first.',
+  B403:'Avoid pickle for untrusted input; prefer json or a safe serializer.',
+  B113:'Add an explicit timeout= to the request so it cannot hang indefinitely.',
+  B201:'Never run with debug=True in production — it exposes a remote code console.',
+  B602:'Avoid shell=True — pass an args list to subprocess and validate inputs.',
+  B605:'Avoid os.system / shell strings — use subprocess with an args list.',
+  B607:'Use an absolute path for the executable instead of relying on PATH.',
+  B310:'Validate the URL scheme (allow only https) before urlopen to avoid file:// / SSRF.',
+};
+function _auditRemedy(iss){
+  const t=(iss.test_id||'').toUpperCase();
+  if(_AUDIT_REMEDY[t])return _AUDIT_REMEDY[t];
+  const s=(iss.issue||iss.message||'').toLowerCase();
+  if(s.includes('sql'))return _AUDIT_REMEDY.B608;
+  if(s.includes('exec'))return _AUDIT_REMEDY.B102;
+  if(s.includes('eval'))return _AUDIT_REMEDY.B307;
+  if(s.includes('bind')||s.includes('all interfaces'))return _AUDIT_REMEDY.B104;
+  if(s.includes('.gitignore')||s.includes('gitignored'))return 'Add the file to .gitignore and rotate any secret already committed to git.';
+  if(s.includes('permission'))return 'Tighten file permissions: chmod 600 the sensitive file.';
+  if(s.includes('secret')||s.includes('password')||s.includes('token')||s.includes('key'))return 'Move the secret to a gitignored .env / secrets store and rotate it.';
+  return 'Fix the flagged code in the source file'+(iss.more_info?' — see '+iss.more_info:'.');
+}
+
 function renderGuardian(g){
   const panel=el('p-guardian');
   panel.className='panel clickable '+(g.overall||'ok');
@@ -193,6 +255,20 @@ function openModal(type){
     rows+=row('Download',n.download_mbps.toFixed(2)+' Mbps');
     rows+=row('Upload',  n.upload_mbps.toFixed(2)+' Mbps');
     rows+=row('Primary',n.primary||'none');
+    if(last.services){
+      const sv=last.services;
+      rows+=sec('SERVICES'+(sv.at?' · '+sv.at:''));
+      const fmt=st=>st==='up'?'<span style="color:var(--green)">UP</span>':
+                    st==='off'?'<span style="color:var(--amber)">OFF</span>':
+                    '<span style="color:var(--red)">DOWN</span>';
+      for(const svc of (sv.services||[])){
+        rows+=row(svc.name,fmt(svc.status)+(svc.detail?' <span style="color:var(--dim)">· '+svc.detail+'</span>':''));
+      }
+      if(sv.modules&&sv.modules.count){
+        rows+=row('Modules',sv.modules.count+' loaded');
+        if(sv.modules.names)rows+=row('',`<span style="color:var(--dim);font-size:9px">${sv.modules.names.join(' · ')}</span>`);
+      }
+    }
     el('modal-net-body').innerHTML=rows;
     show('modal-network');
   }else if(type==='system'&&last.system){
@@ -213,6 +289,11 @@ function openModal(type){
     show('modal-system');
   }else if(type==='weather'&&last.weather){
     const w=last.weather;
+    // Skip rebuilds when nothing changed — prevents flicker/scroll-reset on every WS tick.
+    const wxOpen=el('modal-weather').classList.contains('open');
+    const sig=(w.updated_at||'')+'|'+w.temp_c+'|'+((w.forecast||[]).length)+'|'+(_farmHealthHTML?1:0);
+    if(wxOpen&&sig===_wxSig)return;
+    _wxSig=sig;
     let rows=sec('CONDITIONS — '+(w.location||'').toUpperCase());
     rows+=row('Temperature',w.temp_c+'°C');
     rows+=row('Feels Like',w.feels_like_c+'°C');
@@ -237,9 +318,9 @@ function openModal(type){
     rows+=sec('META');
     rows+=row('Updated',w.updated_at||'--');
     rows+=row('Age',(w.age_min||0)+' min');
+    rows+=_farmHealthHTML||'';   // inject cached farm health in the same atomic render
     el('modal-wx-body').innerHTML=rows;
-    // Load NDVI + soil trend async into modal
-    _loadFarmHealth(el('modal-wx-body'));
+    if(!_farmHealthHTML)_loadFarmHealth(el('modal-wx-body'));   // fetch once; cached thereafter
     show('modal-weather');
   }else if(type==='guardian'&&last.guardian){
     const g=last.guardian;
@@ -266,7 +347,7 @@ function openModal(type){
       const fixableCount=_threatPatterns.filter(Boolean).length;
       html+=`<div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 4px">`;
       html+=`<div style="font-size:9px;letter-spacing:3px;color:var(--dim)">THREAT DETAILS</div>`;
-      if(fixableCount)html+=`<button class="panel-btn" id="fix-all-btn" style="margin:0;font-size:8px;padding:3px 8px;letter-spacing:2px" onclick="fixAllThreatPatterns()">⚡ FIX ALL (${fixableCount})</button>`;
+      if(fixableCount)html+=`<button class="panel-btn" id="fix-all-btn" title="Add all ${fixableCount} detected attack patterns to the request firewall (security/patterns.json) so they are blocked from now on." style="margin:0;font-size:8px;padding:3px 8px;letter-spacing:2px" onclick="fixAllThreatPatterns()">⚡ FIX ALL (${fixableCount})</button>`;
       html+=`</div>`;
       g.threat.items.forEach((t,i)=>{
         const hasFix=!!t.pattern;
@@ -276,7 +357,7 @@ function openModal(type){
         html+=`<span class="tacc-arrow${isOpen?' open':''}" id="tarr-${i}">▶</span>`;
         html+=`<span class="sev HIGH" style="margin:0 6px;font-size:8px">${(t.type||'threat').toUpperCase()}</span>`;
         html+=`<span style="color:var(--dim);font-size:9px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.id||''} — ${(t.title||'').substring(0,55)}</span>`;
-        if(hasFix)html+=`<button class="fix-btn panel-btn" id="fbtn-${i}" style="margin:0;font-size:8px;padding:2px 7px;letter-spacing:1px;flex-shrink:0" onclick="event.stopPropagation();fixThreatAt(${i})">FIX</button>`;
+        if(hasFix)html+=`<button class="fix-btn panel-btn" id="fbtn-${i}" title="Block this attack pattern: adds it to the request firewall (security/patterns.json) so matching requests are rejected going forward." style="margin:0;font-size:8px;padding:2px 7px;letter-spacing:1px;flex-shrink:0" onclick="event.stopPropagation();fixThreatAt(${i})">FIX</button>`;
         html+=`</div>`;
         html+=`<div class="threat-acc-body" id="tbody-${i}" style="display:${isOpen?'block':'none'}">`;
         html+=`<div class="msg" style="font-size:10px;margin-bottom:6px">${t.title||''}</div>`;
@@ -293,7 +374,14 @@ function openModal(type){
     if(g.audit.issues&&g.audit.issues.length){
       html+=sec('CODE ISSUES');
       g.audit.issues.forEach((iss,issIdx)=>{
-        html+=`<div class="issue-row"><div class="sev ${iss.severity}">${iss.severity}</div><div class="loc">${iss.file||''}${iss.line?':'+iss.line:''}</div><div class="msg">${(iss.issue||iss.message||'').substring(0,120)}</div><button class="fix-btn panel-btn" id="audit-fix-${issIdx}" style="margin:0;font-size:8px;padding:2px 7px;letter-spacing:1px;flex-shrink:0" onclick="event.stopPropagation();fixAuditIssue(${issIdx})">FIX</button></div>`;
+        const blocked=(iss.severity||'').toUpperCase()==='CRITICAL'||(iss.severity||'').toUpperCase()==='HIGH';
+        const remedy=_auditRemedy(iss);
+        // MUTE adds # nosec (suppresses the warning); it does not remediate code,
+        // so CRITICAL/HIGH findings can't be muted — they must be fixed in code.
+        const btn=blocked
+          ?`<button class="fix-btn panel-btn" id="audit-fix-${issIdx}" disabled title="${_attr(`Cannot mute a ${iss.severity} finding — fix it in code.\nHow: ${remedy}`)}" style="margin:0;font-size:8px;padding:2px 7px;letter-spacing:1px;flex-shrink:0;opacity:.5;cursor:not-allowed">FIX IN CODE</button>`
+          :`<button class="fix-btn panel-btn" id="audit-fix-${issIdx}" title="${_attr(`MUTE: appends # nosec to silence this ${iss.severity} linter warning. It does NOT change behaviour.\nProper fix: ${remedy}`)}" style="margin:0;font-size:8px;padding:2px 7px;letter-spacing:1px;flex-shrink:0" onclick="event.stopPropagation();fixAuditIssue(${issIdx})">MUTE</button>`;
+        html+=`<div class="issue-row"><div class="sev ${iss.severity}">${iss.severity}</div><div class="loc">${iss.file||''}${iss.line?':'+iss.line:''}</div><div class="msg">${(iss.issue||iss.message||'').substring(0,120)}</div>${btn}</div>`;
       });
     }
     if(g.schedule&&g.schedule.length){
@@ -303,7 +391,7 @@ function openModal(type){
       html+='</table>';
     }
     html+=sec('UPGRADE');
-    html+=`<button class="panel-btn" style="margin:0;font-size:9px;letter-spacing:2px" onclick="runUpgrade()">⬆ UPGRADE PACKAGES NOW</button><div class="upg-result" id="upg-result" style="display:none"></div>`;
+    html+=`<button class="panel-btn" title="Upgrade outdated pip packages to their latest versions (general maintenance, not CVE-targeted). Also lists apt updates to apply manually with sudo." style="margin:0;font-size:9px;letter-spacing:2px" onclick="runUpgrade()">⬆ UPGRADE PACKAGES NOW</button><div class="upg-result" id="upg-result" style="display:none"></div>`;
     el('modal-g-body').innerHTML=html;
     show('modal-guardian');
   }

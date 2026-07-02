@@ -2,6 +2,9 @@ const _PL={};          // {panelId: {x,y,w,h,z}}
 let _maxZ=20, _drag=null, _dragMoved=false;
 const _PMIN_W=160, _PMIN_H=80;
 const _LSKEY='gk_panel_layout_v2';
+const _LSKEY_VP='gk_panel_vp_v2';   // viewport the saved layout was built for
+const _gridH=()=>window.innerHeight-44;
+let _vpW=window.innerWidth, _vpH=_gridH();   // viewport the current _PL geometry fits
 
 function _defaultLayout(){
   const W=window.innerWidth, H=window.innerHeight-44;
@@ -37,23 +40,48 @@ function _bringToFront(id){
 }
 
 function _savePanelLayout(){
-  try{localStorage.setItem(_LSKEY,JSON.stringify(_PL))}catch(e){}
+  try{
+    localStorage.setItem(_LSKEY,JSON.stringify(_PL));
+    localStorage.setItem(_LSKEY_VP,JSON.stringify({w:_vpW,h:_vpH}));
+  }catch(e){}
+}
+
+// Scale every panel's geometry proportionally to the current viewport, so the
+// grid stays full-bleed on fullscreen (F11) / window resize instead of leaving
+// dead space. Preserves user drag/resize since it scales whatever is in _PL.
+function _rescaleLayout(){
+  const newW=window.innerWidth, newH=_gridH();
+  if(newW<=0||newH<=0||(_vpW===newW&&_vpH===newH))return;
+  const rx=newW/_vpW, ry=newH/_vpH;
+  for(const id of Object.keys(_PL)){
+    const p=_PL[id];
+    p.x*=rx; p.w=Math.max(_PMIN_W,p.w*rx);
+    p.y*=ry; p.h=Math.max(_PMIN_H,p.h*ry);
+    _applyPanel(id);
+  }
+  _vpW=newW; _vpH=newH;
+  _savePanelLayout();
 }
 
 function _initPanelLayout(){
   const defs=_defaultLayout();
   let saved={};
   try{saved=JSON.parse(localStorage.getItem(_LSKEY)||'{}')}catch(e){}
+  // viewport the saved layout was last built for (default to current → no scaling on first visit)
+  try{const v=JSON.parse(localStorage.getItem(_LSKEY_VP)||'null');if(v&&v.w>0&&v.h>0){_vpW=v.w;_vpH=v.h;}}catch(e){}
   for(const id of Object.keys(defs)){
     const s=saved[id];
     _PL[id]=s&&typeof s.x==='number'?{x:s.x,y:s.y,w:Math.max(_PMIN_W,s.w),h:Math.max(_PMIN_H,s.h),z:s.z||10}:{...defs[id]};
     _applyPanel(id);
   }
   _maxZ=Math.max(20,...Object.values(_PL).map(p=>p.z||10));
+  _rescaleLayout();   // fit current viewport (handles loading at a different size than saved)
 }
 
 function resetPanelLayout(){
   localStorage.removeItem(_LSKEY);
+  localStorage.removeItem(_LSKEY_VP);
+  _vpW=window.innerWidth; _vpH=_gridH();
   const defs=_defaultLayout();
   for(const id of Object.keys(defs)){_PL[id]={...defs[id]};_applyPanel(id);}
   _savePanelLayout();
@@ -103,6 +131,10 @@ document.addEventListener('click',e=>{
     _dragMoved=false;
   }
 },true);
+
+// Reflow on viewport change (F11 fullscreen, window resize) — debounced.
+let _resizeT=null;
+window.addEventListener('resize',()=>{clearTimeout(_resizeT);_resizeT=setTimeout(_rescaleLayout,120);});
 
 _initPanelLayout();
 

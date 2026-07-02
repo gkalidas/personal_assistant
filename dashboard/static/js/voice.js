@@ -43,7 +43,7 @@ async function voiceStart(){
     const sr=await _wavRec.start();
     _voiceActive=true;
     el('voice-status').textContent='RECORDING… ('+(sr/1000).toFixed(0)+'kHz)';
-    const btn=el('voice-btn');btn.textContent='⏹ STOP';btn.classList.add('recording');
+    const btn=el('voice-btn');btn.textContent='⏹';btn.title='Stop recording';btn.classList.add('recording');
     el('voice-transcript').style.display='none';el('voice-response').style.display='none';
     el('voice-level').style.display='block';
     _lvTimer=setInterval(()=>{const r=_wavRec?_wavRec.getRMS():0;el('voice-level-bar').style.width=Math.min(100,r*200)+'%'},80);
@@ -61,7 +61,7 @@ function voiceStop(){
   let blob;
   try{blob=_wavRec.stop()}catch(e){el('voice-status').textContent='STOP ERROR: '+e;return}
   _wavRec=null;_voiceActive=false;
-  const btn=el('voice-btn');btn.textContent='🎤 SPEAK';btn.classList.remove('recording');btn.disabled=true;
+  const btn=el('voice-btn');btn.textContent='🎤';btn.title='Click to speak';btn.classList.remove('recording');btn.disabled=true;
   el('voice-status').textContent='TRANSCRIBING…';
   voiceSend(blob);
 }

@@ -1,4 +1,4 @@
-let _diaryDrafts=[],_bookPages=[],_bookPage=0;
+let _diaryDrafts=[],_bookPages=[],_bookPage=0,_diaryQuestions=[];
 
 async function loadDiaryList(){
   try{const r=await fetch('/api/diary/drafts');_diaryDrafts=await r.json();renderDiaryPanel()}
@@ -20,28 +20,45 @@ async function loadDiaryQuestions(){
   try{
     const r=await fetch('/api/diary/questions');
     const qs=await r.json();
+    _diaryQuestions=qs;
     const box=el('diary-questions');
     if(!box)return;
     if(!qs.length){box.style.display='none';return;}
     box.style.display='';
     let html='';
-    for(const q of qs.slice(0,4)){
+    for(const q of qs){
       const photo=q.photo_path?q.photo_path.split('/').pop():'';
       const label=photo?`<span style="color:#4a2a6a">${photo}</span> — `:'';
       html+=`<div class="dq-item"><div class="dq-dot"></div><div class="dq-text">${label}${q.question}</div><button class="dq-answer-btn" onclick="event.stopPropagation();answerDiaryQuestion(${q.id})">ANSWER</button></div>`;
     }
-    if(qs.length>4)html+=`<div style="font-size:8px;letter-spacing:1px;color:#4a2a6a;padding:2px 6px">+${qs.length-4} more questions…</div>`;
     box.innerHTML=html;
   }catch(e){}
 }
 
-async function answerDiaryQuestion(qid){
-  const ans=prompt('Your answer:');
-  if(!ans||!ans.trim())return;
+let _diaryAnswerQid=null;
+function diaryAnswerGrow(ta){ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,window.innerHeight*0.5)+'px'}
+function answerDiaryQuestion(qid){
+  _diaryAnswerQid=qid;
+  const q=(_diaryQuestions||[]).find(x=>x.id===qid);
+  const ta=el('diary-answer-input');
+  el('diary-answer-q').textContent=q?q.question:'';
+  ta.value='';
+  el('overlay').classList.add('open');
+  el('modal-diary-answer').classList.add('open');
+  setTimeout(()=>{diaryAnswerGrow(ta);ta.focus()},0);
+}
+async function submitDiaryAnswer(){
+  const ta=el('diary-answer-input'),btn=el('diary-answer-save');
+  const ans=(ta.value||'').trim();
+  if(!ans)return;
+  if(_diaryAnswerQid==null){closeModal();return}
+  btn.disabled=true;btn.textContent='SAVING…';
   try{
-    await fetch(`/api/diary/questions/${qid}/answer`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answer:ans.trim()})});
+    await fetch(`/api/diary/questions/${_diaryAnswerQid}/answer`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answer:ans})});
+    closeModal();
     loadDiaryQuestions();
   }catch(e){}
+  finally{btn.disabled=false;btn.textContent='SAVE ANSWER'}
 }
 
 async function writeDiaryFromPhotos(){

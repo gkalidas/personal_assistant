@@ -24,7 +24,15 @@ async function _loadNdviPanel(){
   }catch(e){}
 }
 
+let _farmHealthHTML='';   // session cache — avoids re-fetch/pop-in on every modal re-render
+
 async function _loadFarmHealth(container){
+  // Already fetched this session: inject cached markup synchronously, no network churn.
+  if(_farmHealthHTML){
+    if(container&&!container.querySelector('.farm-health'))
+      container.insertAdjacentHTML('beforeend',_farmHealthHTML);
+    return;
+  }
   try{
     const [ndviR,soilR]=await Promise.all([
       fetch('/api/farming/ndvi'),
@@ -59,7 +67,11 @@ async function _loadFarmHealth(container){
       }
       html+='</table>';
     }
-    if(html)container.insertAdjacentHTML('beforeend',html);
+    if(html){
+      _farmHealthHTML='<div class="farm-health">'+html+'</div>';
+      if(container&&!container.querySelector('.farm-health'))
+        container.insertAdjacentHTML('beforeend',_farmHealthHTML);
+    }
   }catch(e){}
 }
 

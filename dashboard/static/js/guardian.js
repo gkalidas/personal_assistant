@@ -41,16 +41,24 @@ function showCodeReport(d){
 async function triggerUpdate(){
   const btn=el('g-upd-btn');
   btn.disabled=true;btn.className='panel-btn running';btn.textContent='⬆ …';
+  const reset=(label,ms)=>{btn.className='panel-btn';btn.textContent=label;setTimeout(()=>{btn.textContent='⬆ UPDATE';btn.disabled=false},ms||3000)};
   try{
-    await fetch('/api/guardian/patch',{method:'POST'});
-    // Poll until guardian data refreshes (max 30s)
-    let attempts=0;
-    const poll=setInterval(async()=>{
-      attempts++;
-      try{const r=await fetch('/api/data');const d=await r.json();if(d.guardian){last.guardian=d.guardian;renderGuardian(d.guardian)}}catch(_){}
-      if(attempts>=15){clearInterval(poll);btn.className='panel-btn';btn.textContent='⬆ DONE';setTimeout(()=>{btn.textContent='⬆ UPDATE';btn.disabled=false},2000)}
-    },2000);
-  }catch(e){btn.className='panel-btn';btn.textContent='⬆ ERR';setTimeout(()=>{btn.textContent='⬆ UPDATE';btn.disabled=false},2000)}
+    // Synchronous scan + patch of every available safe fix; returns real summary.
+    const r=await fetch('/api/guardian/patch',{method:'POST'});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||d.status==='error'){reset('⬆ ERR');return}
+    // Refresh guardian panel with the post-patch state.
+    try{const rd=await fetch('/api/data');const gd=await rd.json();if(gd.guardian){last.guardian=gd.guardian;renderGuardian(gd.guardian)}}catch(_){}
+    const patched=(d.patched||[]).length;
+    const manual=(d.manual||[]).length;
+    let label,title;
+    if(patched){label=`⬆ ✓${patched}`;title=`Patched: ${d.patched.join(', ')}`+(manual?` · manual: ${d.manual.join(', ')}`:'');}
+    else if(manual){label='⬆ MANUAL';title=`Needs manual review: ${d.manual.join(', ')}`;}
+    else if(d.vuln_total){label='⬆ NO FIX';title=`${d.vuln_total} vuln(s) found, no safe auto-fix available`;}
+    else{label='⬆ CLEAN';title='No vulnerabilities found';}
+    btn.title=title;
+    reset(label,4000);
+  }catch(e){reset('⬆ ERR')}
 }
 
 // ── Threat accordion ──────────────────────────────────────────────────────────
@@ -154,13 +162,16 @@ async function fixAuditIssue(idx){
   const iss=(last.guardian?.audit?.issues||[])[idx];
   if(!iss)return;
   const btn=el('audit-fix-'+idx);
-  if(btn){btn.textContent='FIXING…';btn.disabled=true;btn.classList.add('running');}
+  if(btn){btn.textContent='MUTING…';btn.disabled=true;btn.classList.add('running');}
   try{
+    // Adds # nosec to suppress the bandit warning — does not remediate the code.
     const r=await fetch('/api/guardian/fix-audit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({issue:iss})});
-    const d=await r.json();
+    const d=await r.json().catch(()=>({}));
     if(d.ok){
-      if(btn){btn.textContent='✓ FIXED';btn.classList.remove('running');btn.style.color='var(--green)';btn.style.borderColor='var(--green)';}
+      if(btn){btn.textContent='✓ MUTED';btn.classList.remove('running');btn.style.color='var(--green)';btn.style.borderColor='var(--green)';}
       setTimeout(async()=>{try{const rd=await fetch('/api/data');const gd=await rd.json();if(gd.guardian){last.guardian=gd.guardian;renderGuardian(gd.guardian)}}catch(_){}},2000);
+    }else if(d.blocked){
+      if(btn){btn.textContent='FIX IN CODE';btn.classList.remove('running');btn.title=d.error||'Must be fixed in code';}
     }else{
       if(btn){btn.textContent='ERR';btn.disabled=false;btn.classList.remove('running');}
     }
