@@ -9,7 +9,7 @@ import logging
 import time
 import httpx
 
-from core.config import OLLAMA_URL, ROUTER_MODEL
+from core.config import OLLAMA_URL, ROUTER_MODEL, CHAT_KEEP_ALIVE
 from core.base_module import BaseModule, ModuleResponse
 
 log = logging.getLogger(__name__)
@@ -130,6 +130,7 @@ def route(query: str, modules: dict[str, BaseModule]) -> list[str]:
         ],
         "stream": False,
         "format": "json",
+        "keep_alive": CHAT_KEEP_ALIVE,   # keep the tiny router model warm between queries
     }
 
     t0 = time.monotonic()

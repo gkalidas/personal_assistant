@@ -26,11 +26,11 @@ import logging
 import sys
 import threading
 import time
-from typing import Optional
+from typing import Iterator, Optional
 
 import httpx
 
-from core.config import OLLAMA_URL, TEXT_MODEL, FALLBACK_MODEL
+from core.config import OLLAMA_URL, TEXT_MODEL, FALLBACK_MODEL, CHAT_KEEP_ALIVE
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +86,7 @@ def call(
     format: Optional[str] = None,
     think: bool = False,
     use_fallback: bool = True,
+    options: Optional[dict] = None,
 ) -> str:
     """
     Call Ollama. Returns full response text.
@@ -100,6 +101,9 @@ def call(
         "json" forces non-streaming + JSON output schema.
     use_fallback : bool
         Retry with FALLBACK_MODEL if primary fails.
+    options : dict | None
+        Extra Ollama sampling options (e.g. {"num_predict": 256}) to cap
+        generation length and speed up short replies.
     """
     mdl = model or TEXT_MODEL
     do_stream = stream_to_stdout and not format   # can't stream + json reliably
@@ -109,9 +113,14 @@ def call(
         "messages": messages,
         "stream": do_stream,
         "think": think,
+        # Hold the model resident between calls so intermittent chats don't pay a
+        # cold reload (Ollama's default keep_alive is only 5m).
+        "keep_alive": CHAT_KEEP_ALIVE,
     }
     if format:
         payload["format"] = format
+    if options:
+        payload["options"] = options
 
     return _call_with_fallback(payload, do_stream, prefix, timeout, use_fallback)
 
@@ -151,11 +160,8 @@ def _dispatch(payload: dict, do_stream: bool, prefix: str, timeout: float) -> st
     return resp.json()["message"]["content"]
 
 
-def _stream(payload: dict, prefix: str, timeout: float) -> str:
-    """Stream Ollama SSE, print live, return accumulated text."""
-    if prefix:
-        print(prefix, end="", flush=True)
-    parts: list[str] = []
+def _iter_stream(payload: dict, timeout: float) -> Iterator[str]:
+    """Yield content tokens from an Ollama streaming chat response."""
     with httpx.stream(
         "POST", f"{OLLAMA_URL}/api/chat", json=payload, timeout=timeout
     ) as r:
@@ -169,14 +175,47 @@ def _stream(payload: dict, prefix: str, timeout: float) -> str:
                 continue
             token = chunk.get("message", {}).get("content", "")
             if token:
-                sys.stdout.write(token)
-                sys.stdout.flush()
-                parts.append(token)
+                yield token
             if chunk.get("done"):
                 break
+
+
+def _stream(payload: dict, prefix: str, timeout: float) -> str:
+    """Stream Ollama SSE, print live, return accumulated text."""
+    if prefix:
+        print(prefix, end="", flush=True)
+    parts: list[str] = []
+    for token in _iter_stream(payload, timeout):
+        sys.stdout.write(token)
+        sys.stdout.flush()
+        parts.append(token)
     sys.stdout.write("\n")
     sys.stdout.flush()
     return "".join(parts)
+
+
+def stream_tokens(
+    messages: list[dict],
+    model: Optional[str] = None,
+    timeout: float = 120.0,
+    think: bool = False,
+    options: Optional[dict] = None,
+) -> Iterator[str]:
+    """Yield reply tokens as they arrive from Ollama.
+
+    For web/SSE callers that forward tokens to the browser. Unlike call(), this
+    does no stdout printing and no fallback — the caller handles errors mid-stream.
+    """
+    payload: dict = {
+        "model": model or TEXT_MODEL,
+        "messages": messages,
+        "stream": True,
+        "think": think,
+        "keep_alive": CHAT_KEEP_ALIVE,
+    }
+    if options:
+        payload["options"] = options
+    yield from _iter_stream(payload, timeout)
 
 
 # ── Uncertainty check ─────────────────────────────────────────────────────────

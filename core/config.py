@@ -11,6 +11,11 @@ TEXT_MODEL     = os.getenv("TEXT_MODEL",      "qwen3:1.7b")
 ROUTER_MODEL   = os.getenv("ROUTER_MODEL",    "qwen2.5:0.5b")
 FALLBACK_MODEL = os.getenv("FALLBACK_MODEL",  "qwen2.5:3b")   # backup when TEXT_MODEL fails
 VISION_MODEL   = os.getenv("VISION_MODEL",    "moondream")
+# How long Ollama holds the chat/router models resident after a request. Without
+# this, Ollama's 5-minute default unloads them, so any chat after a short idle
+# gap pays a full cold reload — the dominant cause of a "slow" first reply. 30m
+# keeps the small qwen models warm across typical bursts of conversation.
+CHAT_KEEP_ALIVE = os.getenv("CHAT_KEEP_ALIVE", "30m")
 # Vision captioning is slow to COLD-LOAD (~100s for moondream on CPU) but fast
 # once warm (~6s). The timeout must exceed a cold load or the request is
 # abandoned mid-load and the model never warms up (a timeout death-spiral).
