@@ -20,28 +20,16 @@ log = logging.getLogger("gk.main")
 
 import httpx
 from core import memory
-from core.config import OLLAMA_URL, TEXT_MODEL
+from core.config import OLLAMA_URL, TEXT_MODEL, UNCERTAINTY_SEARCH_FALLBACK
 from core.router import dispatch, ROUTER_MODEL
 from core.sanitizer import sanitize_input, redact_pii
 from core.doc_reader import read_document, describe as doc_describe
 from core.llm import Spinner, is_uncertain, is_data_operation
 from core.mistake_log import ensure_table as _ensure_mistake_log, log_mistake
-from modules.finance.module import FinanceModule
-from modules.farming.module import FarmingModule
-from modules.health.module import HealthModule
-from modules.system.module import SystemModule
-from modules.diary.module import DiaryModule
-from modules.search.module import SearchModule
+from core.registry import build_modules
 
 
-MODULES = {
-    "finance": FinanceModule(),
-    "farming": FarmingModule(),
-    "health":  HealthModule(),
-    "system":  SystemModule(),
-    "diary":   DiaryModule(),
-    "search":  SearchModule(),
-}
+MODULES = build_modules()
 
 
 def _warmup_models() -> None:
@@ -235,24 +223,29 @@ def main():
         log.info("response id=%d modules=%s latency=%dms",
                  event_id, [r.module for r in responses], latency_ms)
 
-        # ── Uncertainty fallback → search ─────────────────────────────────────
-        augmented = []
-        for r in responses:
-            augmented.append(r)
-            if (is_uncertain(r.text) and r.module != "search"
-                    and not is_data_operation(query)):
-                log_mistake("uncertain_response", query=redact_pii(query),
-                            module=r.module, details=r.text[:200], severity="medium")
-                log.info("uncertain response from %s — triggering search fallback", r.module)
-                try:
-                    from modules.search.module import SearchModule
-                    search_r = SearchModule().handle(query, context)
-                    search_r.text = "[Search fallback]\n" + search_r.text
-                    augmented.append(search_r)
-                    log_mistake("search_fallback", query=redact_pii(query),
-                                module=r.module, severity="low")
-                except Exception as se:
-                    log.error("search fallback failed: %s", se)
+        # ── Uncertainty fallback → search (opt-in) ────────────────────────────
+        # Default OFF: one query → one module's output (UNCERTAINTY_SEARCH_FALLBACK).
+        # When enabled, an uncertain reply ("I don't know") triggers an extra web
+        # search appended as a second block.
+        augmented = list(responses)
+        if UNCERTAINTY_SEARCH_FALLBACK:
+            augmented = []
+            for r in responses:
+                augmented.append(r)
+                if (is_uncertain(r.text) and r.module != "search"
+                        and not is_data_operation(query)):
+                    log_mistake("uncertain_response", query=redact_pii(query),
+                                module=r.module, details=r.text[:200], severity="medium")
+                    log.info("uncertain response from %s — triggering search fallback", r.module)
+                    try:
+                        from modules.search.module import SearchModule
+                        search_r = SearchModule().handle(query, context)
+                        search_r.text = "[Search fallback]\n" + search_r.text
+                        augmented.append(search_r)
+                        log_mistake("search_fallback", query=redact_pii(query),
+                                    module=r.module, severity="low")
+                    except Exception as se:
+                        log.error("search fallback failed: %s", se)
 
         print_response(augmented)
 
