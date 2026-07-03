@@ -5,6 +5,7 @@ Override any value by setting the corresponding environment variable.
 """
 
 import os
+from pathlib import Path
 
 OLLAMA_URL     = os.getenv("OLLAMA_URL",      "http://localhost:11434")
 TEXT_MODEL     = os.getenv("TEXT_MODEL",      "qwen2.5:1.5b")  # faster + better persona/multilingual than qwen3:1.7b (benchmarked)
@@ -40,6 +41,10 @@ DIGEST_EMAIL_PASS  = os.getenv("DIGEST_EMAIL_PASS",  "")
 
 # SearXNG self-hosted search (optional — empty = use DDGS)
 SEARXNG_URL        = os.getenv("SEARXNG_URL",        "").rstrip("/")
+
+# Local music collection the assistant scans and plays before searching online.
+# Drop audio files (optionally in genre subfolders like ghazals/, sufi/) here.
+MUSIC_DIR          = os.getenv("MUSIC_DIR", str(Path.home() / "Music" / "gk"))
 
 # When a module's reply looks uncertain ("I don't know"), optionally run a web
 # search and append its result as a second block. Default OFF so one query →
