@@ -67,6 +67,9 @@ MIN_INTERVAL = {
     "diary_caption":    2 * 3600,   # every 2h check — HEAVY (moondream ~1min/photo);
                                     # idle-gated, forced after 6h so a backlog isn't
                                     # stuck forever. Cheap no-op when no new photos.
+    "personal_scan":    4 * 3600,   # every 4h check — mine new chats for the user's
+                                    # tastes + refresh their "top X" lists. Cheap
+                                    # no-op when no new messages (cursor-tracked).
 }
 
 # Cool-down between back-to-back tasks (seconds).
@@ -382,6 +385,27 @@ def task_diary_caption() -> dict:
     return result
 
 
+def task_personal_scan() -> dict:
+    """Mine new chats for the user's tastes and pre-fetch their recommendation lists.
+
+    Idle-scheduled and cheap: reads only chat events newer than a saved cursor, so a
+    run with no new messages is a no-op. After learning a new content taste it
+    refreshes the cached "top X" lists so a later request is served instantly.
+    """
+    from modules.personal.module import scan_recent_chats, refresh_content_lists
+
+    log.info("=== Personal preference scan (idle-scheduled) ===")
+    scan = scan_recent_chats()
+    if scan["learned"]:
+        log.info("  learned %d preference(s): %s", len(scan["learned"]), scan["learned"])
+    else:
+        log.info("  scanned %d message(s) — no new preferences.", scan["scanned"])
+    lists = refresh_content_lists()
+    if lists["refreshed"]:
+        log.info("  refreshed lists: %s", lists["refreshed"])
+    return {"scan": scan, "lists": lists}
+
+
 _FULL_SCAN_TASKS = [
     ("anomaly_detect",  task_anomaly_detect),
     ("pattern_update",  task_pattern_update),
@@ -505,6 +529,7 @@ def _run_one(name: str) -> None:
         "vuln_scan":       lambda: task_vuln_scan(auto_patch=True),
         "code_audit":      task_code_audit,
         "diary_caption":   task_diary_caption,
+        "personal_scan":   task_personal_scan,
     }
     fn = fn_map.get(name)
     if fn is None:

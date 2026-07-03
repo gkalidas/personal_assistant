@@ -26,6 +26,7 @@ _INTERVALS = {
     "threat_intel":    12 * 3600,
     "vuln_scan":       24 * 3600,
     "code_audit":       7 * 86400,
+    "personal_scan":    4 * 3600,
 }
 
 

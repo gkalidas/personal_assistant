@@ -12,7 +12,7 @@ from core.base_module import BaseModule
 # Canonical module names, in registry order. Kept as a cheap constant so callers
 # (e.g. the dashboard service-health panel) can list modules without paying the
 # cost of importing/instantiating them. build_modules() asserts it stays in sync.
-MODULE_NAMES = ("finance", "farming", "health", "system", "diary", "search", "todo", "general", "code")
+MODULE_NAMES = ("finance", "farming", "health", "system", "diary", "search", "todo", "general", "code", "personal")
 
 
 def build_modules() -> dict[str, BaseModule]:
@@ -30,6 +30,7 @@ def build_modules() -> dict[str, BaseModule]:
     from modules.todo.module import TodoModule
     from modules.general.module import GeneralModule
     from modules.code.module import CodeModule
+    from modules.personal.module import PersonalModule
 
     modules = {
         "finance": FinanceModule(),
@@ -41,6 +42,7 @@ def build_modules() -> dict[str, BaseModule]:
         "todo":    TodoModule(),
         "general": GeneralModule(),
         "code":    CodeModule(),
+        "personal": PersonalModule(),
     }
     assert tuple(modules) == MODULE_NAMES, "MODULE_NAMES out of sync with build_modules()"
     return modules

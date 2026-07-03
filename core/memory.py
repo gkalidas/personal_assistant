@@ -32,6 +32,101 @@ def update_profile(key: str, value: Any) -> None:
     save_profile(profile)
 
 
+# ── Personal preferences (learned likes: music, food, colour, …) ──────────────
+# Stored under a "personal" block in the profile so they sit alongside the user's
+# other personal information and stay human-readable/editable. Each entry is
+# {value, source, updated} where source ∈ {"stated","asked","chat"} records how we
+# learned it (volunteered in chat / answered when asked / recovered from history).
+
+def get_personal_prefs() -> dict[str, Any]:
+    """Return all learned personal preferences (empty dict if none)."""
+    return load_profile().get("personal", {}) or {}
+
+
+def get_personal_pref(category: str) -> dict | None:
+    """Return one preference entry {value, source, updated}, or None if unknown."""
+    return get_personal_prefs().get(category.strip().lower())
+
+
+def set_personal_pref(category: str, value: str, source: str = "stated") -> None:
+    """Store/overwrite a personal preference and persist it to the profile."""
+    profile = load_profile()
+    personal = profile.get("personal") or {}
+    personal[category.strip().lower()] = {
+        "value": value.strip(),
+        "source": source,
+        "updated": datetime.now().isoformat(),
+    }
+    profile["personal"] = personal
+    save_profile(profile)
+
+
+# ── Learned content lists (pre-fetched "top X" for a known taste) ─────────────
+# When the idle scan discovers a content preference (e.g. music=ghazals), the
+# personal module pre-fetches a "top ghazals" list and caches it here so a later
+# "list of top ghazals" is served instantly instead of hitting the web. Stored per
+# category under a "personal_lists" block: {items, query, source, updated}.
+
+def get_personal_list(category: str) -> dict | None:
+    """Return the cached list for a category {items, query, source, updated}, or None."""
+    return (load_profile().get("personal_lists") or {}).get(category.strip().lower())
+
+
+def set_personal_list(category: str, items: list[str],
+                      query: str = "", source: str = "prefetch") -> None:
+    """Store/overwrite a pre-fetched content list for a category and persist it."""
+    profile = load_profile()
+    lists = profile.get("personal_lists") or {}
+    lists[category.strip().lower()] = {
+        "items": items,
+        "query": query,
+        "source": source,
+        "updated": datetime.now().isoformat(),
+    }
+    profile["personal_lists"] = lists
+    save_profile(profile)
+
+
+# ── Chat scan cursor (idle preference mining) ─────────────────────────────────
+# The idle scan only reads events newer than this id, so each run does bounded
+# work (usually none). Persisted in the profile so it survives daemon restarts.
+
+def get_personal_scan_cursor() -> int:
+    """Return the highest event id the idle preference scan has already processed."""
+    try:
+        return int(load_profile().get("_personal_scan_cursor") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def set_personal_scan_cursor(event_id: int) -> None:
+    """Advance the idle-scan cursor to the newest event id it just processed."""
+    update_profile("_personal_scan_cursor", int(event_id))
+
+
+# ── Pending personal question (multi-turn "ask then capture the reply") ────────
+# When GK asks the user about an unknown preference, it records the category here
+# so the next message (often a bare answer like "jazz") is captured as the answer
+# instead of being routed as a fresh query. Kept in the profile so it survives a
+# process restart between the question and the reply.
+
+def set_pending_personal(category: str) -> None:
+    """Record that GK is waiting for the user to answer about `category`."""
+    update_profile("_pending_personal", category.strip().lower())
+
+
+def get_pending_personal() -> str | None:
+    """Return the category GK is awaiting an answer for, or None."""
+    return load_profile().get("_pending_personal") or None
+
+
+def clear_pending_personal() -> None:
+    """Clear the pending personal question flag."""
+    profile = load_profile()
+    if profile.pop("_pending_personal", None) is not None:
+        save_profile(profile)
+
+
 # ── Events DB (ground truth) ──────────────────────────────────────────────────
 
 def _conn() -> sqlite3.Connection:
@@ -159,6 +254,20 @@ def recent_events(module: str | None = None, limit: int = 10) -> list[dict]:
             rows = conn.execute(
                 "SELECT * FROM events ORDER BY ts DESC LIMIT ?", (limit,)
             ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def events_since_id(last_id: int, limit: int = 500) -> list[dict]:
+    """Return chat events with id greater than last_id (oldest first), capped at limit.
+
+    Used by the idle personal scan to process only messages it hasn't seen yet, so a
+    run with no new chats is a cheap no-op.
+    """
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM events WHERE id > ? ORDER BY id LIMIT ?",
+            (last_id, limit),
+        ).fetchall()
     return [dict(r) for r in rows]
 
 

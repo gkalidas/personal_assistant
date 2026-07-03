@@ -79,6 +79,7 @@ kg._DB = Path(_GK_DB)
 # core.memory reads GK_DB at import time — patch it too if already imported
 import core.memory as _mem
 _mem.GK_DB = _GK_DB
+_mem.init_db()   # create events/diary/processed_photos/diary_questions in the test DB
 kg.init_graph_tables()
 
 # ── Test record infrastructure ────────────────────────────────────────────────
@@ -1126,6 +1127,144 @@ else:
     llm_mod(hm,   "what should I eat to control blood pressure?","S19-C01", "complex", "")
     llm_mod(fm,   "earned 45000 from pomegranate sale today",   "S19-C02", "complex", "Logged")
     llm_mod(farm, "log 250g copper spray on north_field, cost 420 rupees","S19-C03","complex","Spray")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# S20 — Personal Preferences (learned likes: music/food/colour …)
+# ══════════════════════════════════════════════════════════════════════════════
+section("S20", "Personal Preferences")
+
+# CRITICAL: preferences persist to user_profile.json via core.memory.PROFILE_PATH.
+# Redirect it to a temp file so tests never clobber the real profile.
+_mem.PROFILE_PATH = Path(_TMP) / "test_profile.json"
+
+from core.memory import (
+    set_personal_pref, get_personal_pref, get_personal_prefs,
+    set_pending_personal, get_pending_personal, clear_pending_personal,
+)
+from modules.personal.module import PersonalModule
+
+_pm = PersonalModule()
+
+# Easy: store + recall round-trip via memory helpers (no LLM).
+chk("S20-E01", "set_personal_pref music",
+    lambda: set_personal_pref("music", "jazz", "stated") or True,
+    difficulty="easy", expect=True)
+chk("S20-E02", "get_personal_pref music value",
+    lambda: get_personal_pref("music")["value"], difficulty="easy", expect="jazz")
+chk("S20-E03", "get_personal_pref unknown → None",
+    lambda: get_personal_pref("nonsense") is None, difficulty="easy", expect=True)
+chk("S20-E04", "category normalised to lowercase",
+    lambda: get_personal_pref("MUSIC")["value"], difficulty="easy", expect="jazz")
+
+# Medium: pending question flag + router intercept + capture.
+chk("S20-M01", "set/get pending personal",
+    lambda: (set_pending_personal("food"), get_pending_personal())[1],
+    difficulty="medium", expect="food")
+from core.router import route as _route
+chk("S20-M02", "pending routes next msg → personal",
+    lambda: _route("spicy biryani", {"personal": _pm, "general": _pm}),
+    difficulty="medium", expect=["personal"])
+chk("S20-M03", "pending capture stores the answer",
+    lambda: (_pm.handle("spicy biryani", {}), get_personal_pref("food")["value"])[1],
+    difficulty="medium", expect="spicy biryani")
+chk("S20-M04", "pending flag cleared after capture",
+    lambda: get_pending_personal() is None, difficulty="medium", expect=True)
+
+# Hard: recover a preference from past chat history (regex over events, no LLM).
+_mem.log_event("personal", "I love the colour green", "ok")
+chk("S20-H01", "past-chat search finds earlier colour",
+    lambda: _pm._search_past_chats("colour"), difficulty="hard", expect_in="green")
+chk("S20-H02", "past-chat search misses unmentioned topic",
+    lambda: _pm._search_past_chats("movie") is None, difficulty="hard", expect=True)
+
+# Idle-scan plumbing: cursor + id-based fetch (no LLM/network).
+from core.memory import (
+    get_personal_scan_cursor, set_personal_scan_cursor, events_since_id,
+    get_personal_list, set_personal_list,
+)
+chk("S20-H03", "scan cursor defaults to 0",
+    lambda: get_personal_scan_cursor(), difficulty="hard", expect=0)
+chk("S20-H04", "events_since_id returns only newer rows, oldest-first",
+    lambda: [e["id"] for e in events_since_id(0)] == sorted(e["id"] for e in events_since_id(0)),
+    difficulty="hard", expect=True)
+chk("S20-H05", "advancing cursor skips already-seen events",
+    lambda: (set_personal_scan_cursor(10_000), events_since_id(10_000))[1],
+    difficulty="hard", expect=[])
+set_personal_scan_cursor(0)
+
+# Pre-fetched list cache + list-request routing/serving (no LLM/network).
+set_personal_pref("music", "ghazals", "stated")
+set_personal_list("music", ["Ranjish Hi Sahi", "Chupke Chupke"], query="top ghazals music")
+chk("S20-H06", "list-request detected for a known taste",
+    lambda: _pm._list_request_category("top ghazals for me"), difficulty="hard", expect="music")
+chk("S20-H07", "list-request ignored with no matching taste",
+    lambda: _pm._list_request_category("list of top movies") is None,
+    difficulty="hard", expect=True)
+chk("S20-H08", "cached list served without a web call",
+    lambda: _pm._serve_list("music").text, difficulty="hard", expect_in="Ranjish Hi Sahi")
+
+# LLM-gated: full extraction flow (store / recall / ask-when-unknown).
+if FLAGS.llm:
+    r = _pm.handle("I really love rock music", {})
+    chk("S20-L01", "LLM store: states a like → remembered",
+        lambda: ("remember" in r.text.lower()) and get_personal_pref("music") is not None,
+        difficulty="complex", expect=True)
+    chk("S20-L02", "LLM recall: known preference answered",
+        lambda: _pm.handle("what music do I like?", {}).text, difficulty="complex",
+        expect_in="music")
+    clear_pending_personal()
+    r2 = _pm.handle("what sport do I like?", {})
+    chk("S20-L03", "LLM ask: unknown → asks + sets pending",
+        lambda: ("sport" in r2.text.lower()) and get_pending_personal() == "sport",
+        difficulty="complex", expect=True)
+    clear_pending_personal()
+
+    # General chat should be able to draw on learned tastes. Small local models
+    # won't reliably weave a preference into prose every run, so the pass/fail
+    # check is only that the reply is coherent — whether it actually used the
+    # taste is recorded as a soft, never-failing observation.
+    from modules.general.module import GeneralModule
+    _gm = GeneralModule()
+    set_personal_pref("music", "ghazals", "stated")
+    _gctx = {"profile": _mem.load_profile(), "stream_to_stdout": False, "history": []}
+    _greply = _gm.handle("what should I listen to this evening?", _gctx).text
+    chk("S20-L04", "general chat replies coherently with prefs in context",
+        lambda: bool(_greply.strip()) and "trouble responding" not in _greply.lower(),
+        difficulty="complex", expect=True)
+    _used = "ghazal" in _greply.lower()
+    rec("S20-L05", f"general chat wove in known taste (soft; used={_used})",
+        True, _greply[:100], 0, "complex")
+else:
+    rec("S20-L00", "LLM personal-flow tests skipped (use --llm)", True, "", 0, "complex")
+
+# API-gated: ask → answer → recall against the running server (real profile).
+# Snapshot and restore the real profile so the test leaves no trace.
+if FLAGS.api:
+    import httpx as _httpx
+    _real_profile = ROOT / "user_profile.json"
+    _snapshot = _real_profile.read_text() if _real_profile.exists() else None
+    _API = "http://localhost:8000"
+
+    def _query(text):
+        """POST a chat message to the live server and return the reply text."""
+        r = _httpx.post(f"{_API}/api/query", json={"text": text}, timeout=60)
+        return (r.json() or {}).get("response", "")
+
+    try:
+        chk("S20-A01", "ask unknown → server asks a question",
+            lambda: _query("what music do I like?"), difficulty="complex", expect_in="?")
+        chk("S20-A02", "answer captured + confirmed",
+            lambda: _query("jazz"), difficulty="complex", expect_in="remember")
+        chk("S20-A03", "recall returns the stored value",
+            lambda: _query("what music do I like?").lower(), difficulty="complex",
+            expect_in="jazz")
+    finally:
+        # Restore the real profile exactly as it was.
+        if _snapshot is not None:
+            _real_profile.write_text(_snapshot)
+else:
+    rec("S20-A00", "API personal-flow tests skipped (use --api)", True, "", 0, "complex")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

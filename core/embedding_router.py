@@ -215,6 +215,31 @@ _MODULE_EXAMPLES: dict[str, list[str]] = {
         "note down one task", "add this to my list",
         "mark that work as done",
     ],
+    "personal": [
+        # Recall questions
+        "what music do I like", "what kind of music do I like",
+        "what's my favourite food", "what is my favorite food",
+        "what colour do I like", "what's my favorite color",
+        "do you know my favourite food", "what do I like",
+        "what are my likes", "what's my favourite movie",
+        "which sport do I like", "what's my favourite book",
+        "remind me what music I like", "tell me my favourite colour",
+        # Statements (volunteered preferences)
+        "I like jazz music", "I love rock music", "my favourite colour is blue",
+        "my favorite food is biryani", "I love spicy food",
+        "I really enjoy classical music", "I'm a fan of cricket",
+        "my favourite movie is Sholay", "I prefer tea over coffee",
+        "I like reading thrillers", "green is my favourite colour",
+        # Indian English phrasings
+        "which music I like", "my favourite food is which",
+        "what all things I like", "you know my favourite colour or not",
+        "I am liking jazz music these days", "my most favourite food is dal",
+        # List / recommendation requests tied to the user's own taste
+        "recommend some music for me", "suggest movies I would like",
+        "give me a list of songs in my favourite genre", "top picks for my taste",
+        "recommend books based on what I like", "playlist for my favourite music",
+        "suggest something in my genre", "what should I listen to",
+    ],
     "code": [
         "analyze this project", "analyze the codebase",
         "how many lines of code", "show complex functions",

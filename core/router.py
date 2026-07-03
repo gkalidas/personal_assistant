@@ -24,6 +24,7 @@ _MODULE_KEYWORDS = {
     "search":  "search, news, latest, current events, what is, who is, government scheme, policy, regulation, internet, web, find out, look up",
     "code":    "analyze code, codebase, lines of code, LOC, complexity, security scan code, what does this directory do, explain module, file breakdown",
     "todo":    "todo, to-do, task, tasks, to-do list, task list, my list, add todo, remind me to, mark done, complete task, finish task, delete todo, pending tasks, things to do",
+    "personal": "personal likes and preferences, favourite music, favourite food, favourite colour, what do I like, my favourite, I like, I love, remember my taste, recommend for me, suggest for my taste, list for my genre",
     "general": "greetings, hello, hi, thanks, small talk, chit-chat, everyday questions, general knowledge, how are you, who are you, anything not covered by the other modules",
 }
 
@@ -81,6 +82,12 @@ Examples:
 "remind me to call the vet" -> {{"modules": ["todo"]}}
 "mark the pump task done" -> {{"modules": ["todo"]}}
 "delete the searxng todo" -> {{"modules": ["todo"]}}
+"what music do I like?" -> {{"modules": ["personal"]}}
+"my favourite colour is blue" -> {{"modules": ["personal"]}}
+"I love spicy food" -> {{"modules": ["personal"]}}
+"do you know my favourite food?" -> {{"modules": ["personal"]}}
+"recommend some music for me" -> {{"modules": ["personal"]}}
+"suggest movies I would like" -> {{"modules": ["personal"]}}
 
 Reply format: {{"modules": ["name"]}}  (exactly one name)"""
 
@@ -117,6 +124,17 @@ def _log_routing_mismatch(query: str, embed_choice: str, routed: list[str]) -> N
 
 def route(query: str, modules: dict[str, BaseModule]) -> list[str]:
     """Return the list of module names that should handle this query."""
+    # If GK just asked the user about a preference, the next message is the answer
+    # (often a bare word like "jazz" that no router could classify). Send it to the
+    # personal module so it's captured instead of routed as a fresh query.
+    try:
+        from core.memory import get_pending_personal
+        if get_pending_personal() and "personal" in modules:
+            log.info("pending personal answer → personal  q=%r", query[:80])
+            return ["personal"]
+    except Exception as e:
+        log.debug("pending-personal check skipped: %s", e)
+
     embed_choice = _embed_route(query, modules)
     if embed_choice:
         log.info("embed-route → %s  q=%r", embed_choice, query[:80])

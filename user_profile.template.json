@@ -80,5 +80,7 @@
     "reminder_time": "08:00",
     "default_farm": "farm_1",
     "default_home": "primary"
-  }
+  },
+
+  "personal": {}
 }

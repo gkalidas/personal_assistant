@@ -30,8 +30,12 @@ RULES:
 - Answer general-knowledge questions directly when you're confident.
 - If a question clearly needs live/current information (today's news, prices,
   recent events) say you can look it up — suggest the user ask to "search" for it.
-- Never invent personal data about Ganesh (his money, health readings, farm logs).
-  Point him to the relevant feature instead.
+- You may naturally reference the known preferences listed under "What you know
+  about Ganesh" below (e.g. suggest jazz if you know he likes jazz). If a
+  preference isn't listed there, don't guess it — invite him to tell you so you
+  can remember it.
+- Never invent other personal data about Ganesh (his money, health readings, farm
+  logs). Point him to the relevant feature instead.
 
 Respond in plain text. No JSON."""
 
@@ -39,6 +43,24 @@ Respond in plain text. No JSON."""
 def _user_name(context: dict) -> str:
     profile = context.get("profile", {}) or {}
     return profile.get("name") or profile.get("alias") or "Ganesh"
+
+
+def _known_preferences(context: dict) -> str:
+    """Render the user's stored personal preferences as a prompt block, or ''.
+
+    Pulls from profile["personal"] (populated by the personal module) so casual
+    chat can weave in tastes GK has actually learned, without inventing any.
+    """
+    profile = context.get("profile", {}) or {}
+    personal = profile.get("personal") or {}
+    lines = []
+    for category, entry in personal.items():
+        value = (entry or {}).get("value") if isinstance(entry, dict) else entry
+        if value:
+            lines.append(f"- {category}: {value}")
+    if not lines:
+        return ""
+    return "\n\nWhat you know about Ganesh (his stated preferences):\n" + "\n".join(lines)
 
 
 class GeneralModule(BaseModule):
@@ -52,6 +74,9 @@ class GeneralModule(BaseModule):
     def _messages(self, query: str, context: dict[str, Any]) -> list[dict]:
         """Build the chat message list: system prompt + prior history + this query."""
         system = _SYSTEM + f"\n\nYou are talking to {_user_name(context)}."
+        # Fold in any preferences GK has learned so casual chat can reference his
+        # actual tastes (e.g. suggest music he likes) without inventing new ones.
+        system += _known_preferences(context)
         # Prior chat turns (already sanitised to [{role, content}] by the caller)
         # so follow-ups like "what about tomorrow?" have the earlier context.
         history = context.get("history") or []
