@@ -175,26 +175,45 @@ def _bg_warmup():
             log.warning("warmup: embedding router not ready (will use LLM router)")
     except Exception as e:
         log.warning("warmup: embedding router failed: %s", e)
-    from core.config import OLLAMA_URL, ROUTER_MODEL, TEXT_MODEL, CHAT_KEEP_ALIVE
+    from core.config import OLLAMA_URL, ROUTER_MODEL, TEXT_MODEL, CHAT_KEEP_ALIVE, NUM_CTX
     import httpx
+
+    def _resident() -> set[str]:
+        try:
+            r = httpx.get(f"{OLLAMA_URL}/api/ps", timeout=10.0)
+            return {m.get("name", "") for m in r.json().get("models", [])}
+        except Exception:
+            return set()
+
+    # Warm the text model LAST so it's the one left resident. Ollama reloads a model
+    # whenever num_ctx changes, so warm the text model at the SAME num_ctx chat calls
+    # use — warming at the default 4096 would force a slow reload on the first chat.
     for model in dict.fromkeys([ROUTER_MODEL, TEXT_MODEL]):
         try:
-            httpx.post(
-                f"{OLLAMA_URL}/api/chat",
-                json={"model": model, "messages": [{"role": "user", "content": "hi"}],
-                      "stream": False, "keep_alive": CHAT_KEEP_ALIVE},
-                timeout=120.0,
-            )
+            body = {"model": model, "messages": [{"role": "user", "content": "hi"}],
+                    "stream": False, "keep_alive": CHAT_KEEP_ALIVE}
+            if model == TEXT_MODEL:
+                body["options"] = {"num_ctx": NUM_CTX}
+            httpx.post(f"{OLLAMA_URL}/api/chat", json=body, timeout=180.0)
             log.info("warmup: %s ready", model)
         except Exception as e:
             log.warning("warmup: %s failed: %s", model, e)
-    # Pre-load the vision model so background photo captioning isn't a cold ~100s
-    # load (which, under the old 60s timeout, death-spiralled into endless timeouts).
-    try:
-        from modules.diary.vision import prewarm_vision
-        prewarm_vision()
-    except Exception as e:
-        log.warning("warmup: vision pre-warm failed: %s", e)
+    # Detect a single-model Ollama (OLLAMA_MAX_LOADED_MODELS=1): if warming the text
+    # model evicted the router, only one model can be resident at a time. Reading the
+    # env var here is unreliable (it's set on the ollama process, not ours), so probe.
+    single_slot = ROUTER_MODEL not in _resident()
+    # Pre-load the vision model so background photo captioning isn't a cold ~100s load.
+    # Skip it on a single-slot Ollama: it would immediately EVICT the chat model we
+    # just warmed, making the next chat pay a reload. Diary captioning is idle-scheduled
+    # and loads vision on demand (evicting chat only while it actually runs).
+    if single_slot:
+        log.info("warmup: single-model Ollama detected — skipping vision pre-warm to keep %s resident", TEXT_MODEL)
+    else:
+        try:
+            from modules.diary.vision import prewarm_vision
+            prewarm_vision()
+        except Exception as e:
+            log.warning("warmup: vision pre-warm failed: %s", e)
 
 
 def _bg_services():

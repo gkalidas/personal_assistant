@@ -11,12 +11,13 @@ TEXT_MODEL     = os.getenv("TEXT_MODEL",      "qwen2.5:1.5b")  # faster + better
 # Context window (tokens) requested from Ollama per chat call. Without this,
 # Ollama silently defaults to a tiny 4096-token window and truncates the oldest
 # turns — the assistant "forgets" mid-conversation and starts confabulating.
-# qwen2.5:1.5b supports up to 32768; 16384 gives ample room for a full chat plus
-# the compacted-history summary while staying cheap on CPU RAM.
+# qwen2.5:1.5b supports up to 32768; 8192 gives ample room for a full chat plus
+# the compacted-history summary while keeping the KV cache small on this
+# RAM-constrained host (larger windows thrash swap and slow every token).
 # GUARDRAIL: keep NUM_CTX <= the model's native context (qwen2.5:1.5b = 32768,
 # qwen3:1.7b = 40960). Ollama clamps anything larger to the model max, so a value
 # above the ceiling silently buys you nothing while still reserving RAM.
-NUM_CTX        = int(os.getenv("NUM_CTX",      "16384"))
+NUM_CTX        = int(os.getenv("NUM_CTX",      "8192"))
 ROUTER_MODEL   = os.getenv("ROUTER_MODEL",    "qwen2.5:0.5b")
 FALLBACK_MODEL = os.getenv("FALLBACK_MODEL",  "qwen2.5:3b")   # backup when TEXT_MODEL fails
 VISION_MODEL   = os.getenv("VISION_MODEL",    "moondream")
