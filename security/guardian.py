@@ -393,6 +393,8 @@ def task_personal_scan() -> dict:
     refreshes the cached "top X" lists so a later request is served instantly.
     """
     from modules.personal.module import scan_recent_chats, refresh_content_lists
+    from modules.personal.music import refresh_music
+    from modules.personal.library import scan_library
 
     log.info("=== Personal preference scan (idle-scheduled) ===")
     scan = scan_recent_chats()
@@ -403,7 +405,14 @@ def task_personal_scan() -> dict:
     lists = refresh_content_lists()
     if lists["refreshed"]:
         log.info("  refreshed lists: %s", lists["refreshed"])
-    return {"scan": scan, "lists": lists}
+    # Music: refresh the trending / new-for-you discovery lists and warm the local
+    # library index so the dashboard's Music panel loads instantly.
+    music = refresh_music()
+    if music["refreshed"]:
+        log.info("  refreshed music: %s", music["refreshed"])
+    lib = scan_library()
+    log.info("  local music library: %d track(s)", len(lib))
+    return {"scan": scan, "lists": lists, "music": music, "library": len(lib)}
 
 
 _FULL_SCAN_TASKS = [

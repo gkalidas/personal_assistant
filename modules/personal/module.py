@@ -290,8 +290,26 @@ class PersonalModule(BaseModule):
         return None
 
     def _serve_list(self, category: str) -> ModuleResponse:
-        """Return the cached pre-fetched list for a taste, building one live if absent."""
+        """Return the cached pre-fetched list for a taste, building one live if absent.
+
+        For music, songs the user already owns (config.MUSIC_DIR) are listed first
+        — "in your collection" — before web recommendations, honouring his wish to
+        pick from the local collection before searching online.
+        """
         value = (memory.get_personal_pref(category) or {}).get("value", "")
+
+        local_lines: list[str] = []
+        if category == "music":
+            try:
+                from modules.personal.library import local_matches
+                owned = local_matches(value, limit=10)
+                local_lines = [
+                    (f"{t['title']} — {t['artist']}" if t.get("artist") else t["title"])
+                    for t in owned
+                ]
+            except Exception as e:
+                log.debug("local music match skipped: %s", e)
+
         cached = memory.get_personal_list(category)
         items = cached.get("items") if cached else None
         if not items:
@@ -299,16 +317,26 @@ class PersonalModule(BaseModule):
             if items:
                 memory.set_personal_list(
                     category, items, query=f"top {value} {category}", source="ondemand")
-        if not items:
+
+        if not items and not local_lines:
             return ModuleResponse(
                 text=f"I couldn't pull a {value} {category} list right now — try again shortly.",
                 module=self.name,
             )
-        body = "\n".join(f"{i}. {x}" for i, x in enumerate(items, 1))
+
+        sections = []
+        if local_lines:
+            owned_body = "\n".join(f"{i}. {x}" for i, x in enumerate(local_lines, 1))
+            sections.append(f"In your collection:\n{owned_body}")
+        if items:
+            web_body = "\n".join(f"{i}. {x}" for i, x in enumerate(items, 1))
+            header = "More to explore:" if local_lines else f"Top {value} {category} for you:"
+            sections.append(f"{header}\n{web_body}")
         return ModuleResponse(
-            text=f"Top {value} {category} for you:\n{body}",
+            text="\n\n".join(sections),
             module=self.name,
-            data={"category": category, "value": value, "items": items},
+            data={"category": category, "value": value,
+                  "local": local_lines, "items": items or []},
         )
 
     # ── main handler ──────────────────────────────────────────────────────────

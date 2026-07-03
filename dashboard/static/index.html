@@ -200,6 +200,33 @@
   </div>
   -->
 
+  <!-- MUSIC — local player + discovery (trending / new-for-you) -->
+  <div class="panel" id="p-music" style="display:flex;flex-direction:column">
+    <div class="panel-label">
+      ♪ MUSIC
+      <span class="music-footer" id="music-footer" style="margin-top:0">—</span>
+      <span style="display:flex;gap:6px">
+        <button class="panel-btn" id="music-refresh-btn" onclick="refreshMusic()">↻ REFRESH</button>
+      </span>
+    </div>
+    <div class="music-player">
+      <button class="music-ctl" id="music-prev" onclick="musicPrev()" title="Previous" aria-label="Previous">⏮</button>
+      <button class="music-ctl" id="music-play" onclick="musicToggle()" title="Play / pause" aria-label="Play/pause">▶</button>
+      <button class="music-ctl" id="music-next" onclick="musicNext()" title="Next" aria-label="Next">⏭</button>
+      <div class="music-now" id="music-now">—</div>
+      <audio id="music-audio" preload="none"></audio>
+    </div>
+    <div class="music-scroll" id="music-scroll">
+      <div class="music-section-title">YOUR COLLECTION</div>
+      <div class="music-list" id="music-playlist"><div class="music-empty">loading…</div></div>
+      <div class="music-section-title">TRENDING NOW</div>
+      <div class="music-row" id="music-trending"><div class="music-empty">—</div></div>
+      <div class="music-section-title">NEW FOR YOU</div>
+      <div class="music-row" id="music-new"><div class="music-empty">—</div></div>
+    </div>
+    <div class="panel-resize"></div>
+  </div>
+
 </div><!-- #grid -->
 
 <!-- Standard modals -->
@@ -354,6 +381,7 @@
 <script src="/static/js/livetv.js"></script>
 <script src="/static/js/voice.js"></script>
 <script src="/static/js/sysload.js"></script>
+<script src="/static/js/music.js"></script>
 <script src="/static/js/chat.js"></script>
 <script src="/static/js/todo.js"></script>
 <script src="/static/js/panels.js"></script>

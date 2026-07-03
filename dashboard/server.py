@@ -1238,6 +1238,47 @@ async def api_news_dismiss(url: str = Body(..., embed=True)):
     return JSONResponse({"ok": True})
 
 
+# ── Music: local collection player + discovery (trending / new-for-you) ────────
+
+@app.get("/api/music/library")
+async def api_music_library():
+    """Return the user's local music collection (from config.MUSIC_DIR)."""
+    from modules.personal.library import scan_library
+    from core.config import MUSIC_DIR
+    loop = asyncio.get_event_loop()
+    tracks = await loop.run_in_executor(None, scan_library)
+    return JSONResponse({"tracks": tracks, "count": len(tracks), "dir": MUSIC_DIR})
+
+
+@app.get("/api/music/file/{track_id}")
+async def api_music_file(track_id: str):
+    """Stream one local audio file by id (sandboxed to MUSIC_DIR; Range/seek OK)."""
+    from modules.personal.library import resolve_track
+    loop = asyncio.get_event_loop()
+    path = await loop.run_in_executor(None, resolve_track, track_id)
+    if path is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    media_map = {".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac",
+                 ".flac": "audio/flac", ".wav": "audio/wav", ".ogg": "audio/ogg",
+                 ".opus": "audio/ogg"}
+    media_type = media_map.get(path.suffix.lower(), "application/octet-stream")
+    return FileResponse(str(path), media_type=media_type)
+
+
+@app.get("/api/music/trending")
+async def api_music_trending():
+    """Return {trending, new_for_you, age_min} for the Music panel's discovery rows.
+
+    Serves whatever is cached instantly (never blocks on a slow web+LLM fetch);
+    any missing row is filled by a background thread and appears on the next poll.
+    """
+    from modules.personal.music import music_feed, ensure_fetched_async
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(None, music_feed, False)  # cache-only, no blocking
+    ensure_fetched_async()                                      # fill gaps in background
+    return JSONResponse(data)
+
+
 @app.post("/api/guardian/fix-audit")
 async def api_guardian_fix_audit(payload: dict = Body(...)):
     """Mute a bandit finding by adding # nosec to the flagged line, then re-audit.

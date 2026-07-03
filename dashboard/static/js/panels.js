@@ -1,8 +1,8 @@
 const _PL={};          // {panelId: {x,y,w,h,z}}
 let _maxZ=20, _drag=null, _dragMoved=false;
 const _PMIN_W=160, _PMIN_H=80;
-const _LSKEY='gk_panel_layout_v2';
-const _LSKEY_VP='gk_panel_vp_v2';   // viewport the saved layout was built for
+const _LSKEY='gk_panel_layout_v3';       // v3: added the Music panel to the default grid
+const _LSKEY_VP='gk_panel_vp_v3';   // viewport the saved layout was built for
 const _gridH=()=>window.innerHeight-44;
 let _vpW=window.innerWidth, _vpH=_gridH();   // viewport the current _PL geometry fits
 
@@ -18,7 +18,8 @@ function _defaultLayout(){
     'p-guardian': {x:g*4+cw*3, y:g,          w:cw,       h:r1,  z:10},
     'p-diary':    {x:g,        y:g*2+r1,     w:cw*3+g*2, h:r2,  z:10},
     'p-todo-mini':{x:g*4+cw*3, y:g*2+r1,     w:cw,       h:r2,  z:10},
-    'p-news':     {x:g,        y:g*3+r1+r2,  w:cw*3+g*2, h:r3,  z:10},
+    'p-news':     {x:g,        y:g*3+r1+r2,  w:cw*2+g,   h:r3,  z:10},
+    'p-music':    {x:g*3+cw*2, y:g*3+r1+r2,  w:cw,       h:r3,  z:10},
     'p-voice':    {x:g*4+cw*3, y:g*3+r1+r2,          w:cw, h:r3a,        z:10},
     'p-livenews': {x:g*4+cw*3, y:g*3+r1+r2+r3a+g,    w:cw, h:r3-r3a-g,   z:10},
   };

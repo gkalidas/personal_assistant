@@ -1268,6 +1268,71 @@ else:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# S21 — Music: local library + discovery (trending / new-for-you)
+# ══════════════════════════════════════════════════════════════════════════════
+section("S21", "Music Library & Discovery")
+
+import core.config as _cfg
+from modules.personal import library as _lib
+
+# Build a throwaway collection with genre subfolders + a non-audio file.
+_MUSIC_TMP = os.path.join(_TMP, "music")
+for rel in ("ghazals/Jagjit Singh - Hoshwalon Ko.mp3",
+            "sufi/Nusrat - Allah Hoo.mp3",
+            "Arijit - Party Anthem.m4a",
+            "notes.txt"):
+    p = os.path.join(_MUSIC_TMP, rel)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    open(p, "wb").close()
+_cfg.MUSIC_DIR = _MUSIC_TMP
+
+_tracks = _lib.scan_library(force=True)
+chk("S21-E01", "scan_library finds 3 audio files (skips .txt)",
+    lambda: len(_tracks), difficulty="easy", expect=3)
+chk("S21-E02", "filename parsed to title/artist",
+    lambda: any(t["title"] == "Allah Hoo" and t["artist"] == "Nusrat" for t in _tracks),
+    difficulty="easy", expect=True)
+chk("S21-E03", "genre subfolder captured",
+    lambda: any(t["subfolder"] == "ghazals" for t in _tracks),
+    difficulty="easy", expect=True)
+
+chk("S21-M01", "local_matches('ghazals, sufi') → the 2 themed tracks",
+    lambda: len(_lib.local_matches("ghazals, sufi music")), difficulty="medium", expect=2)
+_sufi_id = next(t["id"] for t in _tracks if t["subfolder"] == "sufi")
+chk("S21-M02", "resolve_track(valid) stays inside MUSIC_DIR",
+    lambda: _lib.resolve_track(_sufi_id).is_relative_to(Path(_MUSIC_TMP).resolve()),
+    difficulty="medium", expect=True)
+chk("S21-M03", "resolve_track(unknown id) → None",
+    lambda: _lib.resolve_track("deadbeef") is None, difficulty="medium", expect=True)
+chk("S21-M04", "resolve_track('') → None (no path traversal)",
+    lambda: _lib.resolve_track("") is None, difficulty="medium", expect=True)
+
+# Missing collection folder is tolerated (empty library, no crash).
+_cfg.MUSIC_DIR = os.path.join(_TMP, "no_such_music_dir")
+chk("S21-H01", "scan_library on missing dir → [] (no crash)",
+    lambda: _lib.scan_library(force=True), difficulty="hard", expect=[])
+_cfg.MUSIC_DIR = _MUSIC_TMP
+_lib.scan_library(force=True)
+
+# API-gated: music endpoints against the running server (real MUSIC_DIR).
+if FLAGS.api:
+    import httpx as _hxm
+    _MB = "http://localhost:8000"
+    chk("S21-A01", "/api/music/library returns a tracks list",
+        lambda: _hxm.get(f"{_MB}/api/music/library", timeout=15).json().get("tracks") is not None,
+        difficulty="complex", expect=True)
+    chk("S21-A02", "/api/music/file/<bad id> → 404",
+        lambda: _hxm.get(f"{_MB}/api/music/file/nonexistent", timeout=15).status_code,
+        difficulty="complex", expect=404)
+    chk("S21-A03", "/api/music/trending exposes both rows",
+        lambda: {"trending", "new_for_you"}.issubset(
+            _hxm.get(f"{_MB}/api/music/trending", timeout=90).json().keys()),
+        difficulty="complex", expect=True)
+else:
+    rec("S21-A00", "music API tests skipped (use --api)", True, "", 0, "complex")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # RESULTS — Save JSON
 # ══════════════════════════════════════════════════════════════════════════════
 print(f"\n{'='*60}")
