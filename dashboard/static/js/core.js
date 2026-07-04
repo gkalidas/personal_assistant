@@ -5,7 +5,9 @@ function tick(){const n=new Date(),p=x=>String(x).padStart(2,'0');el('clock').te
 setInterval(tick,1000);tick();
 
 let last={};
-let _openModal=null;
+let _openModal=null;               // full-screen todo modal only (see todo.js)
+const _DETAIL_TYPES=['network','system','weather','guardian'];
+const _openDetails=new Set();      // detail windows currently open — all re-render on each WS tick
 let _wxSig='';   // signature of last-rendered weather modal — gates needless rebuilds
 
 // ── WebSocket ──────────────────────────────────────────────────────────────────
@@ -13,7 +15,7 @@ let ws;
 function connect(){
   ws=new WebSocket(`ws://${location.host}/ws`);
   ws.onopen=()=>console.log('WS connected');
-  ws.onmessage=e=>{last=JSON.parse(e.data);render(last);if(_openModal)openModal(_openModal)};
+  ws.onmessage=e=>{last=JSON.parse(e.data);render(last);_openDetails.forEach(t=>openModal(t,true))};
   ws.onclose=()=>setTimeout(connect,3000);
   ws.onerror=()=>ws.close();
 }
@@ -239,8 +241,12 @@ function renderGuardian(g){
 
 // ── Modals ─────────────────────────────────────────────────────────────────────
 function _typeLabel(t){return{lan:'ETHERNET',wifi:'WI-FI',vpn:'VPN',tethering:'USB/BT',unknown:'UNKNOWN'}[t]||(t||'?').toUpperCase()}
-function openModal(type){
-  _openModal=type;
+// isRefresh=true → re-render triggered by a WS tick: keep stacking order untouched.
+function openModal(type,isRefresh){
+  if(_DETAIL_TYPES.includes(type)){
+    _openDetails.add(type);
+    if(!isRefresh){const m=el('modal-'+type);if(m&&m.classList.contains('open'))m.style.zIndex=++_detailZ;}
+  }
   if(type==='network'&&last.network){
     const n=last.network;
     let rows='';
@@ -397,9 +403,78 @@ function openModal(type){
   }
 }
 
-function show(id){el('overlay').classList.add('open');el(id).classList.add('open')}
-function closeModal(){
+// ── Floating detail windows ────────────────────────────────────────────────────
+// Detail modals are free-floating windows: no overlay, draggable by the title
+// bar, any number open at once. Positions persist like the panel layout.
+const _DPOSKEY='gk_detail_pos_v1';
+let _detailZ=300, _mdrag=null;
+let _dpos={};
+try{_dpos=JSON.parse(localStorage.getItem(_DPOSKEY)||'{}')}catch(e){}
+
+function _setDetailXY(m,x,y){
+  m.style.left=Math.min(Math.max(0,x),window.innerWidth-60)+'px';
+  m.style.top =Math.min(Math.max(0,y),window.innerHeight-40)+'px';
+  m.style.transform='none';
+}
+function _placeDetail(m){
+  const p=_dpos[m.id];
+  if(p&&p.w)m.style.width =Math.min(p.w,window.innerWidth -20)+'px';
+  if(p&&p.h)m.style.height=Math.min(p.h,window.innerHeight-20)+'px';
+  if(p&&typeof p.x==='number'){_setDetailXY(m,p.x,p.y);return}
+  // no saved spot — cascade from centre so new windows don't stack exactly
+  const n=Math.max(0,document.querySelectorAll('.modal.open').length-1);
+  const r=m.getBoundingClientRect();
+  _setDetailXY(m,(window.innerWidth-r.width)/2+n*34,Math.max(8,(window.innerHeight-r.height)/2+n*34));
+}
+function show(id){
+  const m=el(id);
+  if(m.classList.contains('open'))return;
+  m.classList.add('open');
+  m.style.zIndex=++_detailZ;
+  _placeDetail(m);
+}
+
+// Drag any .modal by its title bar; mousedown anywhere on it brings it to front.
+document.addEventListener('mousedown',e=>{
+  const m=e.target.closest('.modal');
+  if(!m)return;
+  m.style.zIndex=++_detailZ;
+  if(!e.target.closest('.modal-title')||e.target.closest('button,a,input,select,.modal-close'))return;
+  e.preventDefault();
+  const r=m.getBoundingClientRect();
+  _setDetailXY(m,r.left,r.top);   // freeze the centred position before dragging
+  _mdrag={m,dx:e.clientX-r.left,dy:e.clientY-r.top};
+});
+document.addEventListener('mousemove',e=>{
+  if(_mdrag)_setDetailXY(_mdrag.m,e.clientX-_mdrag.dx,e.clientY-_mdrag.dy);
+});
+document.addEventListener('mouseup',()=>{
+  let dirty=false;
+  // Native resize (CSS resize:both) writes inline width/height — persist them.
+  document.querySelectorAll('.modal.open').forEach(m=>{
+    const w=parseFloat(m.style.width)||0, h=parseFloat(m.style.height)||0;
+    if(!w&&!h)return;
+    const p=_dpos[m.id]||(_dpos[m.id]={});
+    if(p.w!==w||p.h!==h){if(w)p.w=w;if(h)p.h=h;dirty=true;}
+  });
+  if(_mdrag){
+    const r=_mdrag.m.getBoundingClientRect();
+    const p=_dpos[_mdrag.m.id]||(_dpos[_mdrag.m.id]={});
+    p.x=r.left;p.y=r.top;dirty=true;
+    _mdrag=null;
+  }
+  if(dirty)try{localStorage.setItem(_DPOSKEY,JSON.stringify(_dpos))}catch(e){}
+});
+
+// closeModal('modal-xyz') closes that window only; closeModal() closes everything.
+function closeModal(id){
+  if(typeof id==='string'){
+    el(id).classList.remove('open');
+    _openDetails.delete(id.replace(/^modal-/,''));
+    return;
+  }
   _openModal=null;
+  _openDetails.clear();
   _threatOpen.clear();
   el('overlay').classList.remove('open');
   document.querySelectorAll('.modal').forEach(m=>m.classList.remove('open'));

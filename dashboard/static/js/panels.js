@@ -82,6 +82,8 @@ function _initPanelLayout(){
 function resetPanelLayout(){
   localStorage.removeItem(_LSKEY);
   localStorage.removeItem(_LSKEY_VP);
+  localStorage.removeItem('gk_detail_pos_v1');   // floating detail windows (core.js)
+  if(typeof _dpos==='object')for(const k of Object.keys(_dpos))delete _dpos[k];
   _vpW=window.innerWidth; _vpH=_gridH();
   const defs=_defaultLayout();
   for(const id of Object.keys(defs)){_PL[id]={...defs[id]};_applyPanel(id);}

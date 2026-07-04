@@ -194,11 +194,11 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 /* ── Modals ───────────────────────────────────────────────────────────────── */
 #overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(2px);z-index:200}
 #overlay.open{display:block}
-.modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--panel);border:1px solid var(--cyan);box-shadow:0 0 40px var(--glow-c);border-radius:3px;padding:22px 26px;min-width:380px;max-width:90vw;max-height:85vh;overflow-y:auto;z-index:300}
+.modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--panel);border:1px solid var(--cyan);box-shadow:0 0 40px var(--glow-c);border-radius:3px;padding:22px 26px;min-width:380px;min-height:120px;max-width:96vw;max-height:92vh;overflow-y:auto;resize:both;z-index:300}
 .modal.open{display:block}
-.modal::before{content:'';position:absolute;top:6px;left:6px;width:14px;height:14px;border-top:1px solid var(--cyan);border-left:1px solid var(--cyan)}
-.modal::after {content:'';position:absolute;bottom:6px;right:6px;width:14px;height:14px;border-bottom:1px solid var(--cyan);border-right:1px solid var(--cyan)}
-.modal-title{font-size:10px;letter-spacing:4px;color:var(--cyan);text-shadow:0 0 10px var(--glow-c);border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:16px}
+.modal::before{content:'';position:absolute;top:6px;left:6px;width:14px;height:14px;border-top:1px solid var(--cyan);border-left:1px solid var(--cyan);pointer-events:none}
+.modal::after {content:'';position:absolute;bottom:6px;right:6px;width:14px;height:14px;border-bottom:1px solid var(--cyan);border-right:1px solid var(--cyan);pointer-events:none}
+.modal-title{font-size:10px;letter-spacing:4px;color:var(--cyan);text-shadow:0 0 10px var(--glow-c);border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:16px;cursor:move;user-select:none}
 .modal-close{position:absolute;top:12px;right:16px;font-size:15px;color:var(--dim);cursor:pointer}
 .modal-close:hover{color:var(--red)}
 .detail-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #060e18;font-size:12px}

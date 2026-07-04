@@ -230,12 +230,12 @@
 
 <!-- Standard modals -->
 <div id="overlay" onclick="closeModal()"></div>
-<div class="modal" id="modal-network"><span class="modal-close" onclick="closeModal()">✕</span><div class="modal-title">◈ NETWORK DETAILS</div><div id="modal-net-body"></div></div>
-<div class="modal" id="modal-system"><span class="modal-close" onclick="closeModal()">✕</span><div class="modal-title">◈ SYSTEM DETAILS</div><div id="modal-sys-body"></div></div>
-<div class="modal" id="modal-weather"><span class="modal-close" onclick="closeModal()">✕</span><div class="modal-title">◈ WEATHER DETAILS</div><div id="modal-wx-body"></div></div>
-<div class="modal" id="modal-guardian"><span class="modal-close" onclick="closeModal()">✕</span><div class="modal-title">◈ SECURITY GUARDIAN</div><div id="modal-g-body"></div></div>
+<div class="modal" id="modal-network"><span class="modal-close" onclick="closeModal('modal-network')">✕</span><div class="modal-title">◈ NETWORK DETAILS</div><div id="modal-net-body"></div></div>
+<div class="modal" id="modal-system"><span class="modal-close" onclick="closeModal('modal-system')">✕</span><div class="modal-title">◈ SYSTEM DETAILS</div><div id="modal-sys-body"></div></div>
+<div class="modal" id="modal-weather"><span class="modal-close" onclick="closeModal('modal-weather')">✕</span><div class="modal-title">◈ WEATHER DETAILS</div><div id="modal-wx-body"></div></div>
+<div class="modal" id="modal-guardian"><span class="modal-close" onclick="closeModal('modal-guardian')">✕</span><div class="modal-title">◈ SECURITY GUARDIAN</div><div id="modal-g-body"></div></div>
 <div class="modal" id="modal-sysload">
-  <span class="modal-close" onclick="closeModal()">✕</span>
+  <span class="modal-close" onclick="closeModal('modal-sysload')">✕</span>
   <div class="modal-title">◈ SYSTEM LOAD · IDLE ANALYTICS</div>
   <div id="modal-sysload-body"></div>
 </div>
