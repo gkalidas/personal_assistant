@@ -29,6 +29,7 @@
     <div class="panel-label">
       NETWORK
       <span id="net-speed-lbl" style="font-size:9px;letter-spacing:1px;color:var(--cyan)">↓-- ↑--</span>
+      <button class="panel-btn" id="net-api-btn" title="API call analytics — per-call history of inbound endpoints and outbound external APIs, with daily/hourly charts" onclick="event.stopPropagation();location.href='/apistats'">📊 API</button>
     </div>
     <div class="net-top">
       <div class="net-ifaces" id="iface-list"></div>
@@ -128,12 +129,10 @@
     <div class="panel-label">
       DIARY
       <button class="diary-write-btn" id="diary-write-btn" title="Write diary from ~/Pictures (Ctrl+D)" onclick="event.stopPropagation();writeDiaryFromPhotos()">✎ FROM PHOTOS</button>
+      <span class="diary-footer" id="diary-footer">—</span>
+      <span class="diary-photo-stat" id="diary-photo-stat"></span>
     </div>
     <div class="diary-list" id="diary-list"><div style="font-size:10px;letter-spacing:2px;color:#0c2535;padding:4px">loading…</div></div>
-    <div class="diary-footer-row">
-      <div class="diary-footer" id="diary-footer">—</div>
-      <div class="diary-photo-stat" id="diary-photo-stat"></div>
-    </div>
     <div class="diary-questions" id="diary-questions" style="display:none"></div>
     <span class="click-hint">CLICK TO OPEN BOOK</span>
     <div class="panel-resize"></div>

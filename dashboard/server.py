@@ -629,6 +629,12 @@ async def guide_page():
 _NO_CACHE = {"Cache-Control": "no-cache"}
 
 
+@app.get("/apistats")
+async def apistats_page():
+    """Serve the API-call analysis dashboard page."""
+    return HTMLResponse((_STATIC / "apistats.html").read_text(encoding="utf-8"), headers=_NO_CACHE)
+
+
 @app.get("/showcase")
 async def showcase_page():
     """Serve the animated architecture-showcase page."""
@@ -801,6 +807,22 @@ async def api_stats():
         "external": outbound_snapshot(),
         "snapshot_at": datetime.now().isoformat(),
     })
+
+
+@app.get("/api/stats/analytics")
+async def api_stats_analytics(start: str | None = None, end: str | None = None,
+                              direction: str | None = None, source: str | None = None,
+                              name: str | None = None):
+    """Aggregated api_call_log analytics for the /apistats page.
+
+    start/end are inclusive YYYY-MM-DD; direction/source/name narrow the rows.
+    """
+    from core.api_stats import analytics, flush_to_db
+    flush_to_db()  # include buffered events before reading
+    result = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: analytics(start=start, end=end, direction=direction,
+                                source=source, name=name))
+    return JSONResponse(result)
 
 
 @app.get("/api/stats/log")
@@ -1760,11 +1782,12 @@ def _compact_history(history) -> list[dict]:
     return [note, *recent]
 
 
-def _dispatch_text(text: str, history=None) -> dict:
+def _dispatch_text(text: str, history=None, session=None) -> dict:
     """Route a typed message through the same router/modules as voice. Runs in a worker thread."""
     text = (text or "").strip()
     if not text:
         return {"error": "empty message"}
+    t0 = time.monotonic()
     try:
         from core.router import route
         mods = _get_query_modules()
@@ -1780,13 +1803,34 @@ def _dispatch_text(text: str, history=None) -> dict:
             if name in mods:
                 r = mods[name].handle(text, ctx)
                 responses.append(r.text if hasattr(r, "text") else str(r))
-        return {
+        result = {
             "module":   chosen[0] if chosen else "unknown",
             "response": "\n\n".join(responses) if responses else "No response",
         }
+        _log_transcript_turn(session, text, result["response"],
+                             module=result["module"],
+                             latency_ms=int((time.monotonic() - t0) * 1000))
+        return result
     except Exception as e:
         log.error("text query dispatch failed: %s", e)
+        _log_transcript_turn(session, text, f"dispatch failed: {e}",
+                             latency_ms=int((time.monotonic() - t0) * 1000),
+                             status="error")
         return {"error": f"dispatch failed: {e}"}
+
+
+def _log_transcript_turn(session, query: str, reply: str, *,
+                         module: str | None = None,
+                         latency_ms: int | None = None,
+                         status: str = "ok") -> None:
+    """Record one user→assistant exchange in the session's JSONL transcript."""
+    from core.chat_transcript import append_message
+    session = session if isinstance(session, dict) else {}
+    sid = str(session.get("id") or "dashboard-untracked")
+    title = str(session.get("title") or "") or None
+    append_message(sid, "user", query, title=title)
+    append_message(sid, "assistant", reply, module=module,
+                   latency_ms=latency_ms, status=status)
 
 
 @app.post("/api/query")
@@ -1797,12 +1841,12 @@ async def api_query(payload: dict = Body(...)):
         return JSONResponse({"error": "text required"}, status_code=400)
     history = payload.get("history")
     result = await asyncio.get_event_loop().run_in_executor(
-        None, _dispatch_text, text, history
+        None, _dispatch_text, text, history, payload.get("session")
     )
     return JSONResponse(result)
 
 
-def _stream_query_events(text: str, history=None):
+def _stream_query_events(text: str, history=None, session=None):
     """Yield Server-Sent Events for a chat reply: a module event, then tokens, then done.
 
     The conversational `general` module streams token-by-token (low perceived
@@ -1810,6 +1854,7 @@ def _stream_query_events(text: str, history=None):
     the full reply, so the frontend consumes both the same way.
     """
     import json as _json
+    t0 = time.monotonic()
     try:
         from core.router import route
         mods = _get_query_modules()
@@ -1818,23 +1863,33 @@ def _stream_query_events(text: str, history=None):
         mod = mods.get(name)
         if mod is None:
             yield f"data: {_json.dumps({'error': f'no handler for {name}'})}\n\n"
+            _log_transcript_turn(session, text, f"no handler for {name}",
+                                 status="error")
             return
         yield f"data: {_json.dumps({'module': name})}\n\n"
         from core.memory import load_profile
         ctx = {"stream_to_stdout": False, "history": _compact_history(history),
                "profile": load_profile()}
+        reply_parts: list[str] = []
         streamer = getattr(mod, "handle_stream", None)
         if streamer is not None:
             for tok in streamer(text, ctx):
+                reply_parts.append(tok)
                 yield f"data: {_json.dumps({'token': tok})}\n\n"
         else:
             # Non-streaming module: run it normally and emit the whole reply once.
             r = mod.handle(text, ctx)
             full = r.text if hasattr(r, "text") else str(r)
+            reply_parts.append(full)
             yield f"data: {_json.dumps({'token': full})}\n\n"
         yield f"data: {_json.dumps({'done': True})}\n\n"
+        _log_transcript_turn(session, text, "".join(reply_parts), module=name,
+                             latency_ms=int((time.monotonic() - t0) * 1000))
     except Exception as e:
         log.error("stream query dispatch failed: %s", e)
+        _log_transcript_turn(session, text, f"dispatch failed: {e}",
+                             latency_ms=int((time.monotonic() - t0) * 1000),
+                             status="error")
         yield f"data: {_json.dumps({'error': f'dispatch failed: {e}'})}\n\n"
 
 
@@ -1845,7 +1900,7 @@ async def api_query_stream(payload: dict = Body(...)):
     if not text:
         return JSONResponse({"error": "text required"}, status_code=400)
     return StreamingResponse(
-        _stream_query_events(text, payload.get("history")),
+        _stream_query_events(text, payload.get("history"), payload.get("session")),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

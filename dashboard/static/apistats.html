@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GK · API ANALYTICS</title>
+<style>
+:root {
+  --cyan:   #00e5ff; --green: #00ff88; --amber: #ffaa00; --red: #ff2255;
+  --bg:     #030b10; --panel: #060e18; --border: #0c2535; --dim: #1a4a5e;
+  --glow-c: rgba(0,229,255,0.18);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--cyan);font-family:'Courier New',Courier,monospace;font-size:13px;overflow-y:auto}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9000;background:repeating-linear-gradient(0deg,transparent 0px,transparent 2px,rgba(0,229,255,0.01) 2px,rgba(0,229,255,0.01) 4px)}
+*{scrollbar-width:thin;scrollbar-color:rgba(0,229,255,0.32) transparent}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:rgba(0,229,255,0.28);border-radius:4px}
+
+#header{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--border);height:44px;position:sticky;top:0;z-index:10}
+.h-title{font-size:14px;letter-spacing:5px;text-shadow:0 0 14px var(--glow-c)}
+.h-title span{color:var(--dim);margin-right:8px}
+.nav-link{font-size:9px;letter-spacing:3px;color:var(--dim);text-decoration:none;border:1px solid var(--border);padding:3px 9px;border-radius:2px;transition:all .15s;cursor:pointer;background:transparent;font-family:inherit}
+.nav-link:hover{color:var(--cyan);border-color:var(--cyan)}
+.h-right{display:flex;gap:10px;align-items:center}
+
+#wrap{max-width:1180px;margin:0 auto;padding:14px 18px 40px}
+.sec{font-size:9px;letter-spacing:3px;color:var(--dim);border-bottom:1px solid var(--border);padding-bottom:4px;margin:20px 0 8px}
+.sec b{color:var(--cyan);font-weight:normal}
+
+/* filter bar */
+.filter{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+.filter label{font-size:8px;letter-spacing:2px;color:var(--dim)}
+.filter input[type=date],.filter select{background:var(--panel);border:1px solid var(--border);color:var(--cyan);font-family:inherit;font-size:10px;padding:4px 6px;border-radius:2px;color-scheme:dark}
+.preset{font-size:8px;letter-spacing:1px;padding:3px 9px;border-radius:2px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--dim);font-family:inherit}
+.preset:hover,.preset.on{color:var(--cyan);border-color:var(--cyan)}
+.chip{font-size:8px;letter-spacing:1px;padding:3px 9px;border-radius:2px;cursor:pointer;border:1px solid var(--amber);color:var(--amber);background:transparent;font-family:inherit}
+
+/* stat cards */
+.cards{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.card{flex:1;min-width:120px;background:rgba(6,14,24,0.5);border:1px solid var(--border);border-radius:3px;padding:9px 11px}
+.card .k{font-size:8px;letter-spacing:2px;color:var(--dim);margin-bottom:4px}
+.card .v{font-size:18px;letter-spacing:1px}
+.card .v.err{color:var(--red)}
+.card .v.ok{color:var(--green)}
+
+/* charts */
+.chart{display:flex;align-items:flex-end;gap:2px;height:150px;padding:8px 4px 0;border-bottom:1px solid var(--border);margin-top:4px}
+.col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0}
+.stack{width:74%;display:flex;flex-direction:column-reverse;justify-content:flex-start;min-height:1px}
+.seg{width:100%;min-height:0}
+.seg.in {background:linear-gradient(180deg,var(--cyan),#003344);border-radius:0}
+.seg.out{background:linear-gradient(180deg,var(--amber),#3a2600)}
+.stack .seg:last-child{border-radius:2px 2px 0 0}
+.xlabel{font-size:7px;color:var(--dim);margin-top:4px;letter-spacing:0;white-space:nowrap}
+.col.now .xlabel{color:#fff}
+.col.err-day .xlabel{color:var(--red)}
+.legend{display:flex;gap:14px;font-size:8px;letter-spacing:1px;color:var(--dim);margin-top:6px;flex-wrap:wrap}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.legend i.in{background:var(--cyan)} .legend i.out{background:var(--amber)}
+.empty{font-size:11px;color:var(--dim);padding:24px 0;text-align:center}
+
+/* tables */
+table{width:100%;border-collapse:collapse;margin-top:4px;font-size:11px}
+th{font-size:8px;letter-spacing:2px;color:var(--dim);text-align:left;padding:4px 8px;border-bottom:1px solid var(--border);font-weight:normal}
+td{padding:4px 8px;border-bottom:1px solid rgba(12,37,53,0.5);color:var(--cyan);white-space:nowrap}
+td.name{max-width:340px;overflow:hidden;text-overflow:ellipsis}
+td.num,th.num{text-align:right}
+td.dimc{color:var(--dim)}
+td.errc{color:var(--red)}
+tr.rowlink{cursor:pointer}
+tr.rowlink:hover td{background:rgba(0,229,255,0.05)}
+.share{display:inline-block;height:7px;background:linear-gradient(90deg,var(--cyan),rgba(0,229,255,0.15));border-radius:2px;vertical-align:middle}
+.tag{font-size:8px;letter-spacing:1px;padding:1px 5px;border-radius:2px;border:1px solid var(--border)}
+.tag.in{color:var(--cyan)} .tag.out{color:var(--amber);border-color:rgba(255,170,0,0.35)}
+td.rec{white-space:normal;font-size:9px;color:var(--dim);max-width:300px}
+td.rec.warn{color:var(--amber)}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div class="h-title"><span>◈</span> API CALL ANALYTICS</div>
+  <div class="h-right">
+    <button class="nav-link" onclick="load()">↻ REFRESH</button>
+    <a href="/" class="nav-link">← DASHBOARD</a>
+  </div>
+</div>
+
+<div id="wrap">
+
+  <div class="filter" id="filter-bar">
+    <button class="preset" data-p="all" onclick="presetClick('all')">ALL</button>
+    <button class="preset" data-p="1d"  onclick="presetClick('1d')">TODAY</button>
+    <button class="preset" data-p="7d"  onclick="presetClick('7d')">7D</button>
+    <button class="preset" data-p="14d" onclick="presetClick('14d')">14D</button>
+    <button class="preset" data-p="30d" onclick="presetClick('30d')">30D</button>
+    <label>FROM</label><input type="date" id="f-from">
+    <label>TO</label><input type="date" id="f-to">
+    <label>DIR</label>
+    <select id="f-dir" onchange="applyFilters()">
+      <option value="">ALL</option>
+      <option value="inbound">INBOUND</option>
+      <option value="outbound">OUTBOUND</option>
+    </select>
+    <label>SOURCE</label>
+    <select id="f-src" onchange="applyFilters()"><option value="">ALL</option></select>
+    <button class="preset" onclick="applyFilters()">APPLY</button>
+    <button class="chip" id="name-chip" style="display:none" onclick="clearName()"></button>
+  </div>
+
+  <div class="sec">WINDOW · <b id="win-range">--</b></div>
+  <div class="cards">
+    <div class="card"><div class="k">TOTAL CALLS</div><div class="v" id="c-total">--</div></div>
+    <div class="card"><div class="k">INBOUND</div><div class="v" id="c-in">--</div></div>
+    <div class="card"><div class="k">OUTBOUND</div><div class="v" id="c-out" style="color:var(--amber)">--</div></div>
+    <div class="card"><div class="k">ERRORS (≥400)</div><div class="v" id="c-err">--</div></div>
+    <div class="card"><div class="k">AVG LATENCY</div><div class="v" id="c-avg">--</div></div>
+    <div class="card"><div class="k">DISTINCT APIS</div><div class="v" id="c-apis">--</div></div>
+  </div>
+  <div class="legend" id="src-split"></div>
+
+  <div class="sec">CALLS BY DAY</div>
+  <div id="chart-daily"></div>
+
+  <div class="sec">CALLS BY HOUR OF DAY (0–23)</div>
+  <div id="chart-hourly"></div>
+  <div class="legend">
+    <span><i class="in"></i>inbound (dashboard endpoints)</span>
+    <span><i class="out"></i>outbound (external APIs)</span>
+    <span>◻ white label = current hour · red date = errors that day</span>
+  </div>
+
+  <div class="sec">TOP APIS <b id="api-count"></b> — click a row to drill into one API</div>
+  <div id="tbl-apis"></div>
+
+  <div class="sec">LIVE — SINCE DASHBOARD RESTART · INBOUND ENDPOINTS + CACHING ADVICE</div>
+  <div id="tbl-live-in"></div>
+
+  <div class="sec">LIVE — SINCE DASHBOARD RESTART · OUTBOUND HOSTS</div>
+  <div id="tbl-live-out"></div>
+
+</div>
+
+<script>
+'use strict';
+const el = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const fmt = n => (n ?? 0).toLocaleString();
+
+let _preset = 'all', _start = null, _end = null, _name = null;
+
+function presetClick(p){
+  _preset = p;
+  const today = new Date();
+  const iso = d => d.toISOString().slice(0, 10);
+  if(p === 'all'){ _start = null; _end = null; }
+  else{
+    const days = {'1d':0, '7d':6, '14d':13, '30d':29}[p];
+    const from = new Date(today); from.setDate(today.getDate() - days);
+    _start = iso(from); _end = iso(today);
+  }
+  el('f-from').value = _start || '';
+  el('f-to').value   = _end   || '';
+  load();
+}
+
+function applyFilters(){
+  _preset = 'custom';
+  _start = el('f-from').value || null;
+  _end   = el('f-to').value   || null;
+  load();
+}
+
+function drill(name){ _name = name; load(); }
+function clearName(){ _name = null; load(); }
+
+function load(){
+  document.querySelectorAll('.preset[data-p]').forEach(b =>
+    b.classList.toggle('on', b.dataset.p === _preset));
+  const chip = el('name-chip');
+  chip.style.display = _name ? '' : 'none';
+  if(_name) chip.textContent = '✕ ' + _name;
+
+  const qs = [];
+  if(_start) qs.push('start=' + _start);
+  if(_end)   qs.push('end=' + _end);
+  const dir = el('f-dir').value, src = el('f-src').value;
+  if(dir)   qs.push('direction=' + dir);
+  if(src)   qs.push('source=' + encodeURIComponent(src));
+  if(_name) qs.push('name=' + encodeURIComponent(_name));
+
+  fetch('/api/stats/analytics' + (qs.length ? '?' + qs.join('&') : ''))
+    .then(r => r.json()).then(render)
+    .catch(() => { el('tbl-apis').innerHTML = '<div class="empty">Could not load analytics.</div>'; });
+  fetch('/api/stats').then(r => r.json()).then(renderLive).catch(() => {});
+}
+
+function render(d){
+  const t = d.totals || {}, rng = d.range || {}, b = d.bounds || {};
+  el('win-range').textContent = (rng.start || '?') + ' → ' + (rng.end || '?')
+    + (_name ? '  ·  ' + _name : '');
+  el('f-from').min = b.earliest || ''; el('f-from').max = b.latest || '';
+  el('f-to').min   = b.earliest || ''; el('f-to').max   = b.latest || '';
+
+  el('c-total').textContent = fmt(t.calls);
+  el('c-in').textContent    = fmt(t.inbound);
+  el('c-out').textContent   = fmt(t.outbound);
+  const errEl = el('c-err');
+  errEl.textContent = fmt(t.errors);
+  errEl.className = 'v ' + ((t.errors || 0) > 0 ? 'err' : 'ok');
+  el('c-avg').textContent  = t.avg_ms != null ? t.avg_ms + ' ms' : '--';
+  el('c-apis').textContent = fmt(t.apis);
+
+  // source split under the cards
+  el('src-split').innerHTML = (d.by_source || []).map(s =>
+    `<span>${esc(s.source)}: ${fmt(s.calls)}</span>`).join('');
+
+  // populate source dropdown once (keep current selection)
+  const srcSel = el('f-src');
+  if(srcSel.options.length <= 1 && (d.by_source || []).length){
+    for(const s of d.by_source){
+      const o = document.createElement('option');
+      o.value = o.textContent = s.source;
+      srcSel.appendChild(o);
+    }
+  }
+
+  renderDaily(d.daily || []);
+  renderHourly(d.hourly || []);
+  renderApiTable(d.by_api || [], t.calls || 0);
+}
+
+function stackCol(inb, outb, max, label, title, extraCls){
+  const pct = v => max ? Math.round(v / max * 100) : 0;
+  return `<div class="col${extraCls || ''}" title="${esc(title)}">`
+    + `<div class="stack" style="height:${Math.max(1, pct(inb + outb))}%">`
+    + `<div class="seg in" style="flex:${inb} 0 0"></div>`
+    + `<div class="seg out" style="flex:${outb} 0 0"></div>`
+    + `</div><div class="xlabel">${esc(label)}</div></div>`;
+}
+
+function renderDaily(daily){
+  if(!daily.length){ el('chart-daily').innerHTML = '<div class="empty">No calls logged in this window.</div>'; return; }
+  const max = Math.max(...daily.map(o => (o.inbound || 0) + (o.outbound || 0)));
+  let h = '<div class="chart">';
+  for(const o of daily){
+    const title = `${o.date} — ${fmt(o.inbound)} in, ${fmt(o.outbound)} out`
+      + ((o.errors || 0) ? `, ${fmt(o.errors)} errors` : '');
+    h += stackCol(o.inbound || 0, o.outbound || 0, max, o.date.slice(5), title,
+                  (o.errors || 0) ? ' err-day' : '');
+  }
+  el('chart-daily').innerHTML = h + '</div>';
+}
+
+function renderHourly(hourly){
+  if(!hourly.length){ el('chart-hourly').innerHTML = '<div class="empty">No calls logged in this window.</div>'; return; }
+  const byH = {}; hourly.forEach(o => byH[o.hour] = o);
+  const max = Math.max(...hourly.map(o => (o.inbound || 0) + (o.outbound || 0)));
+  const nowH = new Date().getHours();
+  let h = '<div class="chart">';
+  for(let hr = 0; hr < 24; hr++){
+    const o = byH[hr] || {inbound: 0, outbound: 0};
+    const lbl = String(hr).padStart(2, '0');
+    h += stackCol(o.inbound || 0, o.outbound || 0, max, lbl,
+                  `${lbl}:00 — ${fmt(o.inbound)} in, ${fmt(o.outbound)} out`,
+                  hr === nowH ? ' now' : '');
+  }
+  el('chart-hourly').innerHTML = h + '</div>';
+}
+
+function renderApiTable(rows, total){
+  el('api-count').textContent = rows.length ? `(${rows.length})` : '';
+  if(!rows.length){ el('tbl-apis').innerHTML = '<div class="empty">No calls logged in this window.</div>'; return; }
+  let h = '<table><tr><th>#</th><th>API</th><th>DIR</th><th>SRC</th>'
+        + '<th class="num">CALLS</th><th>SHARE</th><th class="num">ERR</th>'
+        + '<th class="num">AVG MS</th><th class="num">MAX MS</th><th>LAST CALL</th></tr>';
+  rows.forEach((r, i) => {
+    const share = total ? (r.calls / total * 100) : 0;
+    const dirTag = `<span class="tag ${r.direction === 'inbound' ? 'in' : 'out'}">${r.direction === 'inbound' ? 'IN' : 'OUT'}</span>`;
+    h += `<tr class="rowlink" onclick="drill('${esc(r.name).replace(/'/g, "\\'")}')" title="Click to filter everything to this API">`
+      + `<td class="dimc">${i + 1}</td>`
+      + `<td class="name">${esc(r.name)}</td>`
+      + `<td>${dirTag}</td><td class="dimc">${esc(r.source || '?')}</td>`
+      + `<td class="num">${fmt(r.calls)}</td>`
+      + `<td><span class="share" style="width:${Math.max(2, Math.round(share))}px"></span> <span class="dimc" style="font-size:9px">${share.toFixed(1)}%</span></td>`
+      + `<td class="num ${r.errors ? 'errc' : 'dimc'}">${fmt(r.errors)}</td>`
+      + `<td class="num">${r.avg_ms ?? '--'}</td><td class="num">${r.max_ms ?? '--'}</td>`
+      + `<td class="dimc">${esc((r.last_ts || '').slice(0, 16).replace('T', ' '))}</td></tr>`;
+  });
+  el('tbl-apis').innerHTML = h + '</table>';
+}
+
+function renderLive(d){
+  const eps = d.endpoints || {};
+  let h = '<table><tr><th>ENDPOINT</th><th class="num">CALLS</th><th class="num">AVG MS</th>'
+        + '<th class="num">MAX MS</th><th class="num">ERR</th><th>RECOMMENDATION</th></tr>';
+  let n = 0;
+  for(const [name, s] of Object.entries(eps)){
+    n++;
+    const warn = s.recommendation && s.recommendation !== 'ok';
+    h += `<tr><td class="name">${esc(name)}</td>`
+      + `<td class="num">${fmt(s.calls)}</td><td class="num">${s.avg_ms}</td>`
+      + `<td class="num">${s.max_ms}</td>`
+      + `<td class="num ${s.errors ? 'errc' : 'dimc'}">${fmt(s.errors)}</td>`
+      + `<td class="rec${warn ? ' warn' : ''}">${esc(s.recommendation)}</td></tr>`;
+  }
+  el('tbl-live-in').innerHTML = n ? h + '</table>' : '<div class="empty">No inbound calls since restart.</div>';
+
+  const ext = d.external || {};
+  h = '<table><tr><th>HOST</th><th class="num">CALLS</th><th class="num">AVG MS</th>'
+    + '<th class="num">MAX MS</th><th class="num">ERR</th></tr>';
+  n = 0;
+  for(const [host, s] of Object.entries(ext)){
+    n++;
+    h += `<tr><td class="name">${esc(host)}</td>`
+      + `<td class="num">${fmt(s.calls)}</td><td class="num">${s.avg_ms}</td>`
+      + `<td class="num">${s.max_ms}</td>`
+      + `<td class="num ${s.errors ? 'errc' : 'dimc'}">${fmt(s.errors)}</td></tr>`;
+  }
+  el('tbl-live-out').innerHTML = n ? h + '</table>' : '<div class="empty">No outbound calls since restart.</div>';
+}
+
+presetClick('7d');
+</script>
+</body>
+</html>

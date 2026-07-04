@@ -69,8 +69,8 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .panel-label{font-size:9px;letter-spacing:3px;color:var(--dim);margin-bottom:3px;display:flex;align-items:center;justify-content:center;gap:6px}
 .panel-label::before{display:none}
 /* center WEATHER / GUARDIAN / TODO titles; pull their action buttons out of flow */
-#p-weather .panel-label,#p-guardian .panel-label,#p-todo-mini .panel-label,#p-system .panel-label{position:relative}
-#p-weather .panel-label>.panel-btn,#p-guardian .panel-label>div,#p-todo-mini .panel-label>.todo-mini-link,#p-system .panel-label>.panel-btn{position:absolute;right:0;top:50%;transform:translateY(-50%);margin-left:0}
+#p-weather .panel-label,#p-guardian .panel-label,#p-todo-mini .panel-label,#p-system .panel-label,#p-network .panel-label{position:relative}
+#p-weather .panel-label>.panel-btn,#p-guardian .panel-label>div,#p-todo-mini .panel-label>.todo-mini-link,#p-system .panel-label>.panel-btn,#p-network .panel-label>.panel-btn{position:absolute;right:0;top:50%;transform:translateY(-50%);margin-left:0}
 #p-guardian .panel-label>div{top:0;transform:none}
 .click-hint{display:none}
 .panel.clickable:hover .click-hint{color:var(--dim)}
@@ -115,8 +115,9 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 /* diary write button */
 .diary-write-btn{font-size:8px;letter-spacing:2px;padding:2px 6px;background:rgba(210,168,255,0.08);border:1px solid rgba(210,168,255,0.25);color:#d2a8ff;border-radius:2px;cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;line-height:1}
 .diary-write-btn:hover{background:rgba(210,168,255,0.15);border-color:#d2a8ff}
-.diary-footer-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-shrink:0}
-.diary-photo-stat{font-size:8px;letter-spacing:1px;color:#5a3a7a;flex-shrink:0}
+#p-diary .panel-label{justify-content:flex-start}
+#p-diary .diary-footer{margin-left:auto}
+.diary-photo-stat{font-size:8px;letter-spacing:1px;color:#5a3a7a;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* diary review questions */
 .diary-questions{margin-top:5px;border-top:1px solid var(--border);padding-top:5px;overflow-y:auto;flex:1 1 auto;min-height:80px}
 .dq-item{display:flex;align-items:flex-start;gap:6px;padding:4px 6px;margin-bottom:3px;background:rgba(255,170,0,0.04);border:1px solid rgba(255,170,0,0.2);border-radius:2px}

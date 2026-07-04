@@ -307,6 +307,86 @@ def query_calls(
         return [dict(r) for r in c.execute(sql, params)]
 
 
+def analytics(
+    *,
+    start: str | None = None,
+    end: str | None = None,
+    direction: str | None = None,
+    source: str | None = None,
+    name: str | None = None,
+) -> dict:
+    """
+    Aggregated view of api_call_log for the /apistats analysis page.
+
+    start/end are inclusive YYYY-MM-DD dates; direction/source/name narrow the
+    rows (ANDed). Returns full-table date bounds, window totals, a per-API
+    rollup, calls per day and per hour-of-day (split inbound/outbound), and a
+    per-source split. Latency averages ignore 0 rows (streaming calls log 0).
+    """
+    clauses, params = [], []
+    if start:
+        clauses.append("date(ts) >= ?"); params.append(start)
+    if end:
+        clauses.append("date(ts) <= ?"); params.append(end)
+    if direction:
+        clauses.append("direction = ?"); params.append(direction)
+    if source:
+        clauses.append("source = ?"); params.append(source)
+    if name:
+        clauses.append("name = ?"); params.append(name)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+
+    with _conn() as c:
+        bounds = c.execute(
+            "SELECT date(MIN(ts)) AS earliest, date(MAX(ts)) AS latest FROM api_call_log"
+        ).fetchone()
+        totals = c.execute(f"""
+            SELECT COUNT(*) AS calls,
+                   SUM(CASE WHEN direction = 'inbound'  THEN 1 ELSE 0 END) AS inbound,
+                   SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) AS outbound,
+                   SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END) AS errors,
+                   ROUND(AVG(NULLIF(latency_ms, 0)), 1) AS avg_ms,
+                   COUNT(DISTINCT name) AS apis
+            FROM api_call_log{where}""", params).fetchone()
+        by_api = c.execute(f"""
+            SELECT name, direction, source, COUNT(*) AS calls,
+                   SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END) AS errors,
+                   ROUND(AVG(NULLIF(latency_ms, 0)), 1) AS avg_ms,
+                   ROUND(MAX(latency_ms), 1) AS max_ms,
+                   MAX(ts) AS last_ts
+            FROM api_call_log{where}
+            GROUP BY name, direction, source
+            ORDER BY calls DESC LIMIT 60""", params).fetchall()
+        daily = c.execute(f"""
+            SELECT date(ts) AS date,
+                   SUM(CASE WHEN direction = 'inbound'  THEN 1 ELSE 0 END) AS inbound,
+                   SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) AS outbound,
+                   SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END) AS errors
+            FROM api_call_log{where}
+            GROUP BY date(ts) ORDER BY date(ts)""", params).fetchall()
+        hourly = c.execute(f"""
+            SELECT CAST(strftime('%H', ts) AS INTEGER) AS hour,
+                   SUM(CASE WHEN direction = 'inbound'  THEN 1 ELSE 0 END) AS inbound,
+                   SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) AS outbound
+            FROM api_call_log{where}
+            GROUP BY hour ORDER BY hour""", params).fetchall()
+        by_source = c.execute(f"""
+            SELECT COALESCE(source, '?') AS source, COUNT(*) AS calls
+            FROM api_call_log{where}
+            GROUP BY source ORDER BY calls DESC""", params).fetchall()
+
+    return {
+        "bounds": dict(bounds),
+        "range": {"start": start or bounds["earliest"], "end": end or bounds["latest"]},
+        "filters": {"direction": direction, "source": source, "name": name},
+        "totals": dict(totals),
+        "by_api": [dict(r) for r in by_api],
+        "daily": [dict(r) for r in daily],
+        "hourly": [dict(r) for r in hourly],
+        "by_source": [dict(r) for r in by_source],
+    }
+
+
 def start_persistence(interval: float = 15.0) -> None:
     """Start the background event flusher (every `interval` s). Idempotent."""
     global _flusher
