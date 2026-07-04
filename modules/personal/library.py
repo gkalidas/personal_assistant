@@ -142,6 +142,24 @@ def resolve_track(track_id: str) -> Path | None:
     return None
 
 
+def delete_track(track_id: str) -> bool:
+    """Delete a track's file from disk by id; True if removed.
+
+    Goes through resolve_track(), so only files inside MUSIC_DIR with an audio
+    extension can ever be deleted. Forces a rescan so the cache drops the entry.
+    """
+    path = resolve_track(track_id)
+    if path is None:
+        return False
+    try:
+        path.unlink()
+    except OSError:
+        log.exception("failed to delete track %s (%s)", track_id, path)
+        return False
+    scan_library(force=True)
+    return True
+
+
 def local_matches(value: str, limit: int = 50) -> list[dict]:
     """Tracks that match a taste string (e.g. "ghazals, sufi, soft music").
 

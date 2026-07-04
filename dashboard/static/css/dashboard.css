@@ -581,7 +581,10 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .music-track.active{color:var(--cyan);background:rgba(0,229,255,0.08)}
 .music-track-ico{font-size:8px;color:var(--dim);flex-shrink:0;width:12px}
 .music-track.active .music-track-ico{color:var(--cyan)}
-.music-track-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.music-track-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.music-track-del{font-size:12px;color:#2a3a44;cursor:pointer;flex-shrink:0;line-height:1;padding:0 2px;opacity:0;transition:all 0.15s}
+.music-track:hover .music-track-del{opacity:1}
+.music-track-del:hover{color:var(--red)}
 .music-row{display:flex;flex-wrap:wrap;gap:4px}
 .music-chip{font-size:9px;letter-spacing:0.5px;padding:3px 7px;border-radius:10px;cursor:pointer;border:1px solid var(--border);color:#8ab8c8;transition:all 0.12s}
 .music-chip:hover{color:var(--cyan);border-color:var(--cyan);box-shadow:0 0 8px var(--glow-c)}

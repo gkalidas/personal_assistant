@@ -1287,6 +1287,17 @@ async def api_music_file(track_id: str):
     return FileResponse(str(path), media_type=media_type)
 
 
+@app.delete("/api/music/file/{track_id}")
+async def api_music_delete(track_id: str):
+    """Delete one song file from the collection (sandboxed to MUSIC_DIR)."""
+    from modules.personal.library import delete_track
+    loop = asyncio.get_event_loop()
+    ok = await loop.run_in_executor(None, delete_track, track_id)
+    if not ok:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
 @app.get("/api/music/trending")
 async def api_music_trending():
     """Return {trending, new_for_you, age_min} for the Music panel's discovery rows.

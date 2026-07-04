@@ -30,6 +30,7 @@ function renderMusicPlaylist(d){
     <div class="music-track ${i===_mcur?'active':''}" id="mtrack-${i}" onclick="musicPlay(${i})" title="Play">
       <span class="music-track-ico">${i===_mcur&&_mplaying?'❚❚':'▶'}</span>
       <span class="music-track-name">${_mesc(_mlabel(t))}</span>
+      <span class="music-track-del" title="Delete file" onclick="event.stopPropagation();musicDelete(${i})">×</span>
     </div>`).join('');
 }
 
@@ -80,6 +81,22 @@ function musicToggle(){
   if(_mcur === -1){ musicPlay(0); return; }
   if(a.paused){ a.play(); _mplaying = true; } else { a.pause(); _mplaying = false; }
   _msync();
+}
+
+async function musicDelete(i){
+  const t = _mtracks[i];
+  if(!t) return;
+  if(!confirm(`Delete "${_mlabel(t)}" from disk?`)) return;
+  try{
+    const r = await fetch(`/api/music/file/${t.id}`, {method:'DELETE'});
+    if(!r.ok) throw new Error('delete failed');
+    if(i === _mcur){                       // deleted the loaded track → stop playback
+      const a = _maudio(); a.pause(); a.removeAttribute('src');
+      _mcur = -1; _mplaying = false;
+    }else if(i < _mcur){ _mcur--; }        // keep the active index pointing at the same song
+    await loadMusicLibrary();
+    _msync();
+  }catch(e){ el('music-footer').textContent = 'delete failed'; }
 }
 
 function musicNext(){ if(_mtracks.length) musicPlay((_mcur+1) % _mtracks.length); }
