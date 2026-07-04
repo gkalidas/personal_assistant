@@ -46,6 +46,12 @@ SEARXNG_URL        = os.getenv("SEARXNG_URL",        "").rstrip("/")
 # Drop audio files (optionally in genre subfolders like ghazals/, sufi/) here.
 MUSIC_DIR          = os.getenv("MUSIC_DIR", str(Path.home() / "Music" / "gk"))
 
+# Per-session chat transcripts (Claude/ChatGPT-style JSONL files) — one file
+# per conversation, for offline behaviour/latency analysis and the
+# personalization idle-scan. See core/chat_transcript.py.
+CHAT_SESSIONS_DIR  = os.getenv("CHAT_SESSIONS_DIR",
+                               str(Path(__file__).resolve().parent.parent / "logs" / "chat_sessions"))
+
 # When a module's reply looks uncertain ("I don't know"), optionally run a web
 # search and append its result as a second block. Default OFF so one query →
 # one module's output. Set UNCERTAINTY_SEARCH_FALLBACK=1 to re-enable.

@@ -141,19 +141,26 @@ def _fetch_top_list(category: str, value: str, max_items: int = 10) -> list[str]
 def scan_recent_chats(max_events: int = 400) -> dict:
     """Idle scan: mine new chat messages for stated preferences and store them.
 
-    Reads only events newer than the persisted cursor, so a run with no new
-    messages is a no-op. A directly stated/asked value is never overwritten by a
-    chat-mined guess. Returns a small summary for the guardian log.
+    Two sources, each with its own persisted cursor so a run with no new
+    messages is a no-op: the events DB (CLI/voice queries) and the per-session
+    transcript files (dashboard chatbox — those never reach the events DB).
+    A directly stated/asked value is never overwritten by a chat-mined guess.
+    Returns a small summary for the guardian log.
     """
     from core.llm import call as llm_call
+    from core.chat_transcript import user_messages_since
 
     cursor = memory.get_personal_scan_cursor()
     events = memory.events_since_id(cursor, limit=max_events)
-    if not events:
+
+    t_cursor = memory.get_transcript_scan_cursor()
+    t_texts, t_new_cursor = user_messages_since(t_cursor, max_messages=max_events)
+
+    if not events and not t_texts:
         return {"scanned": 0, "learned": [], "cursor": cursor}
 
     texts = [(e.get("query") or "").strip() for e in events]
-    texts = [t for t in texts if t]
+    texts = [t for t in texts if t] + t_texts
     learned: list[dict] = []
 
     for batch in _chunk(texts, 20):
@@ -182,8 +189,10 @@ def scan_recent_chats(max_events: int = 400) -> dict:
             memory.set_personal_pref(cat, val, source="chat")
             learned.append({"category": cat, "value": val})
 
-    new_cursor = max(e["id"] for e in events)
+    new_cursor = max(e["id"] for e in events) if events else cursor
     memory.set_personal_scan_cursor(new_cursor)
+    if t_new_cursor != t_cursor:
+        memory.set_transcript_scan_cursor(t_new_cursor)
     return {"scanned": len(texts), "learned": learned, "cursor": new_cursor}
 
 

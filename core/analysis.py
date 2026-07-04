@@ -51,10 +51,32 @@ def _time_of_day_buckets(events: list[dict]) -> dict[str, int]:
     return buckets
 
 
+def _transcript_events_for_week(week: str) -> list[dict]:
+    """Dashboard chat turns from the session transcripts, filtered to `week`.
+
+    The chatbox never writes to the events DB — its turns live only in the
+    per-session JSONL transcripts, so the weekly analysis reads both sources.
+    (CLI transcripts are excluded upstream; those turns ARE in the events DB.)
+    """
+    from core.chat_transcript import dashboard_turns
+    out = []
+    for t in dashboard_turns():
+        try:
+            d = datetime.fromisoformat(t["ts"]).date()
+        except (TypeError, ValueError):
+            continue
+        if iso_week(d) == week:
+            out.append(t)
+    return out
+
+
 def analyse_week(week: str | None = None) -> dict[str, Any]:
-    """Analyse all events in a week. Returns stats + patterns."""
+    """Analyse all events in a week (events DB + dashboard chat transcripts).
+
+    Returns stats + patterns."""
     week = week or current_iso_week()
-    events = events_for_week(week)
+    events = events_for_week(week) + _transcript_events_for_week(week)
+    events.sort(key=lambda e: e.get("ts") or "")
 
     if not events:
         return {"week": week, "total_queries": 0, "message": "No activity this week."}

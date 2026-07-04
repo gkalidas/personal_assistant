@@ -104,6 +104,17 @@ def set_personal_scan_cursor(event_id: int) -> None:
     update_profile("_personal_scan_cursor", int(event_id))
 
 
+def get_transcript_scan_cursor() -> dict:
+    """Per-session-file line cursor for the transcript preference scan."""
+    cur = load_profile().get("_transcript_scan_cursor")
+    return cur if isinstance(cur, dict) else {}
+
+
+def set_transcript_scan_cursor(cursor: dict) -> None:
+    """Persist the transcript scan cursor ({session_id: lines_consumed})."""
+    update_profile("_transcript_scan_cursor", dict(cursor))
+
+
 # ── Pending personal question (multi-turn "ask then capture the reply") ────────
 # When GK asks the user about an unknown preference, it records the category here
 # so the next message (often a bare answer like "jazz") is captured as the answer

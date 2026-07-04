@@ -136,6 +136,10 @@ def main():
     _ensure_mistake_log()
     profile = memory.load_profile()
 
+    # One JSONL transcript file per REPL run (Claude/ChatGPT-style session log)
+    from core.chat_transcript import append_message, new_cli_session_id
+    session_id = new_cli_session_id()
+
     print("Welcome to the future, GK.")
     print("Warming up models...")
     _warmup_models()
@@ -200,6 +204,7 @@ def main():
 
         context = _build_context(profile)
         event_id = memory.log_query_start(redact_pii(query))
+        append_message(session_id, "user", query, channel="cli")
         t0 = time.monotonic()
         log.info("query id=%d q=%r", event_id, query[:120])
 
@@ -211,6 +216,8 @@ def main():
             spinner.stop()
             latency_ms = int((time.monotonic() - t0) * 1000)
             memory.log_query_done(event_id, "router", str(e), latency_ms, status="error")
+            append_message(session_id, "assistant", str(e), channel="cli",
+                           module="router", latency_ms=latency_ms, status="error")
             log.error("dispatch failed id=%d latency=%dms: %s", event_id, latency_ms, e, exc_info=True)
             log_mistake("module_error", query=redact_pii(query), module="router",
                         details=str(e), severity="high")
@@ -261,6 +268,8 @@ def main():
                 latency_ms=latency_ms,
                 metadata=r.data,
             )
+            append_message(session_id, "assistant", r.text, channel="cli",
+                           module=r.module, latency_ms=latency_ms)
 
         print()
 

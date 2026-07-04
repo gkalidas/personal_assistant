@@ -252,7 +252,8 @@ async function chatSend(){
     const r=await fetch('/api/query/stream',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({text,history})
+      // session id/title let the server keep a per-conversation transcript file
+      body:JSON.stringify({text,history,session:{id:sess.id,title:sess.title}})
     });
     if(!r.ok||!r.body){
       pending.classList.add('err');
